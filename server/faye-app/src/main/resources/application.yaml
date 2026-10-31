@@ -1,4 +1,9 @@
 spring:
+  # A body a browser posts is read strictly: repeated keys are refused, not resolved to the last one
+  # (ADR 0007, security standard 1)
+  jackson:
+    parser:
+      strict-duplicate-detection: true
   application:
     name: faye
   # One SQLite database holds every store: flows, versions, hooks, settings, traces and each tenant's

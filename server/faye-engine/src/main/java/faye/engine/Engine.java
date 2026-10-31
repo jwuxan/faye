@@ -43,6 +43,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Engine {
 
+    private static final System.Logger LOG = System.getLogger(Engine.class.getName());
+
     public static final String DEFAULT_TENANT = "default";
 
     /** Why a host request is rejected when its version cannot run here (ir-spec.md, Checks). */
@@ -161,8 +163,11 @@ public final class Engine {
 
         switch (kind) {
             case LOGIN -> {
-                Optional<FlowVersion> found = preview ? previews.version(tenant) : Optional.of(current(tenant));
-                if (found.isEmpty()) return host.reject(req, "access_denied", "preview_unavailable");
+                Optional<FlowVersion> found = preview ? previews.version(tenant) : versions.current(tenant);
+                // A client naming a tenant with no published flow is refused, not a 5xx (ADR 0007)
+                if (found.isEmpty()) {
+                    return host.reject(req, "access_denied", preview ? "preview_unavailable" : FLOW_UNAVAILABLE);
+                }
                 version = found.get();
                 if (skip && subject != null) {
                     // The host remembers who, not how: a remembered session counts as one factor.
@@ -175,7 +180,8 @@ public final class Engine {
                 }
             }
             case CONSENT -> {
-                if (subject == null) throw new IllegalStateException("consent request without a subject");
+                // A consent is for someone; a host that names no one gets a refusal, not a 5xx (F11)
+                if (subject == null) return host.reject(req, "access_denied", "no_subject");
                 Optional<FlowState> login = linkedLogin(req, subject);
                 if (login.isPresent()) {
                     tenant = login.get().tenantId();
@@ -187,8 +193,10 @@ public final class Engine {
                     settings = login.get().env().tenant();
                     auth = login.get().env().auth();
                 } else {
-                    Optional<FlowVersion> found = preview ? previews.version(tenant) : Optional.of(current(tenant));
-                    if (found.isEmpty()) return host.reject(req, "access_denied", "preview_unavailable");
+                    Optional<FlowVersion> found = preview ? previews.version(tenant) : versions.current(tenant);
+                    if (found.isEmpty()) {
+                        return host.reject(req, "access_denied", preview ? "preview_unavailable" : FLOW_UNAVAILABLE);
+                    }
                     version = found.get();
                     auth = new Env.Auth(subject, List.of());
                 }
@@ -597,7 +605,8 @@ public final class Engine {
      */
     private static @Nullable String succeeds(Entry.Kind kind, Env env) {
         if (kind != Entry.Kind.AUTHENTICATE) return null;
-        if (env.auth().subject() == null || env.auth().verified().isEmpty()) return "unauthenticated";
+        // What counts is an amr proved, not a verification recorded: one with none proves nothing
+        if (env.auth().subject() == null || env.auth().acr() == null) return "unauthenticated";
         if (!Acr.satisfies(env.auth().acr(), required(env.tenant()))) return "mfa_required";
         return Acr.satisfies(env.auth().acr(), env.host().get("acr_values")) ? null : "acr_not_satisfied";
     }
@@ -740,8 +749,72 @@ public final class Engine {
         if (state.awaiting() == null) {
             throw new FlowException(Code.FLOW_FINISHED);
         }
-        pinned(state);
+        String inconsistent = inconsistency(state, pinned(state));
+        if (inconsistent != null) {
+            LOG.log(
+                    System.Logger.Level.WARNING,
+                    "flow state does not fit its version ({0}); its flow ends",
+                    inconsistent);
+            throw new FlowException(Code.FLOW_NOT_FOUND);
+        }
         return state;
+    }
+
+    /**
+     * Why a stored state cannot be resumed on the version it pinned, or null if it can. Faye writes
+     * every state, so this only finds a corrupt or hand edited row, or one a different build wrote
+     * with the same state format: each fails its flow closed rather than failing mid run (ADR 0007,
+     * F7). Checked: the entry and its kind, every frame against the node its path names, and the
+     * screen the flow waits on with the data it was prepared with.
+     */
+    private @Nullable String inconsistency(FlowState state, FlowVersion version) {
+        Entry entry = version.flow().entries().get(state.entry());
+        if (entry == null || !EntrySelector.kind(state.kind()).equals(Optional.of(entry.kind()))) return "entry";
+        if (state.revision() < 0) return "revision";
+        Node root = entry.body();
+        for (Frame frame : state.stack()) {
+            Node node = resolveOrNull(root, frame.path());
+            boolean fits = switch (frame) {
+                case Frame.Eval eval -> node != null;
+                case Frame.SeqNext next ->
+                    node instanceof Seq seq
+                            && next.next() >= 0
+                            && next.next() <= seq.children().size();
+                case Frame.StepExit exit ->
+                    node instanceof Step step && step.id().equals(exit.id());
+                case Frame.RetryExit exit ->
+                    node instanceof Retry r && exit.attempt() >= 1 && exit.attempt() <= r.attempts();
+                case Frame.Pick pick -> node instanceof Choose;
+            };
+            if (!fits) return "frame " + frame.getClass().getSimpleName();
+        }
+        FlowState.Awaiting awaiting = Objects.requireNonNull(state.awaiting());
+        Node waiting = resolveOrNull(root, awaiting.path());
+        boolean picker = ScreenRegistry.METHOD_PICKER.equals(awaiting.screen());
+        if (picker
+                ? !(waiting instanceof Choose)
+                : !(waiting instanceof Screen s && s.type().equals(awaiting.screen()))) {
+            return "awaiting";
+        }
+        if (picker && !(awaiting.data().get("options") instanceof List<?>)) return "picker options";
+        if (Boolean.TRUE.equals(awaiting.data().get("register"))
+                && state.env().auth().subject() == null) {
+            return "registration without a subject";
+        }
+        if (ScreenRegistry.METHOD_PICKER.equals(awaiting.screen())
+                != state.stack().stream()
+                        .anyMatch(f -> f instanceof Frame.Pick && f.path().equals(awaiting.path()))) {
+            return "picker frame";
+        }
+        return null;
+    }
+
+    private static @Nullable Node resolveOrNull(Node root, List<Integer> path) {
+        try {
+            return resolve(root, path);
+        } catch (IllegalStateException | IndexOutOfBoundsException e) {
+            return null;
+        }
     }
 
     /**
@@ -863,11 +936,6 @@ public final class Engine {
                         .map(String.class::cast)
                         .toList()
                 : List.of();
-    }
-
-    private FlowVersion current(String tenant) {
-        return versions.current(tenant)
-                .orElseThrow(() -> new IllegalStateException("no flow published for tenant " + tenant));
     }
 
     private static String tenantOf(HostRequest req) {

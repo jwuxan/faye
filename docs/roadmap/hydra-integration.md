@@ -17,6 +17,7 @@ The engine depends only on this interface. `faye-host-hydra` implements it with 
 ## Login
 
 1. `GET /login?login_challenge=…` → `load(LOGIN)`: client, `requested_scope`, `skip`, `subject` (if skip), `oidc_context` (`acr_values`, `login_hint`, `ui_locales`).
+   A challenge Hydra answers with 400, 404 or 410 is the browser's: `404 flow_not_found`, not a 5xx. Every `redirect_to` Hydra returns is checked before it reaches a `Location` header or the Login UI: an absolute http(s) URL with a host, or `502 host_error` (ADR 0007).
 2. Tenant resolution: from client metadata (`metadata.tenant`), falling back to a default tenant.
 3. **Skip handling** is part of the engine, not the DSL: if `skip` is true and the requested `acr_values` are satisfied by the remembered session, accept immediately with the existing subject. Otherwise run the flow (step up). This keeps a misconfigured flow from breaking SSO semantics.
 4. `login_hint` prefills the identifier screen (identity first).
@@ -25,7 +26,7 @@ The engine depends only on this interface. `faye-host-hydra` implements it with 
 ## Consent
 
 1. `GET /consent?consent_challenge=…` → `load(CONSENT)`: `context.flowId` connects it to the login flow, so login and consent run from the same flow version.
-2. The engine runs the flow's `consent` entry. First party clients typically skip the screen via a predicate.
+2. The engine runs the flow's `consent` entry: the steps of `login` from the one that asks for consent on ([ADR 0026](../adr/0026-consent-as-a-step.md)). First party clients typically skip the screen via a predicate.
 3. On `succeed`: accept with granted scopes and audience, and session claims. ID token claims are populated from the identity store (`email`, `email_verified`, `name`) filtered by granted scope.
 4. If Hydra reports `skip` for consent (previously granted), accept immediately.
 

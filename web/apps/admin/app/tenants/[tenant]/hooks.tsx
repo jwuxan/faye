@@ -338,7 +338,6 @@ function uses(doc: FlowDoc, id: string): string[] {
       walk(e.body.steps);
     });
   walk(doc.login);
-  walk(doc.consent);
   return out;
 }
 
@@ -352,7 +351,6 @@ function pickedBy(doc: FlowDoc, id: string): string[] | null {
       walk(e.body.steps);
     });
   walk(doc.login);
-  walk(doc.consent);
   return found;
 }
 

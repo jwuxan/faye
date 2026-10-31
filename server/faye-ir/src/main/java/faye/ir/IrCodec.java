@@ -1,8 +1,13 @@
 package faye.ir;
 
+import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.StreamReadConstraints;
+import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -23,6 +28,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Reads and writes the JSON form of the IR defined by {@code schema/ir.schema.json}, computes the
@@ -41,7 +47,31 @@ public final class IrCodec {
      */
     public static final Set<Integer> FORMATS = Set.of(1);
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /**
+     * How deep a document may nest, in JSON arrays and objects. The schema cannot say it, and the
+     * validator recurses once per level, so a deeper document would overflow the stack before it
+     * was refused (ADR 0007, F1). A real flow nests about five levels per YAML level.
+     */
+    public static final int MAX_DEPTH = 128;
+
+    /** The largest document the reader parses, in characters. */
+    public static final int MAX_LENGTH = 1 << 20;
+
+    /** Strict and bounded: duplicate keys are refused, not silently resolved (ADR 0007). */
+    private static final ObjectMapper MAPPER = JsonMapper.builder(JsonFactory.builder()
+                    .streamReadConstraints(StreamReadConstraints.builder()
+                            .maxNestingDepth(MAX_DEPTH + 1)
+                            .maxDocumentLength(MAX_LENGTH)
+                            .maxNumberLength(64)
+                            .maxStringLength(MAX_LENGTH)
+                            .build())
+                    .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                    .build())
+            // 1e400 read as a double is infinite, which the schema validator cannot compare (F1);
+            // as a decimal it is exact, and the schema refuses it as not a literal
+            .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            .build();
+
     private static final JsonNodeFactory JSON = JsonNodeFactory.instance;
     /** The grammar of the read side, shipped on the classpath from the repo's schema/ directory. */
     private static final JsonSchemaFactory FACTORY = JsonSchemaFactory.getInstance(
@@ -178,6 +208,7 @@ public final class IrCodec {
     // ---- read ----
 
     public static Flow readFlow(String json) {
+        if (json.length() > MAX_LENGTH) throw new IrException("", "longer than " + MAX_LENGTH + " characters");
         try {
             return readFlow(MAPPER.readTree(json));
         } catch (JsonProcessingException e) {
@@ -222,7 +253,31 @@ public final class IrCodec {
             return List.of(
                     new IrException("/1", "unsupported IR format " + format + "; this reader supports " + FORMATS));
         }
+        String deep = tooDeep(json);
+        if (deep != null) return List.of(new IrException(deep, "nested deeper than " + MAX_DEPTH + " levels"));
         return leaves(SCHEMA.validate(json), "");
+    }
+
+    /** The pointer of the first container deeper than {@link #MAX_DEPTH}, or null; without recursion. */
+    private static @Nullable String tooDeep(JsonNode root) {
+        java.util.ArrayDeque<Object[]> todo = new java.util.ArrayDeque<>();
+        todo.push(new Object[] {root, "", 0});
+        while (!todo.isEmpty()) {
+            Object[] at = todo.pop();
+            JsonNode node = (JsonNode) at[0];
+            int depth = (Integer) at[2];
+            if (!node.isContainerNode()) continue;
+            if (depth >= MAX_DEPTH) return (String) at[1];
+            if (node.isArray()) {
+                for (int i = 0; i < node.size(); i++) todo.push(new Object[] {node.get(i), at[1] + "/" + i, depth + 1});
+            } else {
+                for (var e : node.properties()) {
+                    String key = e.getKey().replace("~", "~0").replace("/", "~1");
+                    todo.push(new Object[] {e.getValue(), at[1] + "/" + key, depth + 1});
+                }
+            }
+        }
+        return null;
     }
 
     /** A flow mapped to records, with sources looked up by pointer. */
@@ -269,10 +324,18 @@ public final class IrCodec {
                         if (options.stream().anyMatch(x -> x.id().equals(id))) {
                             throw new IrException(oat + "/1", "duplicate option " + id);
                         }
+                        // The schema says so too; the reader checks rather than trust it (F1 found
+                        // a key the validator let through, "#uard")
+                        if (o.has(3) && !(o.get(3).get("guard") instanceof JsonNode)) {
+                            throw new IrException(oat + "/3", "an option's options take only 'guard'");
+                        }
                         Predicate guard =
                                 o.has(3) ? IrCodec.mapPredicate(o.get(3).get("guard")) : null;
                         options.add(new Choose.Opt(
                                 id, node(o.get(2), oat + "/2"), guard, sources.apply(oat), sources.apply(oat + "/3")));
+                    }
+                    if (n > 2 && !(json.get(2).get("pick") instanceof JsonNode)) {
+                        throw new IrException(at + "/2", "a choose's options take only 'pick'");
                     }
                     Hook pick = n > 2 ? (Hook) node(json.get(2).get("pick"), at + "/2/pick") : null;
                     yield new Choose(options, pick, source);

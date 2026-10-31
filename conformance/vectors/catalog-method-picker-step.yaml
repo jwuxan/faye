@@ -1,0 +1,4 @@
+name: a step that shows the method picker itself never runs; only an alternative shows it (ADR 0007, F6)
+ir: flows/method-picker-step.json
+events:
+  - expect_result: { succeed: false, reason: flow_unavailable }

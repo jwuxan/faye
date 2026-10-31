@@ -1,0 +1,5 @@
+flow: f
+version: 1
+login: &l
+  steps:
+    a: *l

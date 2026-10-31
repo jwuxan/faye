@@ -3,6 +3,8 @@ dependencies {
     testImplementation(project(":faye-dsl"))
     testImplementation(project(":faye-host-mock"))
     testImplementation(libs.jackson.yaml)
+    // Screens the engine fuzz test produces must match the screen protocol (ADR 0007, O14)
+    testImplementation(libs.json.schema.validator)
 }
 
 tasks.test {

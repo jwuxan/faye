@@ -238,11 +238,14 @@ export interface ConsentPayload {
 export interface ContinuePayload {}
 
 export interface RedirectResponse {
+  /**
+   * Where the browser goes next: always an absolute http or https URL, so the Login UI can hand it to window.location (ADR 0007).
+   */
   redirectTo: string;
 }
 
 export interface ErrorResponse {
-  error: "flow_not_found" | "flow_finished" | "stale_nonce" | "conflict" | "invalid_submission";
+  error: "flow_not_found" | "flow_finished" | "stale_nonce" | "conflict" | "invalid_submission" | "host_error";
 }
 
 /**

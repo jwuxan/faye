@@ -1,0 +1,8 @@
+["flow", 1, "s", 1,
+  ["entry", "login", "authenticate",
+    ["seq",
+   ["set", "rk", "high"],
+      ["step", "identif",     ["choose",
+          [["opt", "done", ["succeed"], {"#uard": {"exists": "user.no_sd"}}],
+            ["opt", "done", ["succeed"], {"guard": {"gt": ["user.at", 0]}}]]]],
+      ["succeed"]]]]

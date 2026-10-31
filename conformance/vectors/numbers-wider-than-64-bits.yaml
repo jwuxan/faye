@@ -1,0 +1,13 @@
+name: an integer wider than 64 bits compares by its value, not wrapped (2^64 + 5 is greater than 5) (ADR 0007, seed finding 2)
+ir: flows/numbers.json
+host:
+  client: { client_id: demo, metadata: { score: 18446744073709551621 } }
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: false, reason: blocked }

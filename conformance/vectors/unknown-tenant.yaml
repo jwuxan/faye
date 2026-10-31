@@ -1,0 +1,6 @@
+name: a client naming a tenant with no published flow is refused, not a server error (ADR 0007, seed finding 4)
+ir: flows/password-only.json
+host:
+  client: { client_id: demo, metadata: { tenant: nobody } }
+events:
+  - expect_result: { succeed: false, reason: flow_unavailable }

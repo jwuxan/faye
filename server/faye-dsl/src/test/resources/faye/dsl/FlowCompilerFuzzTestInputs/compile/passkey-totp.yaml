@@ -1,0 +1,53 @@
+# Passkey, or password plus a second factor.
+#
+# A passkey chosen from autofill on the identifier screen signs in directly; a typed identifier
+# goes to the password screen. Offering passkeys only through autofill keeps the flow from
+# revealing which accounts have one. After a password, accounts with TOTP (or that must use
+# MFA, or whose client asked for acr faye:2fa) prove a second factor, enrolling TOTP if they
+# have none. Once signed in with two factors, an account without a passkey is offered one.
+flow: passkey-totp
+version: 1
+
+login:
+  steps:
+    identify:
+      screen: { type: identifier, passkey: true }
+      use: identity.resolve
+    credential:
+      alternative:
+        passkey:
+          if: { eq: [user.identified_by, passkey] }
+          screen: passkey
+          use: webauthn.assert
+        password:
+          if: { eq: [user.identified_by, identifier] }
+          retry: 3
+          screen: password
+          use: password.verify
+    second-factor:
+      if:
+        and:
+          - { ne: [auth.acr, "faye:2fa"] }
+          - or:
+              - user.has_totp
+              - user.mfa_required
+              - { has: [host.acr_values, "faye:2fa"] }
+      alternative:
+        totp:
+          if: user.has_totp
+          retry: 3
+          screen: otp
+          use: totp.verify
+        passkey:
+          if: { and: [user.has_passkey, { not: { has: [auth.amr, hwk] } }] }
+          screen: passkey
+          use: webauthn.assert
+        enroll:
+          if: { not: { or: [user.has_totp, user.has_passkey] } }
+          retry: 3
+          screen: otp_enroll
+          use: totp.enroll
+    add-passkey:
+      if: { and: [{ not: user.has_passkey }, { eq: [auth.acr, "faye:2fa"] }] }
+      screen: { type: passkey, register: true }
+      use: webauthn.register

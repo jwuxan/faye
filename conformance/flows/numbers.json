@@ -1,0 +1,8 @@
+["flow", 1, "numbers", 1,
+  ["entry", "login", "authenticate",
+    ["seq",
+      ["step", "identify", ["seq", ["screen", "identifier"], ["call", "identity.resolve"]]],
+      ["step", "credential", ["seq", ["screen", "password"], ["call", "password.verify"]]],
+      ["step", "limit", ["when", {"gt": ["client.metadata.score", 5]}, ["fail", "blocked"]]],
+      ["step", "exact", ["when", {"eq": ["client.metadata.level", 3]}, ["fail", "blocked"]]],
+      ["succeed"]]]]

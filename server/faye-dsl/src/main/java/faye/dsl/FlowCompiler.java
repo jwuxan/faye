@@ -40,7 +40,7 @@ import org.jspecify.annotations.Nullable;
  *     file: name.js | source: inline JavaScript
  *     capabilities: { http: [target] }     # optional
  *     timeout_ms: 200                      # optional
- * login | consent:                         # entries of kind authenticate | consent
+ * login:                                   # the sign in, from the first step to consent
  *   steps:
  *     step-id:
  *       if: predicate                      # (when predicate ...); on an option, its guard
@@ -60,15 +60,26 @@ import org.jspecify.annotations.Nullable;
  * {@code and}, ...); a path may still say {@code hydra.} for {@code host.}. Each entry compiles to
  * {@code (seq (step ...) ... (succeed))}. A hook is pinned by the hash of its definition ({@link
  * HookDef}). docs/roadmap/dsl-and-ir.md has the lowering table.
+ *
+ * <p>Consent is a step like any other (ADR 0026): the steps of {@code login} up to the first one
+ * that shows the consent screen or calls {@value #CONSENT_HANDLER} lower to the {@code authenticate}
+ * entry, and that step and
+ * every step after it to the {@code consent} entry, since they run on the host's consent challenge,
+ * after the sign in was accepted. The IR keeps the two entries.
  */
 public final class FlowCompiler {
 
     /** A hook file name: surface only, it never reaches the IR. */
     private static final Pattern FILE = Pattern.compile("[a-z0-9][a-z0-9_-]*\\.js");
 
-    /** The YAML keys that are entries, and the kind each lowers to. */
-    private static final Map<String, Entry.Kind> ENTRIES =
-            new LinkedHashMap<>(Map.of("login", Entry.Kind.AUTHENTICATE, "consent", Entry.Kind.CONSENT));
+    /** The YAML key of the steps, from the first one to consent. */
+    private static final String LOGIN = "login";
+
+    /** The id of the entry the consent steps lower to. */
+    private static final String CONSENT = "consent";
+
+    /** The handler whose step starts the consent steps. */
+    static final String CONSENT_HANDLER = "consent.record";
 
     /** The namespace the YAML surface still accepts for {@code host.}. */
     private static final String HOST_ALIAS = "hydra.";
@@ -183,45 +194,90 @@ public final class FlowCompiler {
         top.entries().forEach((key, e) -> {
             switch (key) {
                 case "flow", "version", "hooks" -> {}
-                default -> {
-                    Entry.Kind kind = ENTRIES.get(key);
-                    if (kind == null) {
-                        error(e.key(), "unknown key '" + key + "'");
-                    } else {
-                        ArrayNode entry = JSON.arrayNode().add("entry").add(key).add(kind.wireName());
-                        entry.add(entryBody(e));
-                        mark(entry, e.key(), "'" + key + "'");
-                        flow.add(entry);
-                    }
-                }
+                case LOGIN -> entries(e).forEach(flow::add);
+                case CONSENT ->
+                    error(e.key(), "consent is a step of 'login' now: move these steps to the end of 'login.steps'");
+                default -> error(e.key(), "unknown key '" + key + "'");
             }
         });
-        if (ENTRIES.keySet().stream().noneMatch(top.entries()::containsKey)) {
+        if (!top.entries().containsKey(LOGIN)) {
             error(top.source(), "missing 'login'");
         }
         return flow;
     }
 
-    /** {@code (seq (step ...) ... (succeed))}, all at the entry's key. */
-    private JsonNode entryBody(Doc.Entry entry) {
-        ArrayNode seq = JSON.arrayNode().add("seq");
-        mark(seq, entry.key(), "steps");
-        if (entry.value() instanceof Doc.Map body) {
-            body.entries().forEach((key, e) -> {
-                if (!key.equals("steps")) {
-                    error(e.key(), "unknown key '" + key + "'");
-                } else if (e.value() instanceof Doc.Map steps) {
-                    steps(steps).forEach(seq::add);
+    /**
+     * The entries {@code login} lowers to: {@code authenticate} with the steps before the first one
+     * that records consent, and {@code consent} with that step and the rest, if there is one.
+     */
+    private List<JsonNode> entries(Doc.Entry login) {
+        Doc.@Nullable Map steps = null;
+        if (login.value() instanceof Doc.Map body) {
+            for (var e : body.entries().entrySet()) {
+                if (!e.getKey().equals("steps")) {
+                    error(e.getValue().key(), "unknown key '" + e.getKey() + "'");
+                } else if (e.getValue().value() instanceof Doc.Map m) {
+                    steps = m;
                 } else {
-                    error(e.value().source(), "'steps' must be a mapping of step id to step");
+                    error(e.getValue().value().source(), "'steps' must be a mapping of step id to step");
                 }
-            });
+            }
         } else {
-            error(entry.value().source(), "an entry must be a mapping with 'steps'");
+            error(login.value().source(), "an entry must be a mapping with 'steps'");
         }
+        java.util.Map<String, Doc.Entry> signIn = new LinkedHashMap<>();
+        java.util.Map<String, Doc.Entry> consent = new LinkedHashMap<>();
+        Doc.@Nullable Entry first = null;
+        if (steps != null) {
+            for (var e : steps.entries().entrySet()) {
+                if (first == null && recordsConsent(e.getValue().value())) first = e.getValue();
+                (first == null ? signIn : consent).put(e.getKey(), e.getValue());
+            }
+        }
+        List<JsonNode> out = new ArrayList<>();
+        out.add(entry(LOGIN, Entry.Kind.AUTHENTICATE, login.key(), signIn));
+        if (first != null) out.add(entry(CONSENT, Entry.Kind.CONSENT, first.key(), consent));
+        return out;
+    }
+
+    /**
+     * Whether a step asks for consent: its body, or a body nested in its {@code alternative} or
+     * {@code steps}, shows the consent screen or calls the consent handler. Only those keys are
+     * looked at, so a literal elsewhere (a {@code set} value) never moves the split.
+     */
+    private static boolean recordsConsent(Doc doc) {
+        if (!(doc instanceof Doc.Map m)) return false;
+        for (var e : m.entries().entrySet()) {
+            Doc value = e.getValue().value();
+            boolean asks = switch (e.getKey()) {
+                case "use" -> value instanceof Doc.Scalar s && CONSENT_HANDLER.equals(s.value());
+                case "screen" ->
+                    (value instanceof Doc.Scalar s && CONSENT.equals(s.value()))
+                            || (value instanceof Doc.Map screen
+                                    && screen.entries().get("type") instanceof Doc.Entry type
+                                    && type.value() instanceof Doc.Scalar t
+                                    && CONSENT.equals(t.value()));
+                case "alternative", "steps" ->
+                    value instanceof Doc.Map nested
+                            && nested.entries().values().stream().anyMatch(n -> recordsConsent(n.value()));
+                default -> false;
+            };
+            if (asks) return true;
+        }
+        return false;
+    }
+
+    /** {@code (entry id kind (seq (step ...) ... (succeed)))}, all at {@code at}. */
+    private ArrayNode entry(String id, Entry.Kind kind, SourceRef at, java.util.Map<String, Doc.Entry> steps) {
+        ArrayNode entry = JSON.arrayNode().add("entry").add(id).add(kind.wireName());
+        ArrayNode seq = JSON.arrayNode().add("seq");
+        mark(seq, at, "steps");
+        steps(new Doc.Map(steps, at)).forEach(seq::add);
         ArrayNode succeed = JSON.arrayNode().add("succeed");
-        mark(succeed, entry.key(), "succeed");
-        return seq.add(succeed);
+        mark(succeed, at, "succeed");
+        entry.add(seq.add(succeed));
+        mark(entry, at, "'" + id + "'");
+        return entry;
     }
 
     private List<JsonNode> steps(Doc.Map steps) {

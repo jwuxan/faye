@@ -335,13 +335,74 @@ class CheckerTest {
                   steps:
                     identify: { screen: identifier, use: identity.resolve }
                     credential: { screen: password, use: password.verify }
-                consent:
-                  steps:
+                    consent: { screen: consent, use: consent.record }
                     again: { screen: password, use: password.verify }
                 """);
         assertThat(errors(check(flow)))
-                .containsExactly("tenant.yaml:9:37: password.verify verifies a credential; a consent entry only grants"
+                .containsExactly("tenant.yaml:8:37: password.verify verifies a credential; a consent entry only grants"
                         + " access to a subject its authenticate entry proved");
+    }
+
+    /**
+     * Found by EngineFuzzTest in CI: a few nested retries multiply into more paths than any heap
+     * holds before the path bound was checked. The checker refuses such a flow, quickly.
+     */
+    @Test
+    void aFlowWithTooManyPathsIsRefusedWithoutExhaustingMemory() {
+        String step = "[\"retry\",3,[\"seq\",[\"retry\",3,[\"call\",\"identity.resolve\"]],"
+                + "[\"retry\",3,[\"seq\",[\"screen\",\"password\"],[\"call\",\"password.verify\"]]],"
+                + "[\"retry\",3,[\"seq\",[\"screen\",\"otp\"],[\"call\",\"totp.verify\"]]]]]";
+        Flow flow = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"step\",\"a\"," + step + "],[\"step\",\"b\"," + step + "],[\"succeed\"]]]]");
+        long started = System.nanoTime();
+        assertThat(errors(check(flow)))
+                .anySatisfy(e -> assertThat(e).contains("paths").contains("split it"));
+        assertThat((System.nanoTime() - started) / 1_000_000).as("milliseconds").isLessThan(5_000);
+    }
+
+    /** ADR 0026 review: consent in the sign in would ask too early and leave no consent entry. */
+    @Test
+    void consentBelongsOnTheConsentChallenge() {
+        Flow flow = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"step\",\"c\",[\"seq\",[\"screen\",\"identifier\"],[\"call\",\"identity.resolve\"],"
+                + "[\"screen\",\"password\"],[\"call\",\"password.verify\"],[\"screen\",\"consent\"],"
+                + "[\"call\",\"consent.record\"]]],[\"succeed\"]]]]");
+        assertThat(errors(check(flow)))
+                .containsExactly(
+                        ": the consent screen belongs on the consent challenge, not in the sign in",
+                        ": consent.record belongs on the consent challenge, not in the sign in");
+    }
+
+    /** Found by EngineFuzzTest: the method picker shown by a step has no options and no answer. */
+    @Test
+    void aStepCannotShowTheMethodPicker() {
+        Flow flow = Fixtures.yaml("tenant.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    identify: { screen: identifier, use: identity.resolve }
+                    pick: { screen: method_picker, use: password.verify }
+                """);
+        assertThat(errors(check(flow)))
+                .contains("tenant.yaml:6:21: 'method_picker' is shown by an 'alternative' for its options; a step"
+                        + " cannot show it");
+    }
+
+    /** Found by EngineFuzzTest: the registration screen is a credential write too. */
+    @Test
+    void aPasskeyRegistrationScreenNeedsAVerifiedSubjectFirst() {
+        Flow flow = Fixtures.yaml("tenant.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    identify: { screen: identifier, use: identity.resolve }
+                    add: { screen: { type: passkey, register: true }, use: webauthn.assert }
+                """);
+        assertThat(errors(check(flow)))
+                .contains("tenant.yaml:6:20: screen 'passkey' registers a passkey, which needs a subject a credential"
+                        + " verified earlier in the flow, but shows first on a path");
     }
 
     @Test
@@ -355,9 +416,11 @@ class CheckerTest {
                     enroll: { screen: { type: passkey, register: true }, use: webauthn.register }
                     credential: { screen: password, use: password.verify }
                 """);
+        // Both the registration screen and the handler are refused
         assertThat(errors(check(flow)))
-                .isNotEmpty()
-                .allSatisfy(e -> assertThat(e)
+                .hasSize(2)
+                .anySatisfy(e -> assertThat(e).startsWith("tenant.yaml:6:23: screen 'passkey' registers a passkey"))
+                .anySatisfy(e -> assertThat(e)
                         .startsWith("tenant.yaml:6:63: webauthn.register needs a subject a credential verified"
                                 + " earlier in the flow, but runs first on the path"));
     }

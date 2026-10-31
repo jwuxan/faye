@@ -6,8 +6,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@faye/ui/components/too
 import { cn } from "@faye/ui/lib/utils";
 import { CircleCheck, type LucideIcon, Maximize, Minus, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ENTRIES, SECTIONS } from "../../../lib/entries";
-import { addressKey, type Entry, type FlowDoc, type ListKind, type Section } from "../../../lib/flow";
+import { CONSENT, ENTRIES, SECTIONS } from "../../../lib/entries";
+import { addressKey, consentStart, type Entry, type FlowDoc, type ListKind, type Section } from "../../../lib/flow";
 import { kindOf } from "../../../lib/kinds";
 import type { Findings } from "./tree";
 
@@ -36,9 +36,10 @@ const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
 function layout(doc: FlowDoc): { nodes: GNode[]; width: number; height: number } {
   const nodes: GNode[] = [];
   let row = 0;
-  const place = (list: Entry[] | undefined, section: Section, path: [ListKind, number][], kind: ListKind, depth: number, parent?: string): string | undefined => {
+  const place = (list: Entry[] | undefined, section: Section, path: [ListKind, number][], kind: ListKind, depth: number, parent?: string, from = 0, to = Infinity): string | undefined => {
     let previous = parent;
     (list ?? []).forEach((e, i) => {
+      if (i < from || i >= to) return;
       const here: [ListKind, number][] = [...path, [kind, i]];
       const key = addressKey({ section, path: here });
       const look = kindOf(e.body);
@@ -62,23 +63,19 @@ function layout(doc: FlowDoc): { nodes: GNode[]; width: number; height: number }
     });
     return previous;
   };
+  const end = (key: string, label: string, parent: string | undefined) => {
+    nodes.push({ key, label, detail: "", x: 0, y: row++ * (H + GAP_Y), option: false, parent, kind: "end", sign: "" });
+    row++;
+    return key;
+  };
   for (const section of SECTIONS) {
-    if (!doc[section]) continue;
+    const list = doc[section];
     const key = `section:${section}`;
     nodes.push({ key, label: ENTRIES[section].title, detail: section, x: 0, y: row++ * (H + GAP_Y), option: false, kind: "section", sign: "" });
-    const last = place(doc[section], section, [], "steps", 0, key);
-    nodes.push({
-      key: `end:${section}`,
-      label: ENTRIES[section].done,
-      detail: "",
-      x: 0,
-      y: row++ * (H + GAP_Y),
-      option: false,
-      parent: last,
-      kind: "end",
-      sign: "",
-    });
-    row++;
+    // The sign in ends where consent starts; the consent steps then run on their own challenge
+    const split = consentStart(list);
+    const signedIn = end(`end:${section}`, ENTRIES[section].done, place(list, section, [], "steps", 0, key, 0, split));
+    if (split < list.length) end(`end:${CONSENT.kind}`, CONSENT.done, place(list, section, [], "steps", 0, signedIn, split));
   }
   const width = Math.max(...nodes.map((n) => n.x + W), W);
   const height = Math.max(row - 1, 1) * (H + GAP_Y);
@@ -171,9 +168,9 @@ export function Graph({
             if (!p) return null;
             const d =
               p.x === n.x
-                ? `M ${p.x + 22} ${p.y + (p.kind === "section" ? 30 : H)} L ${n.x + 22} ${n.y + (n.kind === "end" ? 8 : 0)}`
+                ? `M ${p.x + 22} ${p.y + (p.kind === "section" ? 30 : p.kind === "end" ? 32 : H)} L ${n.x + 22} ${n.y + (n.kind === "end" ? 8 : 0)}`
                 : `M ${p.x + W} ${p.y + H / 2} C ${p.x + W + GAP_X / 2} ${p.y + H / 2}, ${n.x - GAP_X / 2} ${n.y + H / 2}, ${n.x} ${n.y + H / 2}`;
-            const active = !!visited && (n.kind === "end" ? lit(p) : lit(n) && (p.kind === "section" || lit(p)));
+            const active = !!visited && (n.kind === "end" ? lit(p) : lit(n) && (p.kind !== "entry" || lit(p)));
             return (
               <path
                 key={`e-${n.key}`}

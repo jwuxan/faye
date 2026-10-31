@@ -54,7 +54,10 @@ jobs:
           for i in $(seq 1 180); do
             # Bank Investments is the last client bootstrap registers. Hydra's admin API is not
             # published (ADR 0022), so read it inside the container.
+            # The seed writes the accounts smoke.sh signs in with once Faye has migrated, so wait
+            # for its file too.
             if docker exec faye wget -qO- 'http://127.0.0.1:4445/admin/clients?client_name=Bank%20Investments' | grep -q client_id \
+              && docker exec faye test -s /var/lib/faye/demo/users.csv \
               && curl -fs -o /dev/null http://localhost:3001 \
               && curl -fs -o /dev/null http://localhost:3002 \
               && curl -s -o /dev/null http://localhost:8080 \

@@ -1,0 +1,6 @@
+["flow", 1, "method-picker-step", 1,
+  ["entry", "login", "authenticate",
+    ["seq",
+      ["step", "identify", ["seq", ["screen", "identifier"], ["call", "identity.resolve"]]],
+      ["step", "pick", ["seq", ["screen", "method_picker"], ["call", "password.verify"]]],
+      ["succeed"]]]]

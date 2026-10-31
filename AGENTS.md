@@ -27,7 +27,7 @@ Faye is login flow middleware in front of an authorization server; Ory Hydra is 
 | `web/apps/demo-client` | OIDC relying party (`:3001`) of every client bootstrap registers, reading the applications' secrets from `CLIENT_REGISTRATIONS` (the secrets volume): launch panel, and a result view with the preview trace and the `amr` / `acr` expectation check. |
 | `web/apps/admin` | Admin UI (`:3002`): a console with a collapsible sidebar. Login flow (blocks or YAML beside the live graph; block inspector, paths and Preview in a side panel), Hooks, Versions, read only Applications (from the authorization server, each with Try sign in through the demo client) and Users (the tenant's user pool), General and Branding settings ([ADR 0013](docs/adr/0013-admin-console-shell-and-flow-workspace.md)). Has no sign in: it proxies the admin API with the server token, so it must only be reachable locally (compose binds it to 127.0.0.1). `lib/` holds the editor's document model and its tests. |
 | `Dockerfile` | The one image: every process under s6-overlay (hydra, faye, login, admin, and with `FAYE_DEMO=true` the demo's four; `FAYE_SERVICES` selects a subset), one volume at `/var/lib/faye` ([ADR 0023](docs/adr/0023-one-container-many-processes.md)). `deploy/image/` holds the s6 service tree (`s6-rc.d/`), the service scripts (`scripts/`), `stage2-hook` (service selection) and `healthcheck`. |
-| `deploy/` | `compose.yaml` (one service, `faye`, on the root image), `image/` (see `Dockerfile`), `directory/seed.mjs` (writes each tenant's user pool into the SQLite database once Faye has migrated the schema: hashes in the database, passwords only under `/var/lib/faye/demo`), `bootstrap.mjs` (registers a preview client per tenant, and ten applications, five per tenant, whose ids and secrets Hydra generates), `ip-reputation.mjs` (stub egress target for the risk hook), `dev.sh` (the stack without Docker), `smoke.sh` (scripted sign ins, admin publishes, hooks, the Admin UI and a draft preview, a sign in through each of the ten applications, the single database: the M2 to M6 checks), `hydra-local.sh` (Hydra without Docker). |
+| `deploy/` | `compose.yaml` (one service, `faye`, on the root image), `image/` (see `Dockerfile`), `directory/seed.mjs` (writes each tenant's user pool into the SQLite database once Faye has migrated the schema: hashes in the database, passwords only under `/var/lib/faye/demo`), `bootstrap.mjs` (registers a preview client per tenant, and ten applications, five per tenant, whose ids and secrets Hydra generates), `ip-reputation.mjs` (stub egress target for the risk hook), `dev.sh` (the stack without Docker), `fuzz.sh` (coverage guided fuzzing of every harness, ADR 0007), `smoke.sh` (scripted sign ins, admin publishes, hooks, the Admin UI and a draft preview, a sign in through each of the ten applications, the single database: the M2 to M6 checks), `hydra-local.sh` (Hydra without Docker). |
 
 ## Commands
 
@@ -38,6 +38,7 @@ cd server
 ./gradlew build                 # compile with -Xlint:all -Werror, spotlessCheck, checkstyle, unit + conformance tests
 ./gradlew spotlessApply         # format Java (palantir-java-format) and *.gradle.kts (ktlint)
 FAYE_REGENERATE=1 ./gradlew :faye-check:test   # rewrite conformance/generated after changing a conformance flow or the checker
+../deploy/fuzz.sh 2m [Harness]  # coverage guided fuzzing, one harness per JVM (ADR 0007); `build` only replays stored inputs
 ./gradlew :faye-app:bootRun     # :8080
 ```
 
@@ -59,12 +60,12 @@ docker compose -f deploy/compose.yaml up --build   # or: docker build -t faye . 
 deploy/smoke.sh                 # seeded accounts, read via `docker exec faye cat /var/lib/faye/demo/`; run against a fresh stack
 ```
 
-CI (`.github/workflows/ci.yml`) runs the server build, the web checks plus a diff check that generated contract types match the schema, and the compose stack with `smoke.sh`. All three must pass.
+CI (`.github/workflows/ci.yml`) runs the server build, the web checks plus a diff check that generated contract types match the schema, and the compose stack with `smoke.sh`. All three must pass. `.github/workflows/fuzz.yml` fuzzes every harness for 2 minutes on pull requests that touch the server and 30 minutes nightly; a finding is a security bug until triaged ([ADR 0007](docs/adr/0007-fuzz-and-adversarial-testing.md)).
 
 ## Rules
 
 1. Changing the IR or screen protocol means changing `schema/` first, then the Java types, the generated TS (`pnpm generate`), [ir-spec.md](docs/roadmap/ir-spec.md) and conformance vectors together. A change to what the IR means bumps the IR format ([ADR 0024](docs/adr/0024-core-ir-as-a-narrow-waist.md)).
-2. Engine behavior changes need a conformance vector, not just a Java unit test. Every scripted handler outcome in a vector must be consumed. Never edit `conformance/generated/` by hand; regenerate it.
+2. Engine behavior changes need a conformance vector, not just a Java unit test. Every scripted handler outcome in a vector must be consumed. Never edit `conformance/generated/` by hand; regenerate it. A new parser, handler, screen type, IR form, host or store also needs a fuzz harness, or an existing one extended (ADR 0007); a fuzz finding lands as a readable regression (a vector, a named test or a text seed), never as a raw crash file.
 3. The engine never imports Hydra. Authorization server specifics stay behind `FlowHost`.
 4. Hooks (later milestones) may only `set`, `fail`, or `pick` among declared options; they can never complete authentication. `amr`/`acr` are computed by the engine from credentials that actually verified, never configured.
 5. Safety checks live only in Java; the web apps call the server rather than duplicating rules.
