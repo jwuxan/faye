@@ -1,9 +1,9 @@
-["flow", "nested-steps", 1,
-  ["login",
+["flow", 1, "nested-steps", 1,
+  ["entry", "login", "authenticate",
     ["step", "outer",
       ["seq",
-        ["screen", "identifier", {"autofocus": true}],
-        ["call", "identity.resolve", {"normalize": "lowercase"}],
+        ["screen", "identifier", {"passkey": false}],
+        ["call", "identity.resolve"],
         ["step", "inner", ["seq", ["screen", "password"], ["call", "password.verify"]]],
         ["screen", "password"],
         ["succeed"]]]]]

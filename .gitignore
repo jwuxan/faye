@@ -11,3 +11,6 @@ deploy/.bin/
 *.db-wal
 *.db-shm
 deploy/.data/
+
+# Redis dumps (Redis is gone since ADR 0017; never commit binaries)
+*.rdb

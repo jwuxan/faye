@@ -1,0 +1,17 @@
+flow: Bad
+version: one
+login:
+  steps:
+    identify:
+      screen: identifier
+      repeat: 3
+    empty: {}
+    identify: { use: identity.resolve }
+
+# Surface errors (unknown keys, empty bodies, duplicate keys) and grammar errors in one report,
+# each at the YAML that caused it, in document order.
+# expect: 1:7: flow id: does not match the regex pattern ^[a-z][a-z0-9_-]*$
+# expect: 2:10: version: string found, integer expected
+# expect: 7:7: unknown step key 'repeat'
+# expect: 8:5: step needs one of 'set', 'hook', 'screen', 'use', 'alternative', 'steps' or 'fail'
+# expect: 9:5: duplicate key 'identify'

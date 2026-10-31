@@ -1,9 +1,9 @@
 package faye.engine;
 
+import faye.ir.IrCodec;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -17,8 +17,8 @@ public sealed interface HookOutput {
 
     int MAX_VARS = 16;
     int MAX_STRING = 1024;
-    Pattern KEY = Pattern.compile("[a-z][a-z0-9_]*");
-    Pattern REASON = Pattern.compile("[a-z][a-z0-9_-]{0,63}");
+    /** A failure reason is an IR id (as a fail form's is) of at most this many characters. */
+    int MAX_REASON = 64;
 
     /** {@code {}}: nothing to do. */
     record None() implements HookOutput {}
@@ -45,7 +45,9 @@ public sealed interface HookOutput {
         return switch (String.valueOf(entry.getKey())) {
             case "set" -> vars(value).map(Set::new);
             case "fail" ->
-                value instanceof String s && REASON.matcher(s).matches() ? Optional.of(new Fail(s)) : Optional.empty();
+                value instanceof String s && s.length() <= MAX_REASON && IrCodec.conforms("id", s)
+                        ? Optional.of(new Fail(s))
+                        : Optional.empty();
             case "pick" -> value instanceof String s ? Optional.of(new Pick(s)) : Optional.empty();
             default -> Optional.empty();
         };
@@ -56,7 +58,7 @@ public sealed interface HookOutput {
         if (!(value instanceof Map<?, ?> map) || map.isEmpty() || map.size() > MAX_VARS) return Optional.empty();
         Map<String, Object> out = new LinkedHashMap<>();
         for (var e : map.entrySet()) {
-            if (!(e.getKey() instanceof String key) || !KEY.matcher(key).matches()) return Optional.empty();
+            if (!(e.getKey() instanceof String key) || !IrCodec.conforms("key", key)) return Optional.empty();
             switch (e.getValue()) {
                 case String s when s.length() <= MAX_STRING -> out.put(key, s);
                 case Boolean b -> out.put(key, b);

@@ -32,6 +32,7 @@ import faye.engine.HostKind;
 import faye.engine.HostRequest;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
+import faye.engine.Invocation;
 import faye.engine.Previews;
 import faye.engine.Redirect;
 import faye.engine.ScreenView;
@@ -207,10 +208,10 @@ class IdentityFlowTest {
                 .orElseThrow();
         var env = new faye.engine.Env(
                 Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), faye.engine.Env.Auth.NONE);
-        var unknown = (faye.engine.Outcome.Ok)
-                resolve.invoke(env, new Submission(Map.of("identifier", "nobody@example.com")), Map.of());
-        var bob = (faye.engine.Outcome.Ok)
-                resolve.invoke(env, new Submission(Map.of("identifier", "bob@example.com")), Map.of());
+        var unknown = (faye.engine.Outcome.Ok) resolve.invoke(
+                new Invocation(env, new Submission(Map.of("identifier", "nobody@example.com")), Map.of(), "f_test"));
+        var bob = (faye.engine.Outcome.Ok) resolve.invoke(
+                new Invocation(env, new Submission(Map.of("identifier", "bob@example.com")), Map.of(), "f_test"));
         for (String key : List.of("has_password", "has_totp", "has_passkey", "mfa_required", "identified_by")) {
             assertThat(unknown.user().get(key)).as(key).isEqualTo(bob.user().get(key));
         }
@@ -241,7 +242,7 @@ class IdentityFlowTest {
                     : Map.of("client_id", "app", "metadata", Map.of("tenant", c.getKey()));
             var env = new faye.engine.Env(
                     Map.of(), client, Map.of(), Map.of(), Map.of(), Map.of(), faye.engine.Env.Auth.NONE);
-            var resolved = (faye.engine.Outcome.Ok) resolve.invoke(env, input, Map.of());
+            var resolved = (faye.engine.Outcome.Ok) resolve.invoke(new Invocation(env, input, Map.of(), "f_test"));
             assertThat(resolved.user().get("exists")).as(c.getKey()).isEqualTo(c.getValue());
         }
 
@@ -302,7 +303,7 @@ class IdentityFlowTest {
                 "preview",
                 Map.of("client_id", "preview-default", "metadata", Map.of("preview", true)),
                 Map.of()));
-        s = screen(engine.start(HostKind.LOGIN, "preview", Map.of()));
+        s = screen(engine.start(HostKind.LOGIN, "preview", Map.of(), "binder"));
         s = screen(submit(s, Map.of("identifier", "tester@preview.faye.test")));
         assertThat(submit(s, Map.of("password", "right"))).isInstanceOf(Redirect.class);
         assertThat(host.accepted().getLast().outcome().subject()).isEqualTo("preview-1");
@@ -321,11 +322,11 @@ class IdentityFlowTest {
     ScreenView start(Map<String, Object> hydra) {
         String challenge = "c" + challenges++;
         host.register(new HostRequest(HostKind.LOGIN, challenge, Map.of("client_id", "demo"), hydra));
-        return screen(engine.start(HostKind.LOGIN, challenge, Map.of()));
+        return screen(engine.start(HostKind.LOGIN, challenge, Map.of(), "binder"));
     }
 
     EngineResponse submit(ScreenView s, Map<String, Object> payload) {
-        return engine.submit(s.flowId(), s.nonce(), new Submission(payload));
+        return engine.submit(s.flowId(), "binder", s.nonce(), new Submission(payload));
     }
 
     static ScreenView screen(EngineResponse r) {

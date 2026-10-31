@@ -3,7 +3,7 @@ ir: flows/password-only.json
 host:
   kind: consent
   client: { client_id: preview-partner, first_party: false, metadata: { preview: true } }
-  hydra: { subject: alice, requested_scope: [openid], context: { flowId: f_login } }
+  params: { subject: alice, requested_scope: [openid], context: { flowId: f_login } }
 preview:
   draft: flows/partner-consent.json
 handlers:

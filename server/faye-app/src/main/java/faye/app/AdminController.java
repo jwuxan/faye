@@ -14,7 +14,7 @@ import faye.engine.Handler;
 import faye.engine.HandlerRegistry;
 import faye.engine.HookException;
 import faye.engine.HookOutput;
-import faye.engine.ScreenType;
+import faye.engine.ScreenRegistry;
 import faye.hooks.SandboxedHooks;
 import faye.identity.User;
 import faye.identity.UserStore;
@@ -34,7 +34,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -60,12 +59,6 @@ class AdminController {
     /** Larger drafts are refused; the shipped flows are under 3 KiB. */
     static final int MAX_DRAFT_BYTES = 256 * 1024;
 
-    /** Options a flow may give each screen type it can show; see {@link ScreenType}. */
-    static final Map<String, List<String>> SCREEN_OPTIONS = Map.of(
-            "identifier", List.of("passkey"),
-            "passkey", List.of("register"),
-            "error", List.of("code"));
-
     /** @param source {@code file:line:column}, or empty for a version read back from the store */
     record Problem(String source, int line, int column, String message) {
         static Problem of(SourceRef at, String message) {
@@ -78,7 +71,7 @@ class AdminController {
      *     option as the step or option it belongs to, a slash, and its id ({@code credential/password})
      */
     record PathView(
-            String section,
+            String entry,
             String path,
             boolean succeeds,
             List<String> amr,
@@ -98,7 +91,7 @@ class AdminController {
                     last = key;
                 }
             }
-            return new PathView(p.section(), p.describe(), p.succeeded(), p.amr(), p.acr(), visits);
+            return new PathView(p.entry(), p.describe(), p.succeeded(), p.amr(), p.acr(), visits);
         }
     }
 
@@ -224,6 +217,7 @@ class AdminController {
     private final TenantConfigStore store;
     private final Tenants tenants;
     private final HandlerRegistry handlers;
+    private final ScreenRegistry screens;
     private final SandboxedHooks hooks;
     private final AdminAuth auth;
     private final ClientDirectory clients;
@@ -236,10 +230,12 @@ class AdminController {
             TenantConfigStore store,
             Tenants tenants,
             HandlerRegistry handlers,
+            ScreenRegistry screens,
             SandboxedHooks hooks,
             AdminAuth auth,
             ClientDirectory clients,
             UserStore users) {
+        this.screens = screens;
         this.publisher = publisher;
         this.versions = versions;
         this.props = props;
@@ -257,12 +253,16 @@ class AdminController {
         authorize(authorization);
         List<HandlerView> handlerViews = handlers.all().stream()
                 .sorted(Comparator.comparing(Handler::name))
-                .map(h -> new HandlerView(h.name(), h.amr().stream().sorted().toList(), h.bindsSubject()))
+                .map(h -> new HandlerView(
+                        h.name(),
+                        h.meta().amr().stream().sorted().toList(),
+                        h.meta().bindsSubject()))
                 .toList();
         // The method picker belongs to a choose; a flow cannot show it on its own
-        List<ScreenOptions> screens = Stream.of(ScreenType.values())
-                .filter(t -> t != ScreenType.METHOD_PICKER)
-                .map(t -> new ScreenOptions(t.wireName(), SCREEN_OPTIONS.getOrDefault(t.wireName(), List.of())))
+        List<ScreenOptions> screens = this.screens.all().stream()
+                .filter(t -> !t.type().equals(ScreenRegistry.METHOD_PICKER))
+                .map(t -> new ScreenOptions(
+                        t.type(), t.options().stream().sorted().toList()))
                 .toList();
         List<String> egress = props.egress().keySet().stream().sorted().toList();
         return new Catalog(handlerViews, screens, egress);
@@ -521,7 +521,7 @@ class AdminController {
         Set<String> known = handlers.all().stream().map(Handler::name).collect(Collectors.toSet());
         if (s.handlers() != null && !known.containsAll(s.handlers())) return "unknown handler in handlers";
         if (s.screens() != null
-                && !s.screens().stream().allMatch(t -> ScreenType.of(t).isPresent())) {
+                && !s.screens().stream().allMatch(t -> screens.find(t).isPresent())) {
             return "unknown screen type in screens";
         }
         return s.branding().problem();

@@ -78,7 +78,7 @@ function navigation(tenant: string): { label: string; items: NavItem[] }[] {
   ];
 }
 
-/** The console frame: a collapsible sidebar (⌘B) and the page beside it. */
+/** The console frame: a collapsible sidebar (⌘B), the page beside it, and a footer below the page. */
 export function Shell({
   tenant,
   tenants,
@@ -138,7 +138,10 @@ export function Shell({
         </SidebarContent>
         <SidebarRail />
       </Sidebar>
-      <SidebarInset className="min-h-0 min-w-0 overflow-hidden">{children}</SidebarInset>
+      <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
+        {children}
+        <footer className="shrink-0 border-t px-3 py-1.5 text-[11px] text-muted-foreground">Faye @ 2026</footer>
+      </SidebarInset>
     </SidebarProvider>
   );
 }
@@ -152,11 +155,11 @@ function TenantSwitcher({ tenant, tenants }: { tenant: string | null; tenants: T
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
-              <span className="grid aspect-square size-8 place-items-center rounded-md bg-sidebar-primary font-mono text-[15px] leading-none font-semibold text-sidebar-primary-foreground">
+              <span className="grid aspect-square size-8 place-items-center rounded-md bg-sidebar-primary font-serif text-[18px] leading-none text-sidebar-primary-foreground">
                 f
               </span>
               <span className="grid flex-1 text-left leading-tight">
-                <span className="truncate text-[13px] font-semibold">Faye</span>
+                <span className="truncate font-serif text-[15px]">Faye</span>
                 <span className="truncate font-mono text-xs text-muted-foreground">{tenant ?? "all tenants"}</span>
               </span>
               <ChevronsUpDown className="ml-auto" />

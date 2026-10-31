@@ -2,6 +2,7 @@ import { Alert, AlertDescription, AlertTitle } from "@faye/ui/components/alert";
 import { Button } from "@faye/ui/components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@faye/ui/components/card";
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { clients, decodeJwt, ID_TOKEN_COOKIE } from "../lib/oidc";
 import { describe, matching, previewRun } from "../lib/preview";
 
@@ -10,6 +11,20 @@ const HIGHLIGHTS = ["sub", "amr", "acr", "auth_time"];
 
 export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
   const { error, error_description: description, client: selected } = await searchParams;
+  // A failed sign in shows only why; the callback has already cleared any earlier ID token
+  if (error) {
+    return (
+      <>
+        <Alert variant="destructive">
+          <AlertTitle className="font-mono">{error}</AlertTitle>
+          {description && <AlertDescription>{description}</AlertDescription>}
+        </Alert>
+        <Button asChild variant="outline">
+          <Link href="/">Try again</Link>
+        </Button>
+      </>
+    );
+  }
   const idToken = (await cookies()).get(ID_TOKEN_COOKIE)?.value;
   const token = idToken ? decodeJwt(idToken) : null;
   const flowId = token?.claims.faye_flow_id;
@@ -62,13 +77,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           </form>
         </CardContent>
       </Card>
-
-      {error && (
-        <Alert variant="destructive">
-          <AlertTitle className="font-mono">{error}</AlertTitle>
-          {description && <AlertDescription>{description}</AlertDescription>}
-        </Alert>
-      )}
 
       {token && (
         <Card>

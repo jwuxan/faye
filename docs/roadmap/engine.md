@@ -1,89 +1,77 @@
 # Engine
 
+How the reference engine (`server/faye-engine`) implements the Core IR. What it must do is [ir-spec.md](ir-spec.md); this document is how. The engine depends only on contracts: the IR (`faye-ir`), the handler catalog (`HandlerRegistry`), the screen catalog (`ScreenRegistry`) and `FlowHost` ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md)).
+
 ## Model
 
-The IR in Java:
+The IR in Java is sealed records, one per form:
 
 ```java
-public sealed interface Node permits Seq, Step, Screen, Call, Hook, Choose, Opt, When, Retry, Set, Succeed, Fail {
+public sealed interface Node permits Seq, Step, Screen, Call, Hook, Choose, When, Retry, SetVar, Succeed, Fail {
     SourceRef source();
 }
-public record Seq(List<Node> children, SourceRef source) implements Node {}
-public record Screen(String type, Map<String, Object> opts, SourceRef source) implements Node {}
-// …
 ```
 
-The interpreter is a `switch` over `Node` with pattern matching. Adding a form without handling it in the interpreter, the checker, and the serializer fails compilation.
+The interpreter, the checker, the verifier and the codec switch over `Node` exhaustively, so a form added without handling it everywhere fails compilation; `IrAgreementTest` checks the schema, these types and the spec name the same forms. A record holds data only: the schema is the grammar, and `IrCodec` reads JSON into records, refusing an unsupported format, a grammar violation, or duplicate entry and option ids.
 
 ## Execution: small step, suspendable
 
-The engine is not recursive over the tree. It runs an explicit continuation stack so that state can be persisted between HTTP requests.
+The engine is not recursive over the tree. It runs an explicit continuation stack so that a flow can be persisted between HTTP requests.
 
 ```
 FlowState {
-  flowId
-  tenantId
-  versionHash        // pinned at start; never changes during the flow
-  section            // login | consent
-  stack: List<Frame> // continuation, plain data
-  env: Env           // request, client, hydra, user, vars, auth
+  flowId, tenantId
+  versionHash        // pinned at start; never changes
+  kind, entry        // the host challenge, and the IR entry it runs (EntrySelector)
   hostRef            // challenge id held for the FlowHost
+  binder             // SHA-256 of the secret the starting browser holds
+  stack: List<Frame> // the continuation, plain data
+  env                // request, client, host, tenant, user, vars, auth
+  awaiting           // the screen it waits on: path, type, nonce, server data, error, attempts left
+  pending            // writes the entry staged, applied only if it succeeds
+  revision           // for the compare and set
 }
 ```
 
-`Frame` records are the "rest of the computation" for each form: `SeqFrame(node path, index)`, `RetryFrame(path, remaining)`, `ChooseFrame(path, enabled options)`, and so on. Frames reference nodes by **path within the pinned IR**, so they serialize to small JSON.
+`Frame` records are the rest of the computation for each form: `Eval(path)`, `SeqNext(path, next)`, `StepExit(path, id)`, `RetryExit(path, attempt)`, `Pick(path)`. Frames reference nodes by their child index path within the entry body of the pinned IR, so they serialize to small JSON. `FlowStateCodec` writes them with a `stateFormat`; a state in a format the engine does not read is treated as absent.
 
-Loop:
+A request:
 
-1. Pop a frame, evaluate one step.
-2. `call` and `hook` execute synchronously and return `ok` or `fail` plus env changes.
-3. `screen` (or a `choose` that needs user input) **yields**: the engine persists `FlowState` and returns the screen.
-4. A submission loads `FlowState`, validates the submission against the screen it is answering (step id and nonce), pushes the result, continues the loop.
-5. `succeed` / `fail` end the section and hand off to the `FlowHost`.
+1. `start` asks the host for the challenge, picks the version (the tenant's current one, a preview's draft, or for a consent the login's), checks it is runnable here (L1, `Verifier`), selects the entry, and runs.
+2. `view` and `submit` load the state, refuse a binder that does not match as an unknown flow and a version that can no longer run here, then check the nonce and the answer.
+3. A run pops frames and evaluates one step at a time. `call` and `hook` run synchronously. A `screen` (or a `choose` that needs the person) yields: the state is saved and the screen returned.
+4. The run's state is saved with a compare and set on the revision. If the entry succeeded, its staged writes are applied, then the host is told. A submit that loses the compare and set applies nothing and is answered with the screen the winner led to, or `flow_finished`.
+5. `succeed` and `fail` end the entry and hand the outcome to the `FlowHost`.
 
 ## Handlers
 
 ```java
 interface Handler {
     String name();                       // "password.verify"
-    Set<String> amr();                   // amr classes it proves, empty if not a credential
-    boolean bindsSubject();
-    Outcome invoke(Env env, Submission input, Map<String, Object> args);
+    HandlerMeta meta();                  // amr, binds_subject, identifies, requires_subject, effect, args
+    Outcome invoke(Invocation call);     // env, input, args, flowId
+    @Nullable String commit(Effect e);   // only for effect: write
 }
 ```
 
-Only handlers marked as credentials may add to `auth.verified`. `amr` and `acr` are computed from `auth.verified` at `succeed`. Neither hooks nor `set` can touch `auth.*`.
+`HandlerMeta` equals the handler's entry in `conformance/handlers.yaml`, which is the contract (`HandlerContractTest`). An `Outcome.Ok` merges into `user`, may name a subject and narrow the amr, and for a `write` handler carries `Effect`s; the engine refuses effects from any other handler. Only handlers that are credentials add to `auth`; `amr` and `acr` are computed from `auth` at `succeed`. Neither hooks nor `set` can touch `auth`.
+
+## Screens
+
+`ScreenSpec` gives a screen type its options, the server data it issues (`prepare`), its payload (`render`), the answers it accepts, and any later screen an answer to it also answers (`hosted`, `answeredBy`). `ScreenRegistry.builtIn()` holds the screens of `schema/screen.schema.json` (`ScreenRegistryTest`); the engine waits on `method_picker` for a `choose`.
 
 ## Versioning and pinning
 
-1. A published version is immutable and addressed by `sha256(canonical IR + hook hashes)`.
-2. A tenant has one "current" pointer per flow; publishing moves the pointer.
-3. Every `FlowState` pins `versionHash` at creation. In flight flows finish on the version they started with, so a publish never breaks a user mid login.
-4. Old versions are retained while any flow state references them (bounded by state TTL).
+1. A version is immutable and addressed by the SHA-256 of its canonical IR, which includes the IR format and every hook's hash.
+2. A tenant has one current pointer; `Publisher` is the only way to move it, and it runs the checker first.
+3. Every flow pins its version at start; a publish never changes a flow in progress (`publish-mid-flow`).
+4. Published versions are kept forever, so a tenant can roll back. A version only stored, for a preview, is deleted once nobody published it, no live flow pins it and it is older than the flow TTL. `SqliteFlowVersions` caches 256 versions, least recently read first out.
+5. A stored version is checked against the bytes kept; an older IR format is upgraded on read, keeping its hash.
 
 ## Flow state store
 
-SQLite ([ADR 0017](../adr/0017-one-sqlite-database.md)), table `faye_flow`, with an expiry equal to Hydra's challenge lifetime. Optimistic concurrency via a version counter to reject double submits. An in memory store implements the same interface for tests.
+SQLite ([ADR 0017](../adr/0017-one-sqlite-database.md)), table `faye_flow`, with an expiry set at creation equal to the challenge lifetime, and a revision counter for the compare and set. An in memory store implements the same interface for tests.
 
 ## Conformance suite
 
-`conformance/` holds language independent test vectors:
-
-```yaml
-name: password retry then success
-ir: ./flows/password-only.json
-env: { user: { exists: true } }
-handlers:
-  password.verify: [fail, ok]
-events:
-  - expect_screen: identifier
-  - submit: { identifier: alice@example.com }
-  - expect_screen: password
-  - submit: { password: wrong }
-  - expect_screen: password
-    expect_error: invalid_credentials
-  - submit: { password: right }
-  - expect_result: { succeed: true, amr: [pwd] }
-```
-
-The Java engine runs every vector in CI. Handlers are scripted fakes. Path enumeration from the checker can generate vectors automatically: one per success path and one per failure branch, which is the bulk of the "huge test suite" for free.
+`conformance/` holds language independent vectors ([README](../../conformance/README.md)). The Java engine runs every vector in CI with scripted handlers and hooks. The checker's path enumeration generates a vector per path it can realize, and the build fails when the checker and the engine disagree on how a path ends.

@@ -1,18 +1,28 @@
 package faye.engine;
 
-import java.util.Map;
-import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
-/** A server side effect reachable from {@code (call name args)}. */
+/**
+ * A built in, reviewed server side operation reachable from {@code (call name args)}: the only
+ * place a credential is verified, a subject bound, or an account changed (charter principle 2).
+ */
 public interface Handler {
 
     /** e.g. {@code password.verify} */
     String name();
 
-    /** amr classes this handler proves when it succeeds; empty if it is not a credential. */
-    Set<String> amr();
+    HandlerMeta meta();
 
-    boolean bindsSubject();
+    Outcome invoke(Invocation call);
 
-    Outcome invoke(Env env, Submission input, Map<String, Object> args);
+    /**
+     * Applies an {@link Effect} this handler returned, once the flow state carrying it is saved.
+     * Idempotent: applying the same effect twice is the same as once.
+     *
+     * @return null when applied, else the failure code that ends the flow (a precondition no longer
+     *     holds)
+     */
+    default @Nullable String commit(Effect effect) {
+        throw new UnsupportedOperationException(name() + " declares no write effect");
+    }
 }

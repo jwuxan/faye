@@ -21,16 +21,19 @@ import com.webauthn4j.data.client.challenge.DefaultChallenge;
 import com.webauthn4j.server.ServerProperty;
 import com.webauthn4j.verifier.exception.VerificationException;
 import faye.engine.Base32;
+import faye.engine.BuiltinScreen;
+import faye.engine.Effect;
 import faye.engine.Engine;
 import faye.engine.Env;
 import faye.engine.Handler;
+import faye.engine.HandlerMeta;
+import faye.engine.HandlerMeta.EffectKind;
+import faye.engine.Invocation;
 import faye.engine.Outcome;
 import faye.engine.Previews;
-import faye.engine.ScreenType;
 import faye.engine.Submission;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
@@ -39,8 +42,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The identity handlers: {@code identity.resolve}, {@code password.verify}, {@code totp.verify},
@@ -52,6 +55,12 @@ import java.util.stream.Collectors;
  *
  * <p>Preview test accounts ({@link User#preview()}) exist only for preview clients: for any other
  * client every handler treats them as unknown.
+ *
+ * <p>Writes follow the effect classes of ADR 0024: {@code totp.verify} uses a TOTP step and {@code
+ * webauthn.assert} raises a sign count inline, as part of verifying ({@code guard}); {@code
+ * totp.enroll} and {@code webauthn.register} return {@link Effect}s the engine commits once the
+ * flow state is saved ({@code write}). Each handler's {@link HandlerMeta} equals its entry in
+ * {@code conformance/handlers.yaml}.
  */
 public final class IdentityHandlers {
 
@@ -61,10 +70,15 @@ public final class IdentityHandlers {
             new AttestedCredentialDataConverter(CONVERTER);
     private static final WebAuthnManager WEBAUTHN = WebAuthnManager.createNonStrictWebAuthnManager(CONVERTER);
     /** The algorithms the Login UI offers at registration, from the one list the engine keeps. */
-    private static final List<PublicKeyCredentialParameters> ALGORITHMS = ScreenType.PASSKEY_ALGORITHMS.stream()
+    private static final List<PublicKeyCredentialParameters> ALGORITHMS = BuiltinScreen.PASSKEY_ALGORITHMS.stream()
             .map(alg -> new PublicKeyCredentialParameters(
                     PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.create(alg)))
             .toList();
+
+    private static HandlerMeta declared(
+            Set<String> amr, boolean binds, boolean identifies, boolean requiresSubject, EffectKind effect) {
+        return new HandlerMeta(amr, binds, identifies, requiresSubject, effect, HandlerMeta.NO_ARGS);
+    }
 
     private IdentityHandlers() {}
 
@@ -94,17 +108,14 @@ public final class IdentityHandlers {
         }
 
         @Override
-        public Set<String> amr() {
-            return Set.of();
+        public HandlerMeta meta() {
+            return declared(Set.of(), false, true, false, EffectKind.NONE);
         }
 
         @Override
-        public boolean bindsSubject() {
-            return false;
-        }
-
-        @Override
-        public Outcome invoke(Env env, Submission input, Map<String, Object> args) {
+        public Outcome invoke(Invocation call) {
+            Env env = call.env();
+            Submission input = call.input();
             Map<String, Object> out = new HashMap<>();
             Optional<User> user;
             if (input.payload().get("passkey") instanceof Map<?, ?> credential) {
@@ -139,17 +150,14 @@ public final class IdentityHandlers {
         }
 
         @Override
-        public Set<String> amr() {
-            return Set.of("pwd");
+        public HandlerMeta meta() {
+            return declared(Set.of("pwd"), true, false, false, EffectKind.NONE);
         }
 
         @Override
-        public boolean bindsSubject() {
-            return true;
-        }
-
-        @Override
-        public Outcome invoke(Env env, Submission input, Map<String, Object> args) {
+        public Outcome invoke(Invocation call) {
+            Env env = call.env();
+            Submission input = call.input();
             Optional<User> user = account(users, env);
             String password = input.string("password");
             boolean match = Passwords.matches(
@@ -168,32 +176,24 @@ public final class IdentityHandlers {
         }
 
         @Override
-        public Set<String> amr() {
-            return Set.of("otp");
+        public HandlerMeta meta() {
+            return declared(Set.of("otp"), true, false, false, EffectKind.GUARD);
         }
 
         @Override
-        public boolean bindsSubject() {
-            return true;
-        }
-
-        @Override
-        public Outcome invoke(Env env, Submission input, Map<String, Object> args) {
+        public Outcome invoke(Invocation call) {
+            Env env = call.env();
+            Submission input = call.input();
             User user = account(users, env).orElse(null);
             String code = input.string("code");
             if (user == null || user.totpSecret() == null || code == null) return Outcome.fail("invalid_code");
             long step = Totp.match(
                     Base32.decode(user.totpSecret()), code, clock.instant().getEpochSecond());
-            // A code is good once: the step must be newer than the last one accepted.
-            AtomicBoolean fresh = new AtomicBoolean();
-            if (step >= 0) {
-                users.update(user.subject(), u -> {
-                    if (step <= u.totpLastStep()) return u;
-                    fresh.set(true);
-                    return u.withTotp(u.totpSecret(), step);
-                });
-            }
-            return fresh.get() ? Outcome.subject(user.subject()) : Outcome.fail("invalid_code");
+            // A code is good once (RFC 6238 section 5.2): using its step is part of verifying it, and
+            // only this flow may use the same step again (a double submit of one screen).
+            return step >= 0 && users.useTotpStep(user.subject(), step, call.flowId())
+                    ? Outcome.subject(user.subject())
+                    : Outcome.fail("invalid_code");
         }
     }
 
@@ -205,17 +205,14 @@ public final class IdentityHandlers {
         }
 
         @Override
-        public Set<String> amr() {
-            return Set.of("otp");
+        public HandlerMeta meta() {
+            return declared(Set.of("otp"), true, false, true, EffectKind.WRITE);
         }
 
         @Override
-        public boolean bindsSubject() {
-            return true;
-        }
-
-        @Override
-        public Outcome invoke(Env env, Submission input, Map<String, Object> args) {
+        public Outcome invoke(Invocation call) {
+            Env env = call.env();
+            Submission input = call.input();
             String subject = env.auth().subject();
             if (subject == null
                     || users.bySubject(subject).filter(u -> visible(u, env)).isEmpty()) {
@@ -229,8 +226,17 @@ public final class IdentityHandlers {
                     ? -1
                     : Totp.match(Base32.decode(secret), code, clock.instant().getEpochSecond());
             if (step < 0) return Outcome.fail("invalid_code");
-            users.update(subject, u -> u.withTotp(secret, step));
-            return new Outcome.Ok(Map.of("has_totp", true), subject, null);
+            Effect enroll = new Effect(
+                    name(), Map.of("subject", subject, "secret", secret, "step", step, "flow", call.flowId()));
+            return new Outcome.Ok(Map.of("has_totp", true), subject, null, List.of(enroll));
+        }
+
+        /** Idempotent: enrolling the same secret again writes the same row. */
+        @Override
+        public @Nullable String commit(Effect effect) {
+            Map<String, Object> d = effect.data();
+            users.enrollTotp(text(d, "subject"), text(d, "secret"), number(d, "step"), text(d, "flow"));
+            return null;
         }
     }
 
@@ -242,17 +248,14 @@ public final class IdentityHandlers {
         }
 
         @Override
-        public Set<String> amr() {
-            return Set.of();
+        public HandlerMeta meta() {
+            return declared(Set.of(), false, false, true, EffectKind.WRITE);
         }
 
         @Override
-        public boolean bindsSubject() {
-            return false;
-        }
-
-        @Override
-        public Outcome invoke(Env env, Submission input, Map<String, Object> args) {
+        public Outcome invoke(Invocation call) {
+            Env env = call.env();
+            Submission input = call.input();
             String subject = env.auth().subject();
             if (subject == null
                     || users.bySubject(subject).filter(u -> visible(u, env)).isEmpty()) {
@@ -268,19 +271,35 @@ public final class IdentityHandlers {
                 AttestedCredentialData credential =
                         authenticatorData == null ? null : authenticatorData.getAttestedCredentialData();
                 if (authenticatorData == null || credential == null) return Outcome.fail("invalid_credentials");
-                var passkey = new User.Passkey(
-                        base64url(credential.getCredentialId()),
-                        CREDENTIAL_DATA.convert(credential),
-                        authenticatorData.getSignCount());
-                users.update(subject, u -> {
-                    List<User.Passkey> all = new ArrayList<>(u.passkeys());
-                    all.add(passkey);
-                    return u.withPasskeys(all);
-                });
-                return Outcome.user(Map.of("has_passkey", true));
+                Effect register = new Effect(
+                        name(),
+                        Map.of(
+                                "subject",
+                                subject,
+                                "credentialId",
+                                base64url(credential.getCredentialId()),
+                                "attestedCredentialData",
+                                base64url(CREDENTIAL_DATA.convert(credential)),
+                                "signCount",
+                                authenticatorData.getSignCount()));
+                return new Outcome.Ok(Map.of("has_passkey", true), null, null, List.of(register));
             } catch (DataConversionException | VerificationException | IllegalArgumentException e) {
                 return Outcome.fail("invalid_credentials");
             }
+        }
+
+        /**
+         * Adds the passkey. Idempotent: the account already having this credential id is success;
+         * another account having it fails the flow.
+         */
+        @Override
+        public @Nullable String commit(Effect effect) {
+            Map<String, Object> d = effect.data();
+            var passkey = new User.Passkey(
+                    text(d, "credentialId"),
+                    Base64.getUrlDecoder().decode(text(d, "attestedCredentialData")),
+                    number(d, "signCount"));
+            return users.addPasskey(text(d, "subject"), passkey) ? null : "invalid_credentials";
         }
     }
 
@@ -292,17 +311,14 @@ public final class IdentityHandlers {
         }
 
         @Override
-        public Set<String> amr() {
-            return Set.of("hwk", "user");
+        public HandlerMeta meta() {
+            return declared(Set.of("hwk", "user"), true, false, false, EffectKind.GUARD);
         }
 
         @Override
-        public boolean bindsSubject() {
-            return true;
-        }
-
-        @Override
-        public Outcome invoke(Env env, Submission input, Map<String, Object> args) {
+        public Outcome invoke(Invocation call) {
+            Env env = call.env();
+            Submission input = call.input();
             try {
                 AuthenticationData data = WEBAUTHN.parseAuthenticationResponseJSON(credentialJson(input));
                 Optional<User> account = account(users, env);
@@ -339,14 +355,9 @@ public final class IdentityHandlers {
                                 server(settings, input), record, List.of(credentialId), false, true));
                 var authenticatorData = data.getAuthenticatorData();
                 if (authenticatorData == null) return Outcome.fail("invalid_credentials");
-                long signCount = authenticatorData.getSignCount();
-                users.update(
-                        user.subject(),
-                        u -> u.withPasskeys(u.passkeys().stream()
-                                .map(p -> p.credentialId().equals(id)
-                                        ? new User.Passkey(id, p.attestedCredentialData(), signCount)
-                                        : p)
-                                .toList()));
+                // A monotonic maximum: a count that did not rise is a risk signal, not a failure
+                // (WebAuthn Level 3, section 6.1.1); webauthn4j has compared it to the stored one
+                users.raiseSignCount(user.subject(), id, authenticatorData.getSignCount());
                 boolean verified = authenticatorData.isFlagUV();
                 return new Outcome.Ok(Map.of(), user.subject(), verified ? Set.of("hwk", "user") : Set.of("hwk"));
             } catch (DataConversionException | VerificationException | IllegalArgumentException e) {
@@ -363,17 +374,14 @@ public final class IdentityHandlers {
         }
 
         @Override
-        public Set<String> amr() {
-            return Set.of();
+        public HandlerMeta meta() {
+            return declared(Set.of(), false, false, false, EffectKind.NONE);
         }
 
         @Override
-        public boolean bindsSubject() {
-            return false;
-        }
-
-        @Override
-        public Outcome invoke(Env env, Submission input, Map<String, Object> args) {
+        public Outcome invoke(Invocation call) {
+            Env env = call.env();
+            Submission input = call.input();
             return "allow".equals(input.string("decision")) ? Outcome.ok() : Outcome.fail("consent_denied");
         }
     }
@@ -438,6 +446,18 @@ public final class IdentityHandlers {
                 .rpId(settings.rpId())
                 .challenge(new DefaultChallenge(Base64.getUrlDecoder().decode(challenge)))
                 .build();
+    }
+
+    /** A string field of an effect's data, which this module wrote. */
+    private static String text(Map<String, Object> data, String key) {
+        if (data.get(key) instanceof String v) return v;
+        throw new IllegalStateException("effect data without " + key);
+    }
+
+    /** A number field of an effect's data; JSON may hand it back as an Integer or a Long. */
+    private static long number(Map<String, Object> data, String key) {
+        if (data.get(key) instanceof Number v) return v.longValue();
+        throw new IllegalStateException("effect data without " + key);
     }
 
     private static String base64url(byte[] bytes) {

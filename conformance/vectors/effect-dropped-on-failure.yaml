@@ -1,0 +1,19 @@
+name: writes an entry staged are applied only if it succeeds; one that then fails changes no account
+ir: flows/enroll-then-confirm.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok, { fail: invalid_credentials }]
+  totp.enroll: [{ ok: { effects: [staged] } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: otp_enroll
+  - submit: { code: "123456" }
+  - expect_screen: password
+    expect_step: confirm
+  - expect_commits: []
+  - submit: { password: wrong }
+  - expect_result: { succeed: false, reason: invalid_credentials }
+  - expect_commits: []

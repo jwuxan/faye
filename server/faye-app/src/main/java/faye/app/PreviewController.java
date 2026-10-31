@@ -83,7 +83,7 @@ class PreviewController {
     record PreviewRun(
             String flowId,
             String tenant,
-            String section,
+            String entry,
             String versionHash,
             boolean draft,
             List<TraceEvent> events,
@@ -200,7 +200,8 @@ class PreviewController {
                 recorded.stream().map(TraceStore.Recorded::event).toList();
         TraceEvent start = events.get(0);
         String hash = Objects.requireNonNullElse(start.id(), "");
-        String section = Objects.requireNonNullElse(start.outcome(), "login");
+        // The start event names the entry the run ran
+        String entry = Objects.requireNonNullElse(start.outcome(), "");
         TraceEvent last = events.getLast();
         @Nullable
         Result result = "end".equals(last.event())
@@ -216,7 +217,7 @@ class PreviewController {
         List<AdminController.PathView> expected = version.isEmpty()
                 ? List.of()
                 : publisher.check(tenant, version.get().flow()).paths().stream()
-                        .filter(p -> p.section().equals(section) && signature(p).equals(signature))
+                        .filter(p -> p.entry().equals(entry) && signature(p).equals(signature))
                         .map(AdminController.PathView::of)
                         .toList();
         @Nullable
@@ -233,7 +234,7 @@ class PreviewController {
         return new PreviewRun(
                 flowId,
                 tenant,
-                section,
+                entry,
                 hash,
                 !versions.history(tenant).contains(hash),
                 events,

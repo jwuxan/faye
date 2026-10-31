@@ -1,0 +1,14 @@
+name: a credential for someone other than the subject the host remembers ends the flow, though attempts remain
+ir: flows/mfa-policy.json
+tenant: { mfa_required: true }
+host:
+  params: { skip: true, subject: alice }
+handlers:
+  identity.resolve: [ok]
+  password.verify: [{ ok: { subject: bob } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: bob@example.com }
+  - expect_screen: password
+  - submit: { password: bobs-password }
+  - expect_result: { succeed: false, reason: subject_mismatch }

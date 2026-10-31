@@ -1,27 +1,50 @@
 package faye.engine;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.util.Optional;
+import java.util.Set;
 
-/** JSON form of {@link FlowState}, shared by every store so state is always plain data. */
+/**
+ * JSON form of {@link FlowState}, shared by every store so state is always plain data. The JSON
+ * carries a {@code stateFormat}: what the frames mean, versioned apart from the IR format. A state
+ * in a format this reader does not know reads as absent, so its flow fails closed and the person
+ * starts the sign in again (docs/roadmap/ir-spec.md, Versioning).
+ */
 public final class FlowStateCodec {
+
+    /** The state format this codec writes. Bump it whenever a frame's meaning changes. */
+    public static final int FORMAT = 1;
+
+    /** The state formats this codec reads: the current one and, for one release after a bump, the one before. */
+    public static final Set<Integer> FORMATS = Set.of(1);
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private FlowStateCodec() {}
 
     public static String write(FlowState state) {
+        ObjectNode json = MAPPER.createObjectNode().put("stateFormat", FORMAT);
+        json.setAll((ObjectNode) MAPPER.valueToTree(state));
         try {
-            return MAPPER.writeValueAsString(state);
+            return MAPPER.writeValueAsString(json);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException(e);
         }
     }
 
-    public static FlowState read(String json) {
+    /** The state, or empty if it is in a format this reader does not support. */
+    public static Optional<FlowState> read(String json) {
         try {
-            return MAPPER.readValue(json, FlowState.class);
-        } catch (JsonProcessingException e) {
+            ObjectNode node = (ObjectNode) MAPPER.readTree(json);
+            JsonNode format = node.remove("stateFormat");
+            if (format == null || !format.canConvertToInt() || !FORMATS.contains(format.intValue())) {
+                return Optional.empty();
+            }
+            return Optional.of(MAPPER.treeToValue(node, FlowState.class));
+        } catch (JsonProcessingException | ClassCastException e) {
             throw new IllegalStateException("unreadable flow state", e);
         }
     }

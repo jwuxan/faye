@@ -2,7 +2,7 @@ name: a remembered session counts as one factor, so a tenant that requires MFA s
 ir: flows/mfa-policy.json
 tenant: { mfa_required: true }
 host:
-  hydra: { skip: true, subject: alice }
+  params: { skip: true, subject: alice }
 handlers:
   identity.resolve: [ok]
   password.verify: [ok]

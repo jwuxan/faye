@@ -1,5 +1,5 @@
-["flow", "explicit-fail", 1,
-  ["login",
+["flow", 1, "explicit-fail", 1,
+  ["entry", "login", "authenticate",
     ["seq",
       ["step", "identify", ["seq", ["screen", "identifier"], ["call", "identity.resolve"]]],
       ["step", "blocked", ["fail", "blocked"]],

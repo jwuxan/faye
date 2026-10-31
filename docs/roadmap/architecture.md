@@ -47,7 +47,7 @@ The control plane and the runtime share exactly one thing: **an immutable flow v
 | Identity / config store | SQLite in the same file, behind `UserStore`, `FlowVersions`, `HookStore`; demo only. Faye verifies passwords but never writes one; the identity module saves only passkey enrollments and TOTP state | One database to run locally |
 | Web apps | TypeScript, Next.js (App Router), pnpm workspace | Shared UI package across three apps |
 | UI kit | shadcn/ui on Tailwind CSS | Owned components, consistent design system |
-| Typography | Geist (UI) and Geist Mono (IR, YAML, tokens, codes) via the `geist` package | Clean and legible; mono for anything machine shaped |
+| Typography | System sans (UI) and system monospace (IR, YAML, tokens, codes); Geist Serif for the Faye wordmark via the `geist` package | Native UI text; mono for anything machine shaped |
 | Editor | Native drag and drop (tree editor), CodeMirror 6 (YAML and hooks), an SVG tree (read only graph), lucide icons | See [admin-ui.md](admin-ui.md), [ADR 0010](../adr/0010-m5-admin-ui.md) |
 | Local env | Docker Compose | Hydra and Faye on one SQLite file, Faye server, three web apps |
 
@@ -93,5 +93,5 @@ faye/
 4. Engine runs until a `screen`; continuation is persisted; browser is sent to Login UI `/flow/{flowId}`.
 5. Login UI fetches the screen, renders it, posts submissions back. Each post resumes the engine.
 6. On `succeed`, `FlowHost.accept` sends `subject`, `amr`, `acr`, `remember`, and `context.flowId` to Hydra and returns its redirect URL.
-7. Hydra redirects to `/consent?consent_challenge=…`; Faye resumes the same flow definition's consent section (see [hydra-integration.md](hydra-integration.md)).
+7. Hydra redirects to `/consent?consent_challenge=…`; Faye runs the consent entry of the flow version the login ran (see [hydra-integration.md](hydra-integration.md)).
 8. Hydra issues tokens to the demo client.

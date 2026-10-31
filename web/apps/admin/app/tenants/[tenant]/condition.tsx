@@ -1,10 +1,11 @@
 "use client";
 
+import type { COMPARISONS } from "@faye/contract";
 import { cn } from "@faye/ui/lib/utils";
 import { ListPlus, Plus, X } from "lucide-react";
 import { createContext, useContext, useId } from "react";
 import type { Literal, Predicate } from "../../../lib/flow";
-import { children, comparison, compare, describe, KNOWN_PATHS, KNOWN_VALUES, kindOf, PATH } from "../../../lib/predicate";
+import { children, compare, comparison, describe, isPath, kindOf, KNOWN_PATHS, KNOWN_VALUES, ordering } from "../../../lib/predicate";
 import { Input } from "@faye/ui/components/input";
 import { Choice, denseMono, IconButton, Segmented } from "../../ui";
 
@@ -28,6 +29,9 @@ const LEAF_OPS = [
   { op: "unset", label: "is not set" },
 ] as const;
 type LeafOp = (typeof LEAF_OPS)[number]["op"];
+// Every comparison of the IR schema has a row: a new one fails typechecking until it does.
+type Uncovered = Exclude<(typeof COMPARISONS)[number], LeafOp>;
+export const COMPARISONS_COVERED: [Uncovered] extends [never] ? true : Uncovered = true;
 type Leaf = { op: LeafOp; path: string; value: Literal };
 
 /** A predicate as one row, if it is a (possibly negated) test of one path. */
@@ -148,7 +152,7 @@ function Group({ mode, items, onChange, onRemove }: { mode: GroupMode; items: Pr
 
 function Row({ leaf, onChange, onRemove }: { leaf: Leaf; onChange: (l: Leaf) => void; onRemove?: () => void }) {
   const unary = leaf.op === "true" || leaf.op === "false" || leaf.op === "set" || leaf.op === "unset";
-  const numeric = leaf.op === "gt" || leaf.op === "lt";
+  const numeric = ordering(leaf.op);
   return (
     <div className="grid grid-cols-[1fr_auto] items-start gap-1">
       <div className="grid grid-cols-[auto_1fr] items-center gap-1">
@@ -163,7 +167,7 @@ function Row({ leaf, onChange, onRemove }: { leaf: Leaf; onChange: (l: Leaf) => 
           options={LEAF_OPS.map((o) => ({ value: o.op, label: o.label }))}
           onChange={(v) => {
             const op = v as LeafOp;
-            onChange({ ...leaf, op, value: op === "gt" || op === "lt" ? Number(leaf.value) || 0 : leaf.value });
+            onChange({ ...leaf, op, value: ordering(op) ? Number(leaf.value) || 0 : leaf.value });
           }}
         />
         {!unary && (
@@ -185,7 +189,7 @@ export function PathInput({ value, onChange, label }: { value: string; onChange:
     <>
       <Input
         aria-label={label}
-        aria-invalid={!PATH.test(value)}
+        aria-invalid={!isPath(value)}
         spellCheck={false}
         title={value}
         className={cn(denseMono, "w-full [&::-webkit-calendar-picker-indicator]:hidden")}

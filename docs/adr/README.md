@@ -27,3 +27,4 @@ Format: [MADR 4](https://adr.github.io/madr/). One file per decision, `NNNN-titl
 | [0021](0021-official-hydra-admin-client.md) | Ory's official Java client for Hydra's admin API | Accepted |
 | [0022](0022-passkey-ceremonies-with-simplewebauthn.md) | Passkey ceremonies in the Login UI with SimpleWebAuthn, algorithms from the server | Accepted |
 | [0023](0023-one-container-many-processes.md) | One container, many processes | In progress |
+| [0024](0024-core-ir-as-a-narrow-waist.md) | The Core IR as a narrow waist: entries, format versions, handler and screen catalogs, effects after the compare and set, browser bound flows | In progress |

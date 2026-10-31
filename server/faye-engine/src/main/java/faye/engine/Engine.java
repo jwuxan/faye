@@ -3,9 +3,11 @@ package faye.engine;
 import faye.engine.FlowException.Code;
 import faye.ir.Call;
 import faye.ir.Choose;
+import faye.ir.Entry;
 import faye.ir.Fail;
 import faye.ir.Hook;
 import faye.ir.Node;
+import faye.ir.Predicate;
 import faye.ir.Retry;
 import faye.ir.Screen;
 import faye.ir.Seq;
@@ -13,9 +15,13 @@ import faye.ir.SetVar;
 import faye.ir.Step;
 import faye.ir.Succeed;
 import faye.ir.When;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,13 +32,24 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Small step interpreter over an explicit continuation stack. A flow runs until it reaches a
- * screen, at which point its {@link FlowState} is persisted and the screen returned; a submission
- * reloads the state and continues. Nothing about a flow lives in this object between requests.
+ * Small step interpreter over an explicit continuation stack; docs/roadmap/ir-spec.md is the
+ * normative semantics it implements. A flow runs until it reaches a screen, at which point its
+ * {@link FlowState} is persisted and the screen returned; a submission reloads the state and
+ * continues. Nothing about a flow lives in this object between requests.
+ *
+ * <p>Every flow is bound to the browser that started it: {@link #start} takes a binder, a secret
+ * the caller hands the browser in a cookie, and {@link #view} and {@link #submit} refuse a flow
+ * whose binder does not match exactly as they refuse one that does not exist.
  */
 public final class Engine {
 
     public static final String DEFAULT_TENANT = "default";
+
+    /** Why a host request is rejected when its version cannot run here (ir-spec.md, Checks). */
+    public static final String FLOW_UNAVAILABLE = "flow_unavailable";
+
+    /** Why an entry fails when applying one of its writes threw. */
+    public static final String WRITE_ERROR = "write_error";
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -43,6 +60,7 @@ public final class Engine {
     private final TenantPolicies tenants;
     private final HookRunner hooks;
     private final Previews previews;
+    private final ScreenRegistry screens;
 
     public Engine(FlowVersions versions, HandlerRegistry handlers, FlowStore store, FlowHost host) {
         this(versions, handlers, store, host, Map.of());
@@ -98,6 +116,19 @@ public final class Engine {
             TenantPolicies tenants,
             HookRunner hooks,
             Previews previews) {
+        this(versions, handlers, store, host, tenants, hooks, previews, ScreenRegistry.builtIn());
+    }
+
+    /** @param screens the screens flows may show */
+    public Engine(
+            FlowVersions versions,
+            HandlerRegistry handlers,
+            FlowStore store,
+            FlowHost host,
+            TenantPolicies tenants,
+            HookRunner hooks,
+            Previews previews,
+            ScreenRegistry screens) {
         this.versions = versions;
         this.handlers = handlers;
         this.store = store;
@@ -105,18 +136,22 @@ public final class Engine {
         this.tenants = tenants;
         this.hooks = hooks;
         this.previews = previews;
+        this.screens = screens;
     }
 
     /**
      * Begins a flow for a challenge. A login runs the tenant's current version, or for a preview
      * client the version {@link Previews} gives. A consent runs the version its login ran, found
-     * through the {@code flowId} the login put in Hydra's context, and sees that login's {@code
+     * through the {@code flowId} the login put in the host's context, and sees that login's {@code
      * user} and {@code auth}.
+     *
+     * @param binder the secret the caller gives the browser; every later view and submit must
+     *     present it
      */
-    public EngineResponse start(HostKind kind, String challenge, Map<String, Object> request) {
+    public EngineResponse start(HostKind kind, String challenge, Map<String, Object> request, String binder) {
         HostRequest req = host.load(kind, challenge);
-        @Nullable String subject = req.hydra().get("subject") instanceof String s && !s.isEmpty() ? s : null;
-        boolean skip = Boolean.TRUE.equals(req.hydra().get("skip"));
+        @Nullable String subject = req.params().get("subject") instanceof String s && !s.isEmpty() ? s : null;
+        boolean skip = Boolean.TRUE.equals(req.params().get("skip"));
         boolean preview = Previews.isPreview(req.client());
         String tenant = tenantOf(req);
         FlowVersion version;
@@ -126,16 +161,16 @@ public final class Engine {
 
         switch (kind) {
             case LOGIN -> {
-                Optional<FlowVersion> entry = preview ? previews.version(tenant) : Optional.of(current(tenant));
-                if (entry.isEmpty()) return host.reject(req, "access_denied", "preview_unavailable");
-                version = entry.get();
+                Optional<FlowVersion> found = preview ? previews.version(tenant) : Optional.of(current(tenant));
+                if (found.isEmpty()) return host.reject(req, "access_denied", "preview_unavailable");
+                version = found.get();
                 if (skip && subject != null) {
-                    // Hydra remembers who, not how: a remembered session counts as one factor.
-                    if (Acr.satisfies(Acr.ONE_FACTOR, req.hydra().get("acr_values"))
+                    // The host remembers who, not how: a remembered session counts as one factor.
+                    if (Acr.satisfies(Acr.ONE_FACTOR, req.params().get("acr_values"))
                             && Acr.satisfies(Acr.ONE_FACTOR, required(settings))) {
                         return host.accept(req, new Authenticated(subject, List.of(), Acr.ONE_FACTOR, Map.of()));
                     }
-                    // Step up: run the flow, but only for the subject Hydra already knows.
+                    // Step up: run the flow, but only for the subject the host already knows.
                     auth = new Env.Auth(subject, List.of());
                 }
             }
@@ -144,47 +179,58 @@ public final class Engine {
                 Optional<FlowState> login = linkedLogin(req, subject);
                 if (login.isPresent()) {
                     tenant = login.get().tenantId();
-                    version = versions.get(login.get().versionHash()).orElseGet(() -> current(tenantOf(req)));
+                    // The login's version runs its consent; if it can no longer be read, nothing else does
+                    Optional<FlowVersion> ran = versions.get(login.get().versionHash());
+                    if (ran.isEmpty()) return host.reject(req, "access_denied", FLOW_UNAVAILABLE);
+                    version = ran.get();
                     user = login.get().env().user();
                     settings = login.get().env().tenant();
                     auth = login.get().env().auth();
                 } else {
-                    Optional<FlowVersion> entry = preview ? previews.version(tenant) : Optional.of(current(tenant));
-                    if (entry.isEmpty()) return host.reject(req, "access_denied", "preview_unavailable");
-                    version = entry.get();
+                    Optional<FlowVersion> found = preview ? previews.version(tenant) : Optional.of(current(tenant));
+                    if (found.isEmpty()) return host.reject(req, "access_denied", "preview_unavailable");
+                    version = found.get();
                     auth = new Env.Auth(subject, List.of());
                 }
-                if (skip || !version.flow().sections().containsKey(kind.section())) {
+                // Granted without a screen: remembered, or a version with no consent entry at all
+                if (skip || version.flow().entriesOf(Entry.Kind.CONSENT).isEmpty()) {
                     return host.accept(req, consented(req, user, subject));
                 }
             }
-            case LOGOUT -> throw new IllegalArgumentException("logout is not a flow section");
+            case LOGOUT -> throw new IllegalArgumentException("logout runs no flow entry");
             default -> throw new IllegalArgumentException(kind.toString());
         }
-        if (!version.flow().sections().containsKey(kind.section())) {
-            throw new IllegalStateException(version.flow().id() + " has no " + kind.section() + " section");
-        }
+        // A version that names a handler or screen this engine lacks, or has no entry for the
+        // challenge, never runs here: the checker refuses both at publish, so this only happens when
+        // the catalogs changed since.
+        Optional<String> entry = EntrySelector.select(version.flow(), kind);
+        if (entry.isEmpty() || !runnable(version)) return host.reject(req, "access_denied", FLOW_UNAVAILABLE);
         if (preview) {
             Map<String, Object> overridden = new LinkedHashMap<>(request);
             overridden.putAll(previews.request(tenant));
             request = overridden;
         }
-        Env env = new Env(request, req.client(), settings, req.hydra(), user, Map.of(), auth);
+        Env env = new Env(request, req.client(), settings, req.params(), user, Map.of(), auth);
         FlowState initial = new FlowState(
                 randomId("f_"),
                 tenant,
                 version.hash(),
                 kind,
+                entry.get(),
                 challenge,
+                hash(binder),
                 List.of(new Frame.Eval(List.of())),
                 env,
                 null,
+                List.of(),
                 0);
 
         List<TraceEvent> trace = new ArrayList<>();
-        trace.add(TraceEvent.of("start", version.hash(), kind.section()));
+        trace.add(TraceEvent.of("start", version.hash(), entry.get()));
         Run run = run(initial, version, Submission.NONE, 0, trace);
-        if (run instanceof Suspended s) store.create(s.state());
+        // Only a flow that waits is stored; one that ended at once has nothing to resume
+        if (run instanceof Suspended) store.create(run.state());
+        run = commit(run, trace);
         emit(run.state(), trace);
         return switch (run) {
             case Suspended s -> view(s.state());
@@ -193,37 +239,51 @@ public final class Engine {
     }
 
     /** The screen a flow is currently waiting on. */
-    public ScreenView view(String flowId) {
-        return view(load(flowId));
+    public ScreenView view(String flowId, String binder) {
+        return view(load(flowId, binder));
     }
 
     /**
      * Answers the current screen. A stale nonce (already answered, or not this screen) and a lost
-     * race against a concurrent submit are both refused without changing the stored state.
+     * race against a concurrent submit are both refused without changing the stored state or any
+     * account: staged writes are applied only by the submit whose saved state ended the entry
+     * successfully.
      */
-    public EngineResponse submit(String flowId, String nonce, Submission input) {
-        FlowState state = load(flowId);
+    public EngineResponse submit(String flowId, String binder, String nonce, Submission input) {
+        FlowState state = load(flowId, binder);
         FlowState.Awaiting awaiting = Objects.requireNonNull(state.awaiting(), "load refuses finished flows");
         if (!awaiting.nonce().equals(nonce)) {
             throw new FlowException(Code.STALE_NONCE);
         }
-        if (!ScreenType.of(awaiting.screen()).orElseThrow().accepts(input, awaiting.data())) {
+        if (!screen(awaiting.screen()).accepts(input, awaiting.data())) {
             throw new FlowException(Code.INVALID_SUBMISSION);
         }
-        FlowVersion version = versions.get(state.versionHash())
-                .orElseThrow(() -> new IllegalStateException("pinned version missing: " + state.versionHash()));
+        FlowVersion version = pinned(state);
 
         List<TraceEvent> trace = new ArrayList<>();
         Run run = run(state, version, input.withContext(awaiting.data()), state.revision() + 1, trace);
-        // Save before talking to the host: only the submit that wins the revision race may accept.
-        if (!store.replace(run.state())) {
-            throw new FlowException(Code.CONFLICT);
-        }
+        // Save before any lasting change and before talking to the host: only the submit that wins
+        // the revision race may apply staged writes or accept.
+        if (!store.replace(run.state())) return lost(state);
+        run = commit(run, trace);
         emit(run.state(), trace);
         return switch (run) {
             case Suspended s -> view(s.state());
             case Ended e -> finish(host.load(state.kind(), state.hostRef()), e);
         };
+    }
+
+    /**
+     * The answer to a submit whose run lost the revision race to another answer of the same screen
+     * from the same browser (it holds the binder): the screen that answer led to, as if this request
+     * had been the winner; {@code flow_finished} if it finished the flow, whose redirect only the
+     * winner carries. Nothing the losing run did lasts.
+     */
+    private EngineResponse lost(FlowState answered) {
+        FlowState now = store.load(answered.flowId()).orElseThrow(() -> new FlowException(Code.FLOW_NOT_FOUND));
+        if (now.revision() == answered.revision()) throw new FlowException(Code.CONFLICT);
+        if (now.awaiting() == null) throw new FlowException(Code.FLOW_FINISHED);
+        return view(now);
     }
 
     // ---- interpreter ----
@@ -234,20 +294,26 @@ public final class Engine {
 
     private record Suspended(FlowState state) implements Run {}
 
-    /** @param failure null when the section succeeded */
-    private record Ended(FlowState state, @Nullable String failure) implements Run {}
+    /**
+     * @param failure null when the entry succeeded
+     * @param writes the writes the entry staged, to apply because it succeeded; empty on a failure
+     */
+    private record Ended(FlowState state, @Nullable String failure, List<Effect> writes) implements Run {}
 
     /** @param trace collects what the run does, for preview flows */
     private Run run(FlowState state, FlowVersion version, Submission input, long revision, List<TraceEvent> trace) {
-        Node root = Objects.requireNonNull(version.flow().sections().get(state.section()), "start checked the section");
+        Entry entry = Objects.requireNonNull(version.flow().entries().get(state.entry()), "start selected the entry");
+        Node root = entry.body();
         List<Frame> stack = new ArrayList<>(state.stack());
         Env env = state.env();
+        // Lasting changes handlers ask for, saved with the state this run produces
+        List<Effect> effects = new ArrayList<>(state.pending());
         FlowState.@Nullable Awaiting answered = state.awaiting();
         // An answer this submission carries for a later screen (passkey autofill on identifier).
         @Nullable
-        ScreenType hosted = answered == null
+        String hosted = answered == null
                 ? null
-                : ScreenType.of(answered.screen()).orElseThrow().hosted(input).orElse(null);
+                : screen(answered.screen()).hosted(input).orElse(null);
         // The failure a retry is rerunning after, shown on the next screen.
         @Nullable String error = null;
         @Nullable Integer attemptsLeft = null;
@@ -295,10 +361,8 @@ public final class Engine {
                         case Choose choose -> {
                             List<Integer> enabled = new ArrayList<>();
                             for (int i = 0; i < choose.options().size(); i++) {
-                                if (!(choose.options().get(i).body() instanceof When w)
-                                        || Predicates.test(w.test(), env)) {
-                                    enabled.add(i);
-                                }
+                                Predicate guard = choose.options().get(i).guard();
+                                if (guard == null || Predicates.test(guard, env)) enabled.add(i);
                             }
                             @Nullable Integer chosen = enabled.size() == 1 ? enabled.get(0) : null;
                             @Nullable Integer picked = null;
@@ -329,8 +393,7 @@ public final class Engine {
                                         firstScreen(choose.options().get(i).body());
                                 if (hosted != null
                                         && first.isPresent()
-                                        && ScreenType.of(first.get().type())
-                                                .orElseThrow()
+                                        && screen(first.get().type())
                                                 .answeredBy(hosted, first.get().opts())) {
                                     chosen = i;
                                     by = "user";
@@ -355,41 +418,41 @@ public final class Engine {
                                                 .map(i ->
                                                         choose.options().get(i).id())
                                                 .toList());
-                                trace.add(TraceEvent.of("screen", ScreenType.METHOD_PICKER.wireName(), null));
+                                trace.add(TraceEvent.of("screen", ScreenRegistry.METHOD_PICKER, null));
                                 return suspend(
                                         state,
                                         stack,
                                         env,
+                                        effects,
                                         revision,
                                         path,
-                                        ScreenType.METHOD_PICKER,
+                                        ScreenRegistry.METHOD_PICKER,
                                         data,
                                         error,
                                         attemptsLeft);
                             }
                         }
-                        case Screen screen -> {
-                            ScreenType type = ScreenType.of(screen.type())
-                                    .orElseThrow(() -> new IllegalStateException(
-                                            screen.source() + ": unknown screen " + screen.type()));
-                            if (hosted != null && type.answeredBy(hosted, screen.opts())) {
+                        case Screen node -> {
+                            ScreenSpec type = screen(node.type());
+                            if (hosted != null && type.answeredBy(hosted, node.opts())) {
                                 hosted = null;
                                 break;
                             }
                             Map<String, Object> previous = answered != null
                                             && answered.path().equals(path)
-                                            && answered.screen().equals(type.wireName())
+                                            && answered.screen().equals(type.type())
                                     ? answered.data()
                                     : Map.of();
-                            trace.add(TraceEvent.of("screen", type.wireName(), null));
+                            trace.add(TraceEvent.of("screen", type.type(), null));
                             return suspend(
                                     state,
                                     stack,
                                     env,
+                                    effects,
                                     revision,
                                     path,
-                                    type,
-                                    type.prepare(env, screen.opts(), previous),
+                                    type.type(),
+                                    type.prepare(env, node.opts(), previous),
                                     error,
                                     attemptsLeft);
                         }
@@ -397,22 +460,25 @@ public final class Engine {
                             Handler handler = handlers.find(call.handler())
                                     .orElseThrow(() -> new IllegalStateException(
                                             call.source() + ": unknown handler " + call.handler()));
-                            switch (handler.invoke(env, input, call.args())) {
+                            HandlerMeta meta = handler.meta();
+                            switch (handler.invoke(new Invocation(env, input, call.args(), state.flowId()))) {
                                 case Outcome.Fail f -> {
                                     failed = f.error();
                                     trace.add(TraceEvent.of("call", handler.name(), failed));
                                 }
                                 case Outcome.Ok ok -> {
+                                    List<Effect> staged = effects(handler, ok);
                                     // Not retryable: a credential for someone else is not a typo.
                                     String mismatch = checkSubject(handler, ok, env);
-                                    @Nullable List<String> amr = handler.amr().isEmpty() ? null : proven(handler, ok);
+                                    @Nullable List<String> amr = meta.credential() ? proven(handler, ok) : null;
                                     trace.add(new TraceEvent(
                                             "call", handler.name(), mismatch == null ? "ok" : mismatch, amr, null));
-                                    if (mismatch != null) return end(state, env, revision, mismatch);
+                                    if (mismatch != null) return end(state, env, effects, revision, mismatch);
+                                    effects.addAll(staged);
                                     if (!ok.user().isEmpty()) env = env.withUser(ok.user());
                                     if (amr != null) {
                                         @Nullable
-                                        String subject = handler.bindsSubject()
+                                        String subject = meta.bindsSubject()
                                                 ? ok.subject()
                                                 : env.auth().subject();
                                         env = env.withVerified(subject, new Env.Verified(handler.name(), amr));
@@ -431,17 +497,17 @@ public final class Engine {
                             trace.add(TraceEvent.of("hook", hook.id(), failed == null ? "ok" : failed));
                         }
                         case Succeed succeed -> {
-                            return end(state, env, revision, succeeds(state.kind(), env));
+                            return end(state, env, effects, revision, succeeds(entry.kind(), env));
                         }
                         case Fail fail -> {
-                            return end(state, env, revision, fail.reason());
+                            return end(state, env, effects, revision, fail.reason());
                         }
                     }
                 }
             }
             if (failed != null) {
                 // Unwind to the innermost retry with attempts left and rerun its body; without one,
-                // the section fails.
+                // the entry fails.
                 Frame.@Nullable RetryExit again = null;
                 while (again == null && !stack.isEmpty()) {
                     if (stack.removeLast() instanceof Frame.RetryExit r
@@ -449,7 +515,7 @@ public final class Engine {
                         again = r;
                     }
                 }
-                if (again == null) return end(state, env, revision, failed);
+                if (again == null) return end(state, env, effects, revision, failed);
                 trace.add(TraceEvent.of("retry", null, failed));
                 stack.add(new Frame.RetryExit(again.path(), again.attempt() + 1));
                 stack.add(new Frame.Eval(child(again.path(), 0)));
@@ -457,7 +523,48 @@ public final class Engine {
                 attemptsLeft = ((Retry) resolve(root, again.path())).attempts() - again.attempt();
             }
         }
-        return end(state, env, revision, "incomplete");
+        return end(state, env, effects, revision, "incomplete");
+    }
+
+    /**
+     * Applies the writes a successful entry staged, in order, before the host is told, so a write that
+     * fails can still make the host reject. Only the request whose saved state ended the entry calls
+     * this, so they are applied at most once. A write whose precondition no longer holds, or that
+     * throws, fails the entry with its code; the rest are not applied. If the host cannot be told
+     * after the writes, they stay (the entry succeeded) and the person starts the sign in again.
+     */
+    private Run commit(Run run, List<TraceEvent> trace) {
+        if (!(run instanceof Ended e) || e.failure() != null) return run;
+        for (Effect effect : e.writes()) {
+            Handler handler = handlers.find(effect.handler())
+                    .orElseThrow(() -> new IllegalStateException("write of unknown handler " + effect.handler()));
+            @Nullable String failure;
+            try {
+                failure = handler.commit(effect);
+            } catch (RuntimeException x) {
+                failure = WRITE_ERROR;
+            }
+            if (failure != null) {
+                trace.add(TraceEvent.of("commit", handler.name(), failure));
+                return new Ended(e.state(), failure, List.of());
+            }
+        }
+        return run;
+    }
+
+    /** The effects an ok outcome carries; only a {@code write} handler may return any, and only its own. */
+    private static List<Effect> effects(Handler handler, Outcome.Ok ok) {
+        if (ok.effects().isEmpty()) return List.of();
+        if (handler.meta().effect() != HandlerMeta.EffectKind.WRITE) {
+            throw new IllegalStateException(handler.name() + " returned effects but declares effect "
+                    + handler.meta().effect().wireName());
+        }
+        for (Effect e : ok.effects()) {
+            if (!e.handler().equals(handler.name())) {
+                throw new IllegalStateException(handler.name() + " returned an effect of " + e.handler());
+            }
+        }
+        return ok.effects();
     }
 
     /**
@@ -470,7 +577,7 @@ public final class Engine {
         Map<String, Object> ctx = new LinkedHashMap<>();
         ctx.put("request", env.request());
         ctx.put("client", env.client());
-        ctx.put("hydra", env.hydra());
+        ctx.put("host", env.host());
         ctx.put("tenant", env.tenant());
         ctx.put("user", env.user());
         ctx.put("vars", env.vars());
@@ -484,15 +591,15 @@ public final class Engine {
     }
 
     /**
-     * Why a section that reached {@code succeed} still fails, or null. A login must have verified a
-     * credential for its subject, reached the assurance its tenant requires, and reached the
-     * assurance the client asked for in {@code acr_values}.
+     * Why an entry that reached {@code succeed} still fails, or null. An authenticate entry must have
+     * verified a credential for its subject, reached the assurance its tenant requires, and reached
+     * the assurance the client asked for in {@code acr_values}.
      */
-    private static @Nullable String succeeds(HostKind kind, Env env) {
-        if (kind != HostKind.LOGIN) return null;
+    private static @Nullable String succeeds(Entry.Kind kind, Env env) {
+        if (kind != Entry.Kind.AUTHENTICATE) return null;
         if (env.auth().subject() == null || env.auth().verified().isEmpty()) return "unauthenticated";
         if (!Acr.satisfies(env.auth().acr(), required(env.tenant()))) return "mfa_required";
-        return Acr.satisfies(env.auth().acr(), env.hydra().get("acr_values")) ? null : "acr_not_satisfied";
+        return Acr.satisfies(env.auth().acr(), env.host().get("acr_values")) ? null : "acr_not_satisfied";
     }
 
     /** The acr a tenant's settings require of every login, as {@code acr_values}. */
@@ -502,8 +609,8 @@ public final class Engine {
 
     /** A subject binding handler must name a subject, and must not switch to a different one. */
     private static @Nullable String checkSubject(Handler handler, Outcome.Ok ok, Env env) {
-        if (!handler.bindsSubject()) return null;
-        if (ok.subject() == null || handler.amr().isEmpty()) {
+        if (!handler.meta().bindsSubject()) return null;
+        if (ok.subject() == null || !handler.meta().credential()) {
             throw new IllegalStateException(handler.name() + " binds a subject but did not prove one");
         }
         String bound = env.auth().subject();
@@ -512,9 +619,10 @@ public final class Engine {
 
     /** The amr an invocation proved, sorted; a handler may narrow its declared amr, never widen it. */
     private static List<String> proven(Handler handler, Outcome.Ok ok) {
-        if (ok.amr() == null) return List.copyOf(new TreeSet<>(handler.amr()));
-        if (ok.amr().isEmpty() || !handler.amr().containsAll(ok.amr())) {
-            throw new IllegalStateException(handler.name() + " proved amr " + ok.amr() + " outside " + handler.amr());
+        if (ok.amr() == null) return List.copyOf(new TreeSet<>(handler.meta().amr()));
+        if (ok.amr().isEmpty() || !handler.meta().amr().containsAll(ok.amr())) {
+            throw new IllegalStateException(handler.name() + " proved amr " + ok.amr() + " outside "
+                    + handler.meta().amr());
         }
         return List.copyOf(new TreeSet<>(ok.amr()));
     }
@@ -575,42 +683,92 @@ public final class Engine {
             FlowState state,
             List<Frame> stack,
             Env env,
+            List<Effect> effects,
             long revision,
             List<Integer> path,
-            ScreenType type,
+            String type,
             Map<String, Object> data,
             @Nullable String error,
             @Nullable Integer attemptsLeft) {
-        var awaiting = new FlowState.Awaiting(
-                path, type.wireName(), currentStep(stack), randomId("n_"), data, error, attemptsLeft);
-        return new Suspended(state(state, stack, env, awaiting, revision));
+        var awaiting =
+                new FlowState.Awaiting(path, type, currentStep(stack), randomId("n_"), data, error, attemptsLeft);
+        return new Suspended(state(state, stack, env, awaiting, effects, revision));
     }
 
-    private static Ended end(FlowState state, Env env, long revision, @Nullable String failure) {
-        return new Ended(state(state, List.of(), env, null, revision), failure);
+    /** The entry ended; its staged writes go with a success and are dropped with a failure. */
+    private static Ended end(FlowState state, Env env, List<Effect> effects, long revision, @Nullable String failure) {
+        return new Ended(
+                state(state, List.of(), env, null, List.of(), revision),
+                failure,
+                failure == null ? effects : List.of());
     }
 
     private static FlowState state(
-            FlowState s, List<Frame> stack, Env env, FlowState.@Nullable Awaiting awaiting, long revision) {
+            FlowState s,
+            List<Frame> stack,
+            Env env,
+            FlowState.@Nullable Awaiting awaiting,
+            List<Effect> pending,
+            long revision) {
         return new FlowState(
-                s.flowId(), s.tenantId(), s.versionHash(), s.kind(), s.hostRef(), stack, env, awaiting, revision);
+                s.flowId(),
+                s.tenantId(),
+                s.versionHash(),
+                s.kind(),
+                s.entry(),
+                s.hostRef(),
+                s.binder(),
+                stack,
+                env,
+                awaiting,
+                pending,
+                revision);
     }
 
     // ---- edges ----
 
-    private FlowState load(String flowId) {
-        FlowState state = store.load(flowId).orElseThrow(() -> new FlowException(Code.FLOW_NOT_FOUND));
+    /**
+     * The flow, if it exists, {@code binder} is the one it was started with, and its version can
+     * still run here; a wrong binder is refused exactly like an unknown flow.
+     */
+    private FlowState load(String flowId, String binder) {
+        FlowState state = store.load(flowId)
+                .filter(s -> MessageDigest.isEqual(
+                        s.binder().getBytes(StandardCharsets.UTF_8),
+                        hash(binder).getBytes(StandardCharsets.UTF_8)))
+                .orElseThrow(() -> new FlowException(Code.FLOW_NOT_FOUND));
         if (state.awaiting() == null) {
             throw new FlowException(Code.FLOW_FINISHED);
         }
+        pinned(state);
         return state;
     }
 
-    private static ScreenView view(FlowState state) {
+    /**
+     * The version a flow pinned. One that can no longer be read (an IR format this engine dropped)
+     * or run (a handler or screen it lacks) fails the flow closed, as if it had expired: the person
+     * starts the sign in again.
+     */
+    private FlowVersion pinned(FlowState state) {
+        return versions.get(state.versionHash())
+                .filter(this::runnable)
+                .orElseThrow(() -> new FlowException(Code.FLOW_NOT_FOUND));
+    }
+
+    /** Layer L1 (ir-spec.md, Checks): everything the version names is in this engine's catalogs. */
+    private boolean runnable(FlowVersion version) {
+        return Verifier.verify(version.flow(), handlers, screens).isEmpty();
+    }
+
+    private ScreenSpec screen(String type) {
+        return screens.find(type).orElseThrow(() -> new IllegalStateException("unknown screen " + type));
+    }
+
+    private ScreenView view(FlowState state) {
         var awaiting = state.awaiting();
         if (awaiting == null) throw new FlowException(Code.FLOW_FINISHED);
-        Map<String, Object> screen = new LinkedHashMap<>(
-                ScreenType.of(awaiting.screen()).orElseThrow().render(state.env(), awaiting.data()));
+        Map<String, Object> screen =
+                new LinkedHashMap<>(screen(awaiting.screen()).render(state.env(), awaiting.data()));
         if (awaiting.error() != null) screen.put("errors", List.of(Map.of("code", awaiting.error())));
         if (awaiting.attemptsLeft() != null) screen.put("attemptsLeft", awaiting.attemptsLeft());
         return new ScreenView(state.flowId(), awaiting.nonce(), awaiting.step(), screen);
@@ -636,7 +794,7 @@ public final class Engine {
                                 Objects.requireNonNull(auth.acr()),
                                 Map.of("flowId", s.flowId(), "versionHash", s.versionHash())));
             case CONSENT -> host.accept(req, consented(req, s.env().user(), Objects.requireNonNull(auth.subject())));
-            case LOGOUT -> throw new IllegalStateException("logout is not a flow section");
+            case LOGOUT -> throw new IllegalStateException("logout runs no flow entry");
         });
         emit(
                 s,
@@ -663,9 +821,9 @@ public final class Engine {
         events.forEach(e -> previews.trace(state, e));
     }
 
-    /** The finished login whose flow id Hydra hands back in the consent request's context, if it is this subject's. */
+    /** The finished login whose flow id the host hands back in the consent request's context, if this subject's. */
     private Optional<FlowState> linkedLogin(HostRequest req, String subject) {
-        if (!(req.hydra().get("context") instanceof Map<?, ?> context
+        if (!(req.params().get("context") instanceof Map<?, ?> context
                 && context.get("flowId") instanceof String flowId)) {
             return Optional.empty();
         }
@@ -683,7 +841,7 @@ public final class Engine {
      * faye_flow_id}, the login's flow id, so it can find the run's trace.
      */
     private static Consented consented(HostRequest req, Map<String, Object> user, String subject) {
-        List<String> scopes = strings(req.hydra().get("requested_scope"));
+        List<String> scopes = strings(req.params().get("requested_scope"));
         Map<String, Object> claims = new LinkedHashMap<>();
         if (scopes.contains("email")) {
             if (user.get("email") != null) claims.put("email", user.get("email"));
@@ -691,11 +849,11 @@ public final class Engine {
         }
         if (scopes.contains("profile") && user.get("name") != null) claims.put("name", user.get("name"));
         if (Previews.isPreview(req.client())
-                && req.hydra().get("context") instanceof Map<?, ?> context
+                && req.params().get("context") instanceof Map<?, ?> context
                 && context.get("flowId") instanceof String flowId) {
             claims.put("faye_flow_id", flowId);
         }
-        return new Consented(subject, scopes, strings(req.hydra().get("requested_access_token_audience")), claims);
+        return new Consented(subject, scopes, strings(req.params().get("requested_access_token_audience")), claims);
     }
 
     private static List<String> strings(@Nullable Object list) {
@@ -716,6 +874,23 @@ public final class Engine {
         return req.client().get("metadata") instanceof Map<?, ?> meta && meta.get("tenant") instanceof String t
                 ? t
                 : DEFAULT_TENANT;
+    }
+
+    /** The binder as the flow state keeps it: hex SHA-256, so a stolen database does not hold binders. */
+    private static String hash(String binder) {
+        try {
+            return HexFormat.of()
+                    .formatHex(MessageDigest.getInstance("SHA-256").digest(binder.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** A fresh binder, 32 random bytes, for a caller to hand the browser. */
+    public static String newBinder() {
+        byte[] bytes = new byte[32];
+        RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
     private static String randomId(String prefix) {

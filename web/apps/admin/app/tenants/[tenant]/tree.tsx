@@ -25,6 +25,7 @@ import {
   remove,
   type Section,
 } from "../../../lib/flow";
+import { AUTHENTICATE, ENTRIES } from "../../../lib/entries";
 import { kindOf } from "../../../lib/kinds";
 import { describe } from "../../../lib/predicate";
 import { Chip, IconButton, Tile } from "../../ui";
@@ -48,7 +49,7 @@ export function addTarget(doc: FlowDoc, selected: string | null): { list: ListRe
   }
   const a = selected ? parseAddress(selected) : null;
   if (!a || a.path.length === 0) {
-    const section = a?.section ?? "login";
+    const section = a?.section ?? AUTHENTICATE;
     return { list: { section, owner: [], kind: "steps" }, index: doc[section]?.length ?? 0 };
   }
   const [kind, index] = a.path[a.path.length - 1];
@@ -148,9 +149,9 @@ export function Tree({
           onChange={(e) => onEdit({ ...doc, comment: e.target.value ? e.target.value.split("\n").map((l) => (l ? ` ${l}` : "")).join("\n") : undefined })}
           className="field-sizing-content -mx-2 resize-none rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] leading-5 text-muted-foreground outline-none placeholder:text-muted-foreground/60 hover:border-input focus:border-ring focus:text-foreground"
         />
-        <SectionView section="login" title="Sign in" {...ctx} />
+        <SectionView section={AUTHENTICATE} title={ENTRIES[AUTHENTICATE].title} {...ctx} />
         {doc.consent ? (
-          <SectionView section="consent" title="Consent" onRemove={() => onEdit({ ...doc, consent: undefined })} {...ctx} />
+          <SectionView section="consent" title={ENTRIES.consent.title} onRemove={() => onEdit({ ...doc, consent: undefined })} {...ctx} />
         ) : (
           <Button variant="ghost" size="sm" className="justify-self-start text-[13px] font-normal text-muted-foreground" onClick={() => onEdit({ ...doc, consent: [] })}>
             <Plus />

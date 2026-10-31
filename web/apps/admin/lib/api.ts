@@ -1,7 +1,8 @@
 /** The admin API as the browser sees it, through this app's proxy. */
 export type Problem = { source: string; line: number; column: number; message: string };
 export type PathView = {
-  section: string;
+  /** The id of the entry the path runs through. */
+  entry: string;
   path: string;
   succeeds: boolean;
   amr: string[];

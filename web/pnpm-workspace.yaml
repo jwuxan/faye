@@ -5,3 +5,8 @@ packages:
 # Build scripts pnpm may run; unrs-resolver (via eslint-config-next) ships prebuilt binaries.
 allowBuilds:
   unrs-resolver: false
+
+# geist 1.9.0 (2026-10-30) is the first release with Geist Serif. Drop this once it is older than
+# the minimum release age.
+minimumReleaseAgeExclude:
+  - geist@1.9.0

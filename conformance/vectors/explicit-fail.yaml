@@ -1,4 +1,4 @@
-name: fail ends the section with its reason
+name: fail ends the entry with its reason
 ir: flows/explicit-fail.json
 handlers:
   identity.resolve: [ok]

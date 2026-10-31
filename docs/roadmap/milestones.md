@@ -30,7 +30,7 @@ End to end sign in through Hydra with a hardcoded flow.
 2. Forms: `choose`, `when`, `retry`, `set`; predicates.
 3. Screens: `method_picker`, `passkey`, `otp`, `otp_enroll`, `consent`, `error`; passkey conditional UI on `identifier`.
 4. `amr` / `acr` computation; `skip` and step up handling; `acr_values` enforcement.
-5. Consent section linked through `context.flowId`.
+5. Consent entry linked through `context.flowId`.
 6. Enumeration safe defaults.
 
 **Exit**: three flows run from YAML with no code change: password only; passkey or password plus TOTP; consent for third party clients. `acr_values=faye:2fa` forces step up and the ID token shows the correct `amr`.

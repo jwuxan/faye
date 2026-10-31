@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * One entry of the continuation stack. Nodes are referenced by their path of child indices within
- * the section body of the pinned IR, so frames serialize to small JSON.
+ * the entry body of the pinned IR, so frames serialize to small JSON.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "t")
 @JsonSubTypes({

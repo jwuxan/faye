@@ -1,0 +1,16 @@
+flow: f
+version: 1
+login:
+  steps:
+    a:
+      set: { strict: yes, code: 0x1F, mode: "0x1F", ok: true }
+      use: identity.resolve
+    b:
+      if: { eq: [vars.mode, 010] }
+      use: password.verify
+
+# YAML 1.1 scalars that read as another type than they look are refused, not retyped; quoted they are
+# strings.
+# expect: 6:22: write a boolean as true or false, or quote 'yes'
+# expect: 6:33: write an integer in decimal within 64 bits, or quote '0x1F'
+# expect: 9:29: write an integer in decimal within 64 bits, or quote '010'

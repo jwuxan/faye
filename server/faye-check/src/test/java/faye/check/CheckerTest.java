@@ -7,6 +7,7 @@ import faye.engine.FlowVersion;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.TenantPolicy;
 import faye.ir.Flow;
+import faye.ir.IrCodec;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -41,7 +42,7 @@ class CheckerTest {
     @Test
     void summarizesPathsAndAssurance() {
         assertThat(check(Fixtures.tenantFlow("password-only")).summary())
-                .isEqualTo("login: 3 success paths, 2 failure paths; assurance pwd (faye:1fa) to pwd (faye:1fa)");
+                .isEqualTo("login: 3 success paths, 5 failure paths; assurance pwd (faye:1fa) to pwd (faye:1fa)");
         assertThat(check(Fixtures.tenantFlow("passkey-totp")).summary())
                 .startsWith("login: ")
                 .endsWith("assurance user (faye:1fa) to hwk+pwd+user (faye:2fa)");
@@ -111,7 +112,7 @@ class CheckerTest {
         assertThat(errors(check(flow)))
                 .singleElement()
                 .asString()
-                .startsWith("tenant.yaml:7:12: password.verify runs before identity.resolve");
+                .startsWith("tenant.yaml:7:12: password.verify runs before any handler identifies the person");
     }
 
     @Test
@@ -217,14 +218,15 @@ class CheckerTest {
                 """);
         assertThat(check(flow).warnings().stream().map(Finding::toString))
                 .contains(
-                        "tenant.yaml:10:9: 'alternative' has a single option; use its body directly",
+                        "tenant.yaml:10:9: a choose has a single option; use its body directly",
                         "tenant.yaml:14:14: retry without a screen asks nothing new on each attempt",
                         "tenant.yaml:17:11: never runs: its condition is false on every path that reaches it");
     }
 
     @Test
     void retryEnumeratesFailuresBeforeASuccess() {
-        // password-only: succeed on attempt 1, 2 or 3, or fail all three
+        // password-only: succeed on attempt 1, 2 or 3, or fail all three; or, on any attempt, prove
+        // someone other than a subject already bound, which ends the entry unretried
         List<FlowPath> credential = check(Fixtures.tenantFlow("password-only")).paths().stream()
                 .filter(p -> p.events().stream().anyMatch(e -> e instanceof FlowPath.Called c && c.ok()))
                 .toList();
@@ -233,7 +235,7 @@ class CheckerTest {
                                 .filter(e -> e instanceof FlowPath.Called c
                                         && c.handler().equals("password.verify"))
                                 .count()))
-                .containsExactlyInAnyOrder(1L, 2L, 3L, 3L);
+                .containsExactlyInAnyOrder(1L, 2L, 3L, 3L, 1L, 2L, 3L);
     }
 
     /** A later attempt runs with what an earlier one verified, so a condition false at first may hold. */
@@ -295,7 +297,8 @@ class CheckerTest {
                       use: password.verify
                 """);
         assertThat(errors(check(flow)))
-                .anySatisfy(e -> assertThat(e).contains("password.verify runs before identity.resolve"));
+                .anySatisfy(
+                        e -> assertThat(e).contains("password.verify runs before any handler identifies the person"));
     }
 
     @Test
@@ -319,5 +322,75 @@ class CheckerTest {
         assertThat(open.rollback("t", first.hash())).isEqualTo(first);
         assertThat(versions.current("t")).contains(first);
         assertThatThrownBy(() -> open.rollback("other", first.hash())).isInstanceOf(NoSuchElementException.class);
+    }
+
+    // ---- ADR 0024: rules keyed by entry kind, and the verifier's catalog checks ----
+
+    @Test
+    void aConsentEntryCannotVerifyACredential() {
+        Flow flow = Fixtures.yaml("tenant.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    identify: { screen: identifier, use: identity.resolve }
+                    credential: { screen: password, use: password.verify }
+                consent:
+                  steps:
+                    again: { screen: password, use: password.verify }
+                """);
+        assertThat(errors(check(flow)))
+                .containsExactly("tenant.yaml:9:37: password.verify verifies a credential; a consent entry only grants"
+                        + " access to a subject its authenticate entry proved");
+    }
+
+    @Test
+    void aCredentialWriteNeedsAVerifiedSubjectFirst() {
+        Flow flow = Fixtures.yaml("tenant.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    identify: { screen: identifier, use: identity.resolve }
+                    enroll: { screen: { type: passkey, register: true }, use: webauthn.register }
+                    credential: { screen: password, use: password.verify }
+                """);
+        assertThat(errors(check(flow)))
+                .isNotEmpty()
+                .allSatisfy(e -> assertThat(e)
+                        .startsWith("tenant.yaml:6:63: webauthn.register needs a subject a credential verified"
+                                + " earlier in the flow, but runs first on the path"));
+    }
+
+    @Test
+    void entriesAreOnePerKindWithAnAuthenticateEntry() {
+        String succeed = "[\"seq\",[\"step\",\"c\",[\"seq\",[\"screen\",\"identifier\"],"
+                + "[\"call\",\"identity.resolve\"],[\"screen\",\"password\"],[\"call\",\"password.verify\"]]],"
+                + "[\"succeed\"]]";
+        Flow consentOnly = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"grant\",\"consent\",[\"succeed\"]]]");
+        assertThat(errors(check(consentOnly))).containsExactly(": a flow needs an authenticate entry");
+        Flow twice = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"a\",\"authenticate\"," + succeed + "],"
+                + "[\"entry\",\"b\",\"authenticate\"," + succeed + "]]");
+        assertThat(errors(check(twice))).contains(": entry 'b' is a second authenticate entry; a flow has at most one");
+    }
+
+    @Test
+    void theVerifierRefusesUnknownScreenOptionsAndBadArgs() {
+        Flow flow = Fixtures.yaml("tenant.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    identify: { screen: { type: identifier, pasky: true }, use: identity.resolve }
+                    credential: { screen: password, use: password.verify }
+                """);
+        assertThat(errors(check(flow)))
+                .containsExactly("tenant.yaml:5:25: screen 'identifier' has no option 'pasky'; it takes [passkey]");
+        Flow args = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"call\",\"identity.resolve\",{\"lowercase\":true}],"
+                + "[\"call\",\"password.verify\"],[\"succeed\"]]]]");
+        assertThat(errors(check(args)))
+                .singleElement()
+                .satisfies(e -> assertThat(e).startsWith(": args of 'identity.resolve': "));
     }
 }

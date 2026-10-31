@@ -78,7 +78,7 @@ public final class HydraFlowHost implements FlowHost {
             }
             return new HostRequest(kind, challenge, client(client), hydra);
         } catch (ApiException e) {
-            throw failure("GET", kind.section(), e);
+            throw failure("GET", segment(kind), e);
         }
     }
 
@@ -130,7 +130,7 @@ public final class HydraFlowHost implements FlowHost {
                 }
             };
         } catch (ApiException e) {
-            throw failure("PUT", request.kind().section() + "/reject", e);
+            throw failure("PUT", segment(request.kind()) + "/reject", e);
         }
     }
 
@@ -202,5 +202,14 @@ public final class HydraFlowHost implements FlowHost {
             return l == (int) l ? (Object) (int) l : l;
         }
         return value;
+    }
+
+    /** Hydra's admin path segment for a kind of challenge. */
+    private static String segment(HostKind kind) {
+        return switch (kind) {
+            case LOGIN -> "login";
+            case CONSENT -> "consent";
+            case LOGOUT -> "logout";
+        };
     }
 }

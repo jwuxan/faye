@@ -96,13 +96,16 @@ class FlowApiTest {
 
     @Test
     void signsInThroughTheScreenProtocol() throws Exception {
-        String location = mvc.perform(get("/login").param("login_challenge", "c-api"))
+        var started = mvc.perform(get("/login").param("login_challenge", "c-api"))
                 .andExpect(status().isFound())
                 .andReturn()
-                .getResponse()
-                .getRedirectedUrl();
+                .getResponse();
+        String location = started.getRedirectedUrl();
         assertThat(location).startsWith("http://localhost:3000/flow/f_");
         String flowId = flowId(location);
+        String binder = java.net.HttpCookie.parse(java.util.Objects.requireNonNull(started.getHeader("Set-Cookie")))
+                .get(0)
+                .getValue();
 
         JsonNode identifier = call(get("/api/flows/" + flowId), status().isOk());
         assertThat(identifier.at("/screen/type").asText()).isEqualTo("identifier");
@@ -115,7 +118,23 @@ class FlowApiTest {
         JsonNode stale = submit(flowId, identifier, Map.of("identifier", "x"), status().isConflict());
         assertThat(stale.at("/error").asText()).isEqualTo("stale_nonce");
 
-        JsonNode done = submit(flowId, password, Map.of("password", "correct horse battery staple"), status().isOk());
+        var finished = mvc.perform(post("/api/flows/" + flowId + "/submit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(JSON.writeValueAsString(Map.of(
+                                "nonce",
+                                password.get("nonce").asText(),
+                                "action",
+                                "submit",
+                                "payload",
+                                Map.of("password", "correct horse battery staple")))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse();
+        // A finished flow expires its cookie
+        assertThat(finished.getHeader("Set-Cookie"))
+                .startsWith(FlowController.COOKIE_PREFIX + flowId + "=;")
+                .contains("Max-Age=0");
+        JsonNode done = JSON.readTree(finished.getContentAsString());
         assertThat(done.at("/redirectTo").asText()).contains("challenge=c-api", "result=accepted");
         assertThat(host.accepted()).anySatisfy(a -> {
             assertThat(a.request().challenge()).isEqualTo("c-api");
@@ -123,7 +142,17 @@ class FlowApiTest {
             assertThat(a.outcome().amr()).containsExactly("pwd");
         });
 
-        assertThat(call(get("/api/flows/" + flowId), status().isGone())
+        // The browser dropped the expired cookie, so the finished flow is no longer its own
+        assertThat(call(get("/api/flows/" + flowId), status().isNotFound())
+                        .at("/error")
+                        .asText())
+                .isEqualTo("flow_not_found");
+        // A browser still holding the binder learns the flow finished
+        assertThat(call(
+                                get("/api/flows/" + flowId)
+                                        .cookie(new jakarta.servlet.http.Cookie(
+                                                FlowController.COOKIE_PREFIX + flowId, binder)),
+                                status().isGone())
                         .at("/error")
                         .asText())
                 .isEqualTo("flow_finished");
@@ -188,6 +217,49 @@ class FlowApiTest {
                         .at("/error")
                         .asText())
                 .isEqualTo("invalid_submission");
+    }
+
+    /**
+     * ADR 0024: {@code /login} binds the flow to the browser with an HttpOnly, Lax cookie, and
+     * reading or answering the flow without that cookie's value is answered as for an unknown flow.
+     */
+    @Test
+    void aFlowNeedsTheBinderOfTheBrowserThatStartedIt() throws Exception {
+        var response = mvc.perform(get("/login").param("login_challenge", "c-bound"))
+                .andExpect(status().isFound())
+                .andReturn()
+                .getResponse();
+        String flowId = flowId(response.getRedirectedUrl());
+        String cookie = java.util.Objects.requireNonNull(response.getHeader("Set-Cookie"));
+        assertThat(cookie)
+                .startsWith(FlowController.COOKIE_PREFIX + flowId + "=")
+                .contains("HttpOnly", "SameSite=Lax", "Path=/", "Max-Age=")
+                // Tests reach the server as localhost
+                .doesNotContain("Secure");
+
+        var other = new jakarta.servlet.http.Cookie("other", "x");
+        var wrong = new jakarta.servlet.http.Cookie(FlowController.COOKIE_PREFIX + flowId, "not-the-binder");
+        for (var c : List.of(other, wrong)) {
+            assertThat(call(get("/api/flows/" + flowId).cookie(c), status().isNotFound())
+                            .at("/error")
+                            .asText())
+                    .isEqualTo("flow_not_found");
+            var body = Map.of("nonce", "n_x", "action", "submit", "payload", Map.of("identifier", "a@example.com"));
+            assertThat(call(
+                                    post("/api/flows/" + flowId + "/submit")
+                                            .cookie(c)
+                                            .contentType(MediaType.APPLICATION_JSON)
+                                            .content(JSON.writeValueAsString(body)),
+                                    status().isNotFound())
+                            .at("/error")
+                            .asText())
+                    .isEqualTo("flow_not_found");
+        }
+        // The browser that started it, which holds the cookie, gets the screen
+        assertThat(call(get("/api/flows/" + flowId), status().isOk())
+                        .at("/screen/type")
+                        .asText())
+                .isEqualTo("identifier");
     }
 
     /** The flow id at the end of the Login UI URL that {@code /login} redirects to. */

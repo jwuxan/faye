@@ -30,8 +30,9 @@ The prototype succeeds when the six statements above are demonstrably true. Succ
 | Document | Contents |
 |---|---|
 | [architecture.md](architecture.md) | Components, boundaries, repository layout, tech stack |
-| [dsl-and-ir.md](dsl-and-ir.md) | YAML surface syntax, S expression IR, special forms, static checks |
-| [engine.md](engine.md) | Suspendable interpreter, continuations, versioning, conformance suite |
+| [ir-spec.md](ir-spec.md) | Normative semantics of the Core IR: entries, forms, failures, effects, checks, hashing, versioning |
+| [dsl-and-ir.md](dsl-and-ir.md) | The YAML surface and how it lowers to the IR |
+| [engine.md](engine.md) | How the reference engine runs the IR: continuations, effects, catalogs, versions, conformance suite |
 | [hooks.md](hooks.md) | JavaScript hook contract, sandbox, capabilities |
 | [hydra-integration.md](hydra-integration.md) | Login, consent and logout challenges, amr / acr, the FlowHost interface |
 | [login-experience.md](login-experience.md) | Identity first login, typed screen protocol, design system |

@@ -4,47 +4,31 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import faye.ir.Call;
-import faye.ir.Choose;
-import faye.ir.Fail;
+import faye.ir.Entry;
 import faye.ir.Flow;
-import faye.ir.Hook;
 import faye.ir.HookDef;
 import faye.ir.IrCodec;
 import faye.ir.IrException;
-import faye.ir.Node;
-import faye.ir.Predicate;
-import faye.ir.Retry;
-import faye.ir.Screen;
-import faye.ir.Seq;
-import faye.ir.SetVar;
 import faye.ir.SourceRef;
-import faye.ir.Step;
-import faye.ir.Succeed;
-import faye.ir.When;
-import java.io.StringReader;
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
-import org.yaml.snakeyaml.LoaderOptions;
-import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.SafeConstructor;
-import org.yaml.snakeyaml.error.MarkedYAMLException;
-import org.yaml.snakeyaml.nodes.MappingNode;
-import org.yaml.snakeyaml.nodes.NodeTuple;
-import org.yaml.snakeyaml.nodes.ScalarNode;
-import org.yaml.snakeyaml.nodes.SequenceNode;
-import org.yaml.snakeyaml.nodes.Tag;
 
 /**
- * Compiles the YAML surface syntax to IR. Every IR node carries the YAML position it came from.
+ * Lowers the YAML surface syntax to Core IR. {@link YamlReader} reads the YAML into a positioned
+ * {@link Doc}; lowering turns that into IR JSON, remembering which part of the document each JSON
+ * node came from; {@link IrCodec} then checks the JSON against the one grammar ({@code
+ * schema/ir.schema.json}) and every violation is reported at the YAML that produced it. The
+ * compiler keeps no copy of the grammar: it checks only what exists in the surface alone (its
+ * keys, hook declarations and files).
  *
  * <p>Supported surface:
  *
@@ -56,33 +40,40 @@ import org.yaml.snakeyaml.nodes.Tag;
  *     file: name.js | source: inline JavaScript
  *     capabilities: { http: [target] }     # optional
  *     timeout_ms: 200                      # optional
- * login | consent:
+ * login | consent:                         # entries of kind authenticate | consent
  *   steps:
  *     step-id:
- *       if: predicate                      # (when predicate ...)
+ *       if: predicate                      # (when predicate ...); on an option, its guard
  *       retry: 3                           # (retry 3 ...)
  *       set: { name: literal }             # (set name literal), first
  *       hook: hook-id                      # (hook hook-id hash)
  *       screen: type | { type: t, opt: literal }
  *       use: handler
- *       alternative: { option-id: body }   # (choose (opt option-id body) ...); or
- *       pick: hook-id                      # with alternative: (choose (hook ...) (opt ...) ...)
+ *       alternative: { option-id: body }   # (choose ((opt option-id body) ...)); or
+ *       pick: hook-id                      # with alternative: (choose (...) {:pick (hook ...)})
  *       steps: { step-id: body }           # nested steps
  *       fail: reason                       # last
  * </pre>
  *
  * A body needs at least one of set, hook, screen, use, alternative, steps, fail; its parts run in
- * the order above. Option bodies take the same keys. Predicates use the IR form ({@code eq},
- * {@code and}, ...). Each section compiles to {@code (seq (step ...) ... (succeed))}. A hook is
- * pinned by the hash of its definition ({@link HookDef}).
+ * the order above. Option bodies take the same keys. Predicates have the IR shape ({@code eq},
+ * {@code and}, ...); a path may still say {@code hydra.} for {@code host.}. Each entry compiles to
+ * {@code (seq (step ...) ... (succeed))}. A hook is pinned by the hash of its definition ({@link
+ * HookDef}). docs/roadmap/dsl-and-ir.md has the lowering table.
  */
 public final class FlowCompiler {
 
-    private static final Pattern ID = Pattern.compile("[a-z][a-z0-9_-]*");
-    private static final Pattern NAME = Pattern.compile("[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*");
-    private static final Pattern KEY = Pattern.compile("[a-z][a-z0-9_]*");
-
+    /** A hook file name: surface only, it never reaches the IR. */
     private static final Pattern FILE = Pattern.compile("[a-z0-9][a-z0-9_-]*\\.js");
+
+    /** The YAML keys that are entries, and the kind each lowers to. */
+    private static final Map<String, Entry.Kind> ENTRIES =
+            new LinkedHashMap<>(Map.of("login", Entry.Kind.AUTHENTICATE, "consent", Entry.Kind.CONSENT));
+
+    /** The namespace the YAML surface still accepts for {@code host.}. */
+    private static final String HOST_ALIAS = "hydra.";
+
+    private static final JsonNodeFactory JSON = JsonNodeFactory.instance;
 
     /**
      * A compiled flow and the definitions of the hooks it references, by hash.
@@ -95,13 +86,24 @@ public final class FlowCompiler {
         }
     }
 
+    /** Where a JSON node came from, and what the author would call it. */
+    private record Mark(SourceRef source, String what) {}
+
+    /** A declared hook: its definition's hash and where it was declared. */
+    private record Declared(String hash, SourceRef source) {}
+
+    /** Hooks declared with an error already reported, so a reference to one is not reported again. */
+    private final java.util.Set<String> broken = new java.util.HashSet<>();
+
     private final String origin;
     private final Function<String, Optional<String>> files;
     private final List<Diagnostic> errors = new ArrayList<>();
-    /** Declared hooks by id, and the definitions they compiled to. */
-    private final Map<String, Hook> declared = new LinkedHashMap<>();
-
+    private final Map<String, Declared> declared = new LinkedHashMap<>();
     private final Map<String, HookDef> hooks = new LinkedHashMap<>();
+    /** Marks of JSON containers, and of scalars by their container and index. */
+    private final Map<JsonNode, Mark> marks = new IdentityHashMap<>();
+
+    private final Map<JsonNode, Map<Integer, Mark>> childMarks = new IdentityHashMap<>();
 
     private FlowCompiler(String origin, Function<String, Optional<String>> files) {
         this.origin = origin;
@@ -122,400 +124,534 @@ public final class FlowCompiler {
         return new Compiled(flow, compiler.hooks);
     }
 
-    private Flow compile(String yaml) {
-        org.yaml.snakeyaml.nodes.Node root;
-        try {
-            root = new Yaml(new SafeConstructor(new LoaderOptions())).compose(new StringReader(yaml));
-        } catch (MarkedYAMLException e) {
-            var mark = e.getProblemMark();
-            throw new DslException(List.of(
-                    new Diagnostic(new SourceRef(origin, mark.getLine() + 1, mark.getColumn() + 1), e.getProblem())));
-        }
-        if (!(root instanceof MappingNode top)) {
-            throw new DslException(List.of(new Diagnostic(new SourceRef(origin, 1, 1), "expected a mapping")));
-        }
-
-        String id = null;
-        Integer version = null;
-        Map<String, Node> sections = new LinkedHashMap<>();
-        // Hooks first, so steps can refer to them wherever they are declared
-        NodeTuple hookSection = entries(top).get("hooks");
-        if (hookSection != null) hooks(hookSection.getValueNode());
-        for (var e : entries(top).entrySet()) {
-            NodeTuple t = e.getValue();
-            switch (e.getKey()) {
-                case "flow" -> id = scalar(t.getValueNode(), ID, "flow id");
-                case "version" -> version = version(t.getValueNode());
-                case "hooks" -> {}
-                case "login", "consent" -> sections.put(e.getKey(), section(t));
-                default -> error(t.getKeyNode(), "unknown key '" + e.getKey() + "'");
-            }
-        }
-        if (id == null) error(top, "missing 'flow'");
-        if (version == null) error(top, "missing 'version'");
-        if (!sections.containsKey("login")) error(top, "missing 'login' section");
-        if (!errors.isEmpty() || id == null || version == null) throw new DslException(errors);
-        return new Flow(id, version, sections);
+    /** The IR JSON the YAML lowers to, before any check; for golden tests and tools. */
+    static JsonNode lower(String origin, String yaml) {
+        FlowCompiler compiler = new FlowCompiler(origin, name -> Optional.empty());
+        YamlReader.Read read = YamlReader.read(origin, yaml);
+        compiler.errors.addAll(read.errors());
+        ArrayNode json = compiler.lower(read.doc());
+        if (!compiler.errors.isEmpty()) throw new DslException(compiler.sorted(compiler.errors));
+        return json;
     }
 
-    private void hooks(org.yaml.snakeyaml.nodes.Node section) {
-        if (!(section instanceof MappingNode m)) {
-            error(section, "'hooks' must be a mapping of hook id to hook");
+    private Flow compile(String yaml) {
+        YamlReader.Read read = YamlReader.read(origin, yaml);
+        errors.addAll(read.errors());
+        ArrayNode json = lower(read.doc());
+        Map<String, Mark> table = pointers(json);
+        List<Diagnostic> all = new ArrayList<>(errors);
+        // The grammar has something to say only once the surface gave an id, a version and an entry
+        if (json.size() >= 5) {
+            // A value the surface already refused is not reported again by the grammar
+            java.util.Set<SourceRef> reported = new java.util.HashSet<>();
+            errors.forEach(d -> reported.add(d.source()));
+            for (IrException e : IrCodec.errors(json)) {
+                Diagnostic d = diagnostic(table, e);
+                if (!reported.contains(d.source())) all.add(d);
+            }
+        }
+        if (!all.isEmpty()) throw new DslException(sorted(all));
+        try {
+            return IrCodec.readFlow(json, at -> mark(table, at).source());
+        } catch (IrException e) {
+            throw new DslException(List.of(diagnostic(table, e)));
+        }
+    }
+
+    // ---- lowering ----
+
+    private ArrayNode lower(Doc doc) {
+        ArrayNode flow = JSON.arrayNode().add("flow").add(IrCodec.FORMAT);
+        if (!(doc instanceof Doc.Map top)) {
+            error(doc.source(), "expected a mapping");
+            return flow;
+        }
+        mark(flow, top.source(), "flow");
+        // Hooks first, so steps can refer to them wherever they are declared
+        Doc.Entry hookSection = top.entries().get("hooks");
+        if (hookSection != null) hooks(hookSection.value());
+        Doc.Entry id = top.entries().get("flow");
+        Doc.Entry version = top.entries().get("version");
+        if (id == null) error(top.source(), "missing 'flow'");
+        if (version == null) error(top.source(), "missing 'version'");
+        if (id == null || version == null) return flow;
+        flow.add(scalar(id.value()));
+        markChild(flow, 2, id.value().source(), "flow id");
+        flow.add(scalar(version.value()));
+        markChild(flow, 3, version.value().source(), "version");
+
+        top.entries().forEach((key, e) -> {
+            switch (key) {
+                case "flow", "version", "hooks" -> {}
+                default -> {
+                    Entry.Kind kind = ENTRIES.get(key);
+                    if (kind == null) {
+                        error(e.key(), "unknown key '" + key + "'");
+                    } else {
+                        ArrayNode entry = JSON.arrayNode().add("entry").add(key).add(kind.wireName());
+                        entry.add(entryBody(e));
+                        mark(entry, e.key(), "'" + key + "'");
+                        flow.add(entry);
+                    }
+                }
+            }
+        });
+        if (ENTRIES.keySet().stream().noneMatch(top.entries()::containsKey)) {
+            error(top.source(), "missing 'login'");
+        }
+        return flow;
+    }
+
+    /** {@code (seq (step ...) ... (succeed))}, all at the entry's key. */
+    private JsonNode entryBody(Doc.Entry entry) {
+        ArrayNode seq = JSON.arrayNode().add("seq");
+        mark(seq, entry.key(), "steps");
+        if (entry.value() instanceof Doc.Map body) {
+            body.entries().forEach((key, e) -> {
+                if (!key.equals("steps")) {
+                    error(e.key(), "unknown key '" + key + "'");
+                } else if (e.value() instanceof Doc.Map steps) {
+                    steps(steps).forEach(seq::add);
+                } else {
+                    error(e.value().source(), "'steps' must be a mapping of step id to step");
+                }
+            });
+        } else {
+            error(entry.value().source(), "an entry must be a mapping with 'steps'");
+        }
+        ArrayNode succeed = JSON.arrayNode().add("succeed");
+        mark(succeed, entry.key(), "succeed");
+        return seq.add(succeed);
+    }
+
+    private List<JsonNode> steps(Doc.Map steps) {
+        List<JsonNode> out = new ArrayList<>();
+        steps.entries().forEach((id, step) -> {
+            if (!(step.value() instanceof Doc.Map body)) {
+                error(step.value().source(), "step must be a mapping");
+                return;
+            }
+            Lowered inner = body(body, step.key(), "step", false);
+            if (inner == null) return;
+            ArrayNode node = JSON.arrayNode().add("step").add(id).add(inner.node());
+            mark(node, step.key(), "step");
+            markChild(node, 1, step.key(), "step id");
+            out.add(node);
+        });
+        return out;
+    }
+
+    /** A lowered body, and for an option the guard its {@code if} became. */
+    private record Lowered(JsonNode node, @Nullable JsonNode guard) {}
+
+    /**
+     * A step or option body: its parts in a fixed order, wrapped in retry, then in when (a step) or
+     * guarded (an option).
+     */
+    private @Nullable Lowered body(Doc.Map body, SourceRef owner, String what, boolean option) {
+        List<JsonNode> sets = new ArrayList<>();
+        JsonNode hook = null;
+        JsonNode pick = null;
+        Doc.Entry pickAt = null;
+        Doc.Map alternative = null;
+        JsonNode screen = null;
+        JsonNode call = null;
+        JsonNode nested = null;
+        JsonNode fail = null;
+        JsonNode test = null;
+        Doc.Entry testAt = null;
+        Doc.Entry retryAt = null;
+        for (var e : body.entries().entrySet()) {
+            Doc value = e.getValue().value();
+            switch (e.getKey()) {
+                case "if" -> {
+                    test = predicate(value);
+                    testAt = e.getValue();
+                }
+                case "retry" -> retryAt = e.getValue();
+                case "set" -> {
+                    if (value instanceof Doc.Map vars) {
+                        vars.entries().forEach((name, v) -> {
+                            ArrayNode set =
+                                    JSON.arrayNode().add("set").add(name).add(scalar(v.value()));
+                            mark(set, v.key(), "set");
+                            markChild(set, 1, v.key(), "variable name");
+                            markChild(set, 2, v.value().source(), "value of " + name);
+                            sets.add(set);
+                        });
+                    } else {
+                        error(value.source(), "'set' must be a mapping of variable name to literal");
+                    }
+                }
+                case "hook" -> hook = hookRef(value);
+                case "pick" -> {
+                    pick = hookRef(value);
+                    pickAt = e.getValue();
+                }
+                case "screen" -> screen = screen(value);
+                case "use" -> {
+                    ArrayNode node = JSON.arrayNode().add("call").add(scalar(value));
+                    mark(node, value.source(), "use");
+                    markChild(node, 1, value.source(), "handler name");
+                    call = node;
+                }
+                case "alternative", "steps" -> {
+                    if (nested != null || alternative != null) {
+                        error(e.getValue().key(), "'alternative' and 'steps' cannot be combined");
+                    } else if (!(value instanceof Doc.Map m) || m.entries().isEmpty()) {
+                        error(value.source(), "'" + e.getKey() + "' must be a non empty mapping");
+                    } else if (e.getKey().equals("steps")) {
+                        List<JsonNode> children = steps(m);
+                        if (children.size() == 1) {
+                            nested = children.get(0);
+                        } else if (!children.isEmpty()) {
+                            ArrayNode seq = JSON.arrayNode().add("seq");
+                            children.forEach(seq::add);
+                            mark(seq, value.source(), "steps");
+                            nested = seq;
+                        }
+                    } else {
+                        // Lowered once the whole body is read, since 'pick' may come after it
+                        alternative = m;
+                    }
+                }
+                case "fail" -> {
+                    ArrayNode node = JSON.arrayNode().add("fail").add(scalar(value));
+                    mark(node, value.source(), "fail");
+                    markChild(node, 1, value.source(), "fail reason");
+                    fail = node;
+                }
+                default -> error(e.getValue().key(), "unknown " + what + " key '" + e.getKey() + "'");
+            }
+        }
+        if (pickAt != null && alternative == null) {
+            error(pickAt.value().source(), "'pick' needs an 'alternative' to pick from");
+        }
+        if (alternative != null) nested = alternative(alternative, pick);
+        List<JsonNode> parts = new ArrayList<>(sets);
+        for (JsonNode part : new JsonNode[] {hook, screen, call, nested, fail}) {
+            if (part != null) parts.add(part);
+        }
+        if (parts.isEmpty()) {
+            // An unknown hook was reported where it is named
+            if (!body.entries().containsKey("hook")) {
+                error(owner, what + " needs one of 'set', 'hook', 'screen', 'use', 'alternative', 'steps' or 'fail'");
+            }
+            return null;
+        }
+        JsonNode inner = parts.get(0);
+        if (parts.size() > 1) {
+            ArrayNode seq = JSON.arrayNode().add("seq");
+            parts.forEach(seq::add);
+            mark(seq, owner, what);
+            inner = seq;
+        }
+        if (retryAt != null) {
+            ArrayNode retry =
+                    JSON.arrayNode().add("retry").add(scalar(retryAt.value())).add(inner);
+            mark(retry, retryAt.value().source(), "retry");
+            markChild(retry, 1, retryAt.value().source(), "retry");
+            inner = retry;
+        }
+        if (test == null || testAt == null) return new Lowered(inner, null);
+        if (option) {
+            ObjectNode guard = JSON.objectNode().set("guard", test);
+            mark(guard, testAt.value().source(), "if");
+            return new Lowered(inner, guard);
+        }
+        ArrayNode when = JSON.arrayNode().add("when").add(test).add(inner);
+        mark(when, testAt.value().source(), "if");
+        return new Lowered(when, null);
+    }
+
+    private @Nullable JsonNode alternative(Doc.Map options, @Nullable JsonNode pick) {
+        ArrayNode list = JSON.arrayNode();
+        options.entries().forEach((id, option) -> {
+            if (!(option.value() instanceof Doc.Map body)) {
+                error(option.value().source(), "option must be a mapping");
+                return;
+            }
+            Lowered inner = body(body, option.key(), "option", true);
+            if (inner == null) return;
+            ArrayNode opt = JSON.arrayNode().add("opt").add(id).add(inner.node());
+            if (inner.guard() != null) opt.add(inner.guard());
+            mark(opt, option.key(), "option");
+            markChild(opt, 1, option.key(), "option id");
+            list.add(opt);
+        });
+        if (list.isEmpty()) return null;
+        ArrayNode choose = JSON.arrayNode().add("choose").add(list);
+        if (pick != null) choose.add(JSON.objectNode().set("pick", pick));
+        mark(choose, options.source(), "alternative");
+        return choose;
+    }
+
+    /** {@code type} or {@code { type: t, opt: literal, ... }}. */
+    private JsonNode screen(Doc value) {
+        ArrayNode node = JSON.arrayNode().add("screen");
+        mark(node, value.source(), "screen");
+        if (!(value instanceof Doc.Map m)) {
+            markChild(node, 1, value.source(), "screen type");
+            return node.add(scalar(value));
+        }
+        Doc.Entry type = m.entries().get("type");
+        if (type == null) {
+            error(value.source(), "screen needs a 'type'");
+            return node.add("invalid");
+        }
+        node.add(scalar(type.value()));
+        markChild(node, 1, type.value().source(), "screen type");
+        ObjectNode opts = JSON.objectNode();
+        m.entries().forEach((k, v) -> {
+            if (!k.equals("type")) opts.set(k, scalar(v.value()));
+        });
+        if (!opts.isEmpty()) {
+            mark(opts, value.source(), "screen options");
+            node.add(opts);
+        }
+        return node;
+    }
+
+    /**
+     * An {@code if} as an IR predicate. Paths are rewritten from the {@code hydra.} spelling to
+     * {@code host.}; the grammar checks the rest.
+     */
+    private JsonNode predicate(Doc value) {
+        JsonNode json = json(value);
+        JsonNode out = hostPaths(json);
+        if (out.isContainerNode()) mark(out, value.source(), "if");
+        return out;
+    }
+
+    /** Rewrites the paths of a predicate (a bare path, an operand of exists, the left of a comparison). */
+    private static JsonNode hostPaths(JsonNode p) {
+        if (p.isTextual()) {
+            String path = p.textValue();
+            return path.startsWith(HOST_ALIAS) ? JSON.textNode("host." + path.substring(HOST_ALIAS.length())) : p;
+        }
+        if (!(p instanceof ObjectNode o) || o.size() != 1) return p;
+        var e = o.properties().iterator().next();
+        JsonNode arg = e.getValue();
+        JsonNode rewritten = switch (e.getKey()) {
+            case "and", "or" -> {
+                ArrayNode all = JSON.arrayNode();
+                arg.forEach(q -> all.add(hostPaths(q)));
+                yield arg.isArray() ? all : arg;
+            }
+            case "not", "exists" -> hostPaths(arg);
+            default -> {
+                if (!arg.isArray() || arg.isEmpty()) yield arg;
+                ArrayNode copy = ((ArrayNode) arg).deepCopy();
+                copy.set(0, hostPaths(arg.get(0)));
+                yield copy;
+            }
+        };
+        return JSON.objectNode().set(e.getKey(), rewritten);
+    }
+
+    /** The node for a reference to a declared hook, at the position of the reference. */
+    private @Nullable JsonNode hookRef(Doc value) {
+        if (!(value instanceof Doc.Scalar s && s.value() instanceof String id)) {
+            error(value.source(), "a hook is named by its id under 'hooks'");
+            return null;
+        }
+        Declared hook = declared.get(id);
+        if (hook == null) {
+            if (!broken.contains(id)) error(value.source(), "unknown hook '" + id + "'; declare it under 'hooks'");
+            return null;
+        }
+        ArrayNode node = JSON.arrayNode().add("hook").add(id).add(hook.hash());
+        mark(node, value.source(), "hook");
+        markChild(node, 1, hook.source(), "hook id");
+        return node;
+    }
+
+    // ---- hooks ----
+
+    private void hooks(Doc section) {
+        if (!(section instanceof Doc.Map m)) {
+            error(section.source(), "'hooks' must be a mapping of hook id to hook");
             return;
         }
-        entries(m).forEach((id, t) -> {
-            if (!ID.matcher(id).matches()) error(t.getKeyNode(), "hook id must match " + ID);
-            if (t.getValueNode() instanceof MappingNode body) {
+        m.entries().forEach((id, e) -> {
+            if (e.value() instanceof Doc.Map body) {
                 HookDef def = hook(body);
                 if (def != null) {
-                    declared.put(id, new Hook(id, def.hash(), ref(t.getKeyNode())));
+                    declared.put(id, new Declared(def.hash(), e.key()));
                     hooks.put(def.hash(), def);
+                } else {
+                    broken.add(id);
                 }
             } else {
-                error(t.getValueNode(), "hook must be a mapping");
+                error(e.value().source(), "hook must be a mapping");
             }
         });
     }
 
-    private @Nullable HookDef hook(MappingNode body) {
+    private @Nullable HookDef hook(Doc.Map body) {
         String source = null;
         List<String> http = new ArrayList<>();
         int timeout = HookDef.DEFAULT_TIMEOUT_MS;
-        for (var e : entries(body).entrySet()) {
-            var value = e.getValue().getValueNode();
+        for (var e : body.entries().entrySet()) {
+            Doc value = e.getValue().value();
             switch (e.getKey()) {
                 case "file" -> {
-                    String name = scalar(value, FILE, "hook file");
-                    Optional<String> text = FILE.matcher(name).matches() ? files.apply(name) : Optional.empty();
-                    if (text.isPresent()) {
-                        source = text.get();
-                    } else if (FILE.matcher(name).matches()) {
-                        error(value, "hook file '" + name + "' not found");
+                    if (value instanceof Doc.Scalar s
+                            && s.value() instanceof String name
+                            && FILE.matcher(name).matches()) {
+                        Optional<String> text = files.apply(name);
+                        if (text.isPresent()) {
+                            source = text.get();
+                        } else {
+                            error(value.source(), "hook file '" + name + "' not found");
+                        }
+                    } else {
+                        error(value.source(), "hook file must match " + FILE);
                     }
                 }
                 case "source" -> {
-                    if (value instanceof ScalarNode s && s.getTag().equals(Tag.STR)) {
-                        source = s.getValue();
+                    if (value instanceof Doc.Scalar s && s.value() instanceof String text) {
+                        source = text;
                     } else {
-                        error(value, "'source' must be a string of JavaScript");
+                        error(value.source(), "'source' must be a string of JavaScript");
                     }
                 }
                 case "capabilities" -> {
-                    if (!(value instanceof MappingNode caps)) {
-                        error(value, "'capabilities' must be a mapping");
+                    if (!(value instanceof Doc.Map caps)) {
+                        error(value.source(), "'capabilities' must be a mapping");
                         continue;
                     }
-                    entries(caps).forEach((cap, c) -> {
+                    caps.entries().forEach((cap, c) -> {
                         if (!cap.equals("http")) {
-                            error(c.getKeyNode(), "unknown capability '" + cap + "'; hooks may have 'http'");
-                        } else if (c.getValueNode() instanceof SequenceNode targets) {
-                            targets.getValue().forEach(t -> http.add(scalar(t, HookDef.TARGET, "egress target")));
+                            error(c.key(), "unknown capability '" + cap + "'; hooks may have 'http'");
+                        } else if (c.value() instanceof Doc.Seq targets) {
+                            targets.items().forEach(t -> {
+                                if (t instanceof Doc.Scalar s
+                                        && s.value() instanceof String target
+                                        && HookDef.TARGET.matcher(target).matches()) {
+                                    http.add(target);
+                                } else {
+                                    error(t.source(), "egress target must match " + HookDef.TARGET);
+                                }
+                            });
                         } else {
-                            error(c.getValueNode(), "'http' must be a list of egress target names");
+                            error(c.value().source(), "'http' must be a list of egress target names");
                         }
                     });
                 }
                 case "timeout_ms" -> {
-                    if (value instanceof ScalarNode s
-                            && s.getValue().matches("[1-9][0-9]{0,3}")
-                            && Integer.parseInt(s.getValue()) <= HookDef.MAX_TIMEOUT_MS) {
-                        timeout = Integer.parseInt(s.getValue());
+                    if (value instanceof Doc.Scalar s
+                            && s.value() instanceof Integer ms
+                            && ms >= 1
+                            && ms <= HookDef.MAX_TIMEOUT_MS) {
+                        timeout = ms;
                     } else {
-                        error(value, "timeout_ms must be an integer from 1 to " + HookDef.MAX_TIMEOUT_MS);
+                        error(value.source(), "timeout_ms must be an integer from 1 to " + HookDef.MAX_TIMEOUT_MS);
                     }
                 }
-                default -> error(e.getValue().getKeyNode(), "unknown hook key '" + e.getKey() + "'");
+                default -> error(e.getValue().key(), "unknown hook key '" + e.getKey() + "'");
             }
         }
         if (source == null) {
-            if (!entries(body).containsKey("file") && !entries(body).containsKey("source")) {
-                error(body, "hook needs 'file' or 'source'");
+            if (!body.entries().containsKey("file") && !body.entries().containsKey("source")) {
+                error(body.source(), "hook needs 'file' or 'source'");
             }
             return null;
         }
         try {
             return new HookDef(source, http, timeout);
         } catch (IllegalArgumentException e) {
-            error(body, String.valueOf(e.getMessage()));
+            error(body.source(), String.valueOf(e.getMessage()));
             return null;
         }
     }
 
-    /** The node for a reference to a declared hook, with the position of the reference. */
-    private @Nullable Hook hookRef(org.yaml.snakeyaml.nodes.Node value) {
-        String id = scalar(value, ID, "hook id");
-        Hook hook = declared.get(id);
-        if (hook == null) {
-            if (ID.matcher(id).matches()) error(value, "unknown hook '" + id + "'; declare it under 'hooks'");
-            return null;
-        }
-        return new Hook(id, hook.hash(), ref(value));
+    // ---- JSON ----
+
+    /** A scalar as JSON, typed as the document typed it; the grammar decides whether it fits. */
+    private JsonNode scalar(Doc doc) {
+        if (doc instanceof Doc.Scalar) return json(doc);
+        error(doc.source(), "expected a single value");
+        return JSON.nullNode();
     }
 
-    private Node section(NodeTuple section) {
-        SourceRef at = ref(section.getKeyNode());
-        List<Node> children = new ArrayList<>();
-        if (section.getValueNode() instanceof MappingNode body) {
-            for (var e : entries(body).entrySet()) {
-                if (!e.getKey().equals("steps")) {
-                    error(e.getValue().getKeyNode(), "unknown key '" + e.getKey() + "'");
-                } else if (e.getValue().getValueNode() instanceof MappingNode steps) {
-                    children.addAll(steps(steps));
-                } else {
-                    error(e.getValue().getValueNode(), "'steps' must be a mapping of step id to step");
-                }
-            }
-        } else {
-            error(section.getValueNode(), "section must be a mapping with 'steps'");
-        }
-        children.add(new Succeed(at));
-        return new Seq(children, at);
-    }
-
-    private List<Node> steps(MappingNode steps) {
-        List<Node> out = new ArrayList<>();
-        entries(steps).forEach((stepId, step) -> {
-            Node compiled = step(stepId, step);
-            if (compiled != null) out.add(compiled);
-        });
-        return out;
-    }
-
-    private @Nullable Node step(String id, NodeTuple step) {
-        SourceRef at = ref(step.getKeyNode());
-        if (!ID.matcher(id).matches()) {
-            error(step.getKeyNode(), "step id must match " + ID);
-        }
-        if (!(step.getValueNode() instanceof MappingNode body)) {
-            error(step.getValueNode(), "step must be a mapping");
-            return null;
-        }
-        Node inner = body(body, step.getKeyNode(), "step");
-        return inner == null ? null : new Step(id, inner, at);
-    }
-
-    /** A step or option body: its parts in a fixed order, wrapped in retry, then in when. */
-    private @Nullable Node body(MappingNode body, org.yaml.snakeyaml.nodes.Node owner, String what) {
-        SourceRef at = ref(owner);
-        List<Node> sets = new ArrayList<>();
-        Hook hook = null;
-        Hook pick = null;
-        org.yaml.snakeyaml.nodes.Node pickAt = null;
-        MappingNode alternative = null;
-        Screen screen = null;
-        Call call = null;
-        Node nested = null;
-        Fail fail = null;
-        Predicate test = null;
-        SourceRef testAt = null;
-        int attempts = 0;
-        SourceRef retryAt = null;
-        for (var e : entries(body).entrySet()) {
-            var value = e.getValue().getValueNode();
-            switch (e.getKey()) {
-                case "if" -> {
-                    test = predicate(value);
-                    testAt = ref(value);
-                }
-                case "retry" -> {
-                    if (value instanceof ScalarNode s
-                            && s.getValue().matches("[1-9][0-9]?")
-                            && Integer.parseInt(s.getValue()) <= Retry.MAX_ATTEMPTS) {
-                        attempts = Integer.parseInt(s.getValue());
-                        retryAt = ref(value);
-                    } else {
-                        error(value, "retry must be an integer from 1 to " + Retry.MAX_ATTEMPTS);
-                    }
-                }
-                case "set" -> {
-                    if (value instanceof MappingNode vars) {
-                        entries(vars)
-                                .forEach((name, t) -> sets.add(new SetVar(
-                                        scalar(t.getKeyNode(), KEY, "variable name"),
-                                        literal(t.getValueNode()),
-                                        ref(t.getKeyNode()))));
-                    } else {
-                        error(value, "'set' must be a mapping of variable name to literal");
-                    }
-                }
-                case "hook" -> hook = hookRef(value);
-                case "pick" -> {
-                    pick = hookRef(value);
-                    pickAt = value;
-                }
-                case "screen" -> screen = screen(value);
-                case "use" -> call = new Call(scalar(value, NAME, "handler name"), Map.of(), ref(value));
-                case "alternative", "steps" -> {
-                    if (nested != null) {
-                        error(e.getValue().getKeyNode(), "'alternative' and 'steps' cannot be combined");
-                    } else if (!(value instanceof MappingNode m) || m.getValue().isEmpty()) {
-                        error(value, "'" + e.getKey() + "' must be a non empty mapping");
-                    } else if (e.getKey().equals("steps")) {
-                        List<Node> children = steps(m);
-                        if (!children.isEmpty()) {
-                            nested = children.size() == 1 ? children.get(0) : new Seq(children, ref(value));
-                        }
-                    } else {
-                        // Compiled once the whole body is read, since 'pick' may come after it
-                        alternative = m;
-                        nested = new Succeed(ref(m));
-                    }
-                }
-                case "fail" -> fail = new Fail(scalar(value, ID, "fail reason"), ref(value));
-                default -> error(e.getValue().getKeyNode(), "unknown " + what + " key '" + e.getKey() + "'");
-            }
-        }
-        if (pickAt != null && alternative == null) {
-            error(pickAt, "'pick' needs an 'alternative' to pick from");
-        }
-        if (alternative != null) nested = alternative(alternative, pick);
-        List<Node> parts = new ArrayList<>(sets);
-        for (Node part : new Node[] {hook, screen, call, nested, fail}) {
-            if (part != null) parts.add(part);
-        }
-        if (parts.isEmpty()) {
-            // An unknown hook was reported where it is named
-            if (!entries(body).containsKey("hook")) {
-                error(owner, what + " needs one of 'set', 'hook', 'screen', 'use', 'alternative', 'steps' or 'fail'");
-            }
-            return null;
-        }
-        Node inner = parts.size() == 1 ? parts.get(0) : new Seq(parts, at);
-        if (retryAt != null) inner = new Retry(attempts, inner, retryAt);
-        if (test != null && testAt != null) inner = new When(test, inner, testAt);
-        return inner;
-    }
-
-    private @Nullable Node alternative(MappingNode options, @Nullable Hook pick) {
-        List<Choose.Opt> out = new ArrayList<>();
-        entries(options).forEach((id, option) -> {
-            if (!ID.matcher(id).matches()) error(option.getKeyNode(), "option id must match " + ID);
-            if (option.getValueNode() instanceof MappingNode body) {
-                Node inner = body(body, option.getKeyNode(), "option");
-                if (inner != null) out.add(new Choose.Opt(id, inner, ref(option.getKeyNode())));
-            } else {
-                error(option.getValueNode(), "option must be a mapping");
-            }
-        });
-        return out.isEmpty() ? null : new Choose(pick, out, ref(options));
-    }
-
-    /** {@code type} or {@code { type: t, opt: literal, ... }}. */
-    private Screen screen(org.yaml.snakeyaml.nodes.Node value) {
-        if (!(value instanceof MappingNode m)) {
-            return new Screen(scalar(value, ID, "screen type"), Map.of(), ref(value));
-        }
-        String type = null;
-        Map<String, Object> opts = new LinkedHashMap<>();
-        for (var e : entries(m).entrySet()) {
-            if (e.getKey().equals("type")) {
-                type = scalar(e.getValue().getValueNode(), ID, "screen type");
-            } else if (ID.matcher(e.getKey()).matches()) {
-                opts.put(e.getKey(), literal(e.getValue().getValueNode()));
-            } else {
-                error(e.getValue().getKeyNode(), "screen option must match " + ID);
-            }
-        }
-        if (type == null) {
-            error(value, "screen needs a 'type'");
-            type = "invalid";
-        }
-        return new Screen(type, opts, ref(value));
-    }
-
-    /** Predicates have the IR shape, so they are read by the IR reader; errors point at the 'if'. */
-    private @Nullable Predicate predicate(org.yaml.snakeyaml.nodes.Node node) {
-        try {
-            return IrCodec.readPredicate(json(node), "");
-        } catch (IrException e) {
-            error(node, "invalid predicate: " + e.getMessage());
-            return null;
-        }
-    }
-
-    private JsonNode json(org.yaml.snakeyaml.nodes.Node node) {
-        JsonNodeFactory f = JsonNodeFactory.instance;
-        return switch (node) {
-            case ScalarNode s -> {
-                Object v = literal(s);
-                yield switch (v) {
-                    case Boolean b -> f.booleanNode(b);
-                    case Integer i -> f.numberNode(i);
-                    case Long l -> f.numberNode(l);
-                    default -> f.textNode((String) v);
+    private static JsonNode json(Doc doc) {
+        return switch (doc) {
+            case Doc.Scalar s ->
+                switch (s.value()) {
+                    case null -> JSON.nullNode();
+                    case Boolean b -> JSON.booleanNode(b);
+                    case Integer i -> JSON.numberNode(i);
+                    case Long l -> JSON.numberNode(l);
+                    case Double d -> JSON.numberNode(d);
+                    default -> JSON.textNode(String.valueOf(s.value()));
                 };
-            }
-            case SequenceNode seq -> {
-                ArrayNode out = f.arrayNode();
-                seq.getValue().forEach(n -> out.add(json(n)));
+            case Doc.Seq q -> {
+                ArrayNode out = JSON.arrayNode();
+                q.items().forEach(i -> out.add(json(i)));
                 yield out;
             }
-            case MappingNode m -> {
-                ObjectNode out = f.objectNode();
-                entries(m).forEach((k, t) -> out.set(k, json(t.getValueNode())));
+            case Doc.Map m -> {
+                ObjectNode out = JSON.objectNode();
+                m.entries().forEach((k, e) -> out.set(k, json(e.value())));
                 yield out;
             }
-            default -> f.nullNode();
         };
     }
 
-    /** A YAML scalar as a string, integer or boolean literal, by its resolved tag. */
-    private Object literal(org.yaml.snakeyaml.nodes.Node node) {
-        if (!(node instanceof ScalarNode s)) {
-            error(node, "expected a string, integer or boolean");
-            return "invalid";
-        }
-        if (s.getTag().equals(Tag.BOOL)) return Boolean.parseBoolean(s.getValue());
-        if (s.getTag().equals(Tag.INT)) {
-            try {
-                long l = Long.parseLong(s.getValue());
-                return l == (int) l ? (Object) (int) l : l;
-            } catch (NumberFormatException e) {
-                error(node, "integer out of range");
-                return 0;
-            }
-        }
-        return s.getValue();
+    // ---- source map ----
+
+    private void mark(JsonNode node, SourceRef source, String what) {
+        marks.put(node, new Mark(source, what));
     }
 
-    /** Keys in document order; duplicate and non-string keys are reported. */
-    private Map<String, NodeTuple> entries(MappingNode mapping) {
-        Map<String, NodeTuple> out = new LinkedHashMap<>();
-        Set<String> seen = new HashSet<>();
-        for (NodeTuple t : mapping.getValue()) {
-            if (!(t.getKeyNode() instanceof ScalarNode key)) {
-                error(t.getKeyNode(), "keys must be strings");
-            } else if (!seen.add(key.getValue())) {
-                error(key, "duplicate key '" + key.getValue() + "'");
-            } else {
-                out.put(key.getValue(), t);
-            }
-        }
+    private void markChild(JsonNode container, int index, SourceRef source, String what) {
+        childMarks.computeIfAbsent(container, c -> new HashMap<>()).put(index, new Mark(source, what));
+    }
+
+    /** Every marked node of the final JSON by its JSON pointer. */
+    private Map<String, Mark> pointers(JsonNode root) {
+        Map<String, Mark> out = new HashMap<>();
+        walk(root, "", out);
         return out;
     }
 
-    private String scalar(org.yaml.snakeyaml.nodes.Node node, Pattern pattern, String what) {
-        if (node instanceof ScalarNode s && pattern.matcher(s.getValue()).matches()) {
-            return s.getValue();
+    private void walk(JsonNode node, String at, Map<String, Mark> out) {
+        Mark mark = marks.get(node);
+        if (mark != null) out.put(at, mark);
+        Map<Integer, Mark> children = childMarks.getOrDefault(node, Map.of());
+        if (node.isArray()) {
+            for (int i = 0; i < node.size(); i++) {
+                if (children.containsKey(i)) out.put(at + "/" + i, children.get(i));
+                walk(node.get(i), at + "/" + i, out);
+            }
+        } else if (node.isObject()) {
+            node.properties().forEach(e -> walk(e.getValue(), at + "/" + e.getKey(), out));
         }
-        error(node, what + " must match " + pattern);
-        return "invalid";
     }
 
-    private Integer version(org.yaml.snakeyaml.nodes.Node node) {
-        if (node instanceof ScalarNode s && s.getValue().matches("[1-9][0-9]{0,8}")) {
-            return Integer.parseInt(s.getValue());
+    /** The mark of the node at {@code at}, else of its nearest marked ancestor. */
+    private Mark mark(Map<String, Mark> table, String at) {
+        for (String p = at; ; p = p.substring(0, p.lastIndexOf('/'))) {
+            Mark m = table.get(p);
+            if (m != null) return m;
+            if (p.isEmpty()) return new Mark(new SourceRef(origin, 1, 1), "flow");
         }
-        error(node, "version must be a positive integer");
-        return 0;
     }
 
-    private SourceRef ref(org.yaml.snakeyaml.nodes.Node node) {
-        var mark = node.getStartMark();
-        return new SourceRef(origin, mark.getLine() + 1, mark.getColumn() + 1);
+    private Diagnostic diagnostic(Map<String, Mark> table, IrException e) {
+        Mark m = mark(table, e.at());
+        return new Diagnostic(m.source(), m.what() + ": " + e.reason());
     }
 
-    private void error(org.yaml.snakeyaml.nodes.Node node, String message) {
-        errors.add(new Diagnostic(ref(node), message));
+    private List<Diagnostic> sorted(List<Diagnostic> all) {
+        return all.stream()
+                .sorted(Comparator.comparingInt((Diagnostic d) -> d.source().line())
+                        .thenComparingInt(d -> d.source().column()))
+                .toList();
+    }
+
+    private void error(SourceRef at, String message) {
+        errors.add(new Diagnostic(at, message));
     }
 }

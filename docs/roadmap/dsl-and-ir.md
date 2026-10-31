@@ -1,21 +1,27 @@
 # DSL and IR
 
-YAML is the surface syntax humans read and diff. The IR is an S expression tree that machines check and execute. The Admin UI edits the IR directly; YAML is an import / export view of the same tree.
+YAML is the single source a tenant writes and the Admin UI edits ([ADR 0010](../adr/0010-m5-admin-ui.md)). The compiler lowers it to the Core IR, an S expression tree stored as JSON arrays, which the checker proves safe and the engine runs. The IR is compiled, never edited: nobody reads or writes it to build a flow (charter, "The IR").
+
+This document is the surface: the YAML and how it lowers. What the IR means is [ir-spec.md](ir-spec.md); its grammar is [`schema/ir.schema.json`](../../schema/ir.schema.json).
 
 ## Design principles
 
-1. **Closed language.** A fixed set of special forms. No lambda, no recursion, no unbounded loops. Every flow terminates and every path is enumerable.
-2. **Structured predicates.** Conditions are data (`{ gt: [risk.score, 50] }`), never strings. No expression parser, no injection surface, predicate operators are an allowlist.
-3. **Stable identity.** Step ids come from YAML keys (or the editor), never from the compiler. Audit logs, metrics and resume points depend on them.
-4. **Source maps.** Every IR node records its origin (YAML line, or editor node id) so runtime errors point at configuration a human can find.
+1. **Closed language.** A fixed set of forms. No lambda, no recursion, no unbounded loops. Every flow terminates and every path is enumerable.
+2. **Structured predicates.** Conditions are data (`{ gt: [vars.score, 50] }`), never strings. No expression parser, no injection surface; operators are an allowlist.
+3. **Stable identity.** Step and option ids come from YAML keys, never from the compiler. Audit logs, metrics and resume points depend on them.
+4. **Source maps.** Every IR node records the YAML it came from, so errors and runtime findings point at configuration a human can find.
+5. **A narrow waist.** The IR knows authentication (entry kinds, credentials, amr), not YAML and not the authorization server. Frontends lower to it; engines run it ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md)).
 
 ## YAML surface
 
-GitHub Actions style steps, Keycloak style requirements.
+GitHub Actions style steps, Keycloak style alternatives.
 
 ```yaml
 flow: default-login
 version: 1
+
+hooks:
+  risk: { file: risk.js, capabilities: { http: [ip-reputation] } }
 
 login:
   steps:
@@ -23,11 +29,12 @@ login:
       screen: identifier            # identity first: ask who, then decide how
       use: identity.resolve
     risk:
-      hook: risk.js
+      hook: risk
     credential:
-      alternative:                  # Keycloak ALTERNATIVE: user picks one
+      alternative:                  # Keycloak ALTERNATIVE: the person picks one
         passkey:
           if: user.has_passkey
+          screen: passkey
           use: webauthn.assert
         password:
           screen: password
@@ -37,7 +44,7 @@ login:
       if:
         or:
           - { eq: [vars.risk, high] }
-          - { has: [hydra.acr_values, mfa] }
+          - { has: [host.acr_values, "faye:2fa"] }
           - user.mfa_required
       alternative:
         totp:  { if: user.has_totp, screen: otp, use: totp.verify, retry: 3 }
@@ -51,79 +58,33 @@ consent:
       use: consent.record
 ```
 
-## IR
+## Lowering
 
-Stored as JSON arrays: `["seq", …]`. Shown here as S expressions.
+The compiler (`faye-dsl`) reads YAML into a positioned document (`YamlReader`, the only class that knows SnakeYAML), lowers it to IR JSON while recording which YAML produced each JSON node, and hands the JSON to `IrCodec`, which checks it against the schema. Every grammar error is reported at the YAML that produced the offending node; the compiler keeps no copy of the grammar, only the rules of the surface itself (its keys, hook declarations and files).
 
-```lisp
-(flow default-login 1
-  (login
-    (seq
-      (step identify  (seq (screen :identifier) (call identity.resolve)))
-      (step risk      (hook risk "sha256:…"))
-      (step credential
-        (choose
-          (opt passkey  (when user.has_passkey (call webauthn.assert)))
-          (opt password (retry 3 (seq (screen :password) (call password.verify))))))
-      (step mfa
-        (when (or (eq vars.risk "high") (has hydra.acr_values "mfa") user.mfa_required)
-          (choose
-            (opt totp   (when user.has_totp (retry 3 (seq (screen :otp) (call totp.verify)))))
-            (opt enroll (when (not user.has_totp) (seq (screen :otp_enroll) (call totp.enroll)))))))
-      (succeed)))
-  (consent
-    (seq
-      (step grant (when (not client.first_party) (seq (screen :consent) (call consent.record))))
-      (succeed))))
-```
-
-## Special forms
-
-| Form | Meaning |
+| YAML | IR |
 |---|---|
-| `(seq a b …)` | Run in order; any failure fails the sequence |
-| `(step id body)` | Named boundary for audit, metrics, source maps |
-| `(screen :type opts?)` | Suspend; emit a typed screen; resume with the user's submission |
-| `(call handler args?)` | Invoke a registered server handler; the only place built in side effects happen |
-| `(hook id hash)` | Invoke a pinned JS hook; output restricted (see [hooks.md](hooks.md)) |
-| `(choose (hook id hash)? (opt id body) …)` | Offer the enabled options to the user, or let the leading hook pick one (YAML: `pick: hook-id` beside `alternative`); run the chosen one |
-| `(when pred body)` | Run body if predicate holds, else skip |
-| `(retry n body)` | Rerun body up to n times on failure, preserving screen errors |
-| `(set path value)` | Write a literal into `vars` |
-| `(succeed)` / `(fail reason)` | Terminate the section |
+| `flow: id`, `version: n` | `(flow 1 id n entry...)` |
+| `login:` | `(entry login authenticate (seq step... (succeed)))` |
+| `consent:` | `(entry consent consent (seq step... (succeed)))` |
+| `steps: { id: body }` | `(step id body)` each, in order |
+| `set: { name: v }` | `(set name v)` each, first in the body |
+| `hook: id` | `(hook id hash)`, the hash of the declared hook's definition |
+| `screen: type` or `{ type: t, opt: v }` | `(screen t {:opt v})` |
+| `use: handler` | `(call handler)` |
+| `alternative: { id: body }` | `(choose ((opt id body)...))` |
+| `pick: hook` beside `alternative` | `(choose (...) {:pick (hook id hash)})` |
+| `fail: reason` | `(fail reason)`, last in the body |
+| a body with several parts | `(seq part...)` in the order set, hook, screen, use, alternative or steps, fail |
+| `retry: n` | `(retry n body)` around the body |
+| `if: p` on a step | `(when p (retry ...))` around the retry |
+| `if: p` on an option | the option's guard, `(opt id body {:guard p})` |
+| a path `hydra.x` | `host.x`, the spelling before ADR 0024 |
 
-`choose` maps directly onto typed screens: when more than one option is enabled the engine emits a `method_picker` screen whose capabilities list the options, unless the first step of every option is itself a screen that can host the choice (for example passkey autofill on the password screen).
+Predicates are written in the IR's shape (`{ eq: [path, literal] }`, `{ and: [...] }`, a bare path); see ir-spec.md, Predicates. A hook is declared once under `hooks` (`file:` next to the flow, or `source:` inline, with `capabilities` and `timeout_ms`; see [hooks.md](hooks.md)) and pinned by the hash of its definition, so editing a hook makes a new flow version.
 
-## Predicates and environment
+The lowering of each shipped tenant flow is pinned by a golden file (`server/faye-dsl/src/test/resources/golden/`, in the display notation), and each diagnostic by a case file (`.../diagnostics/`) that lists exactly what compiling it reports.
 
-Operators: `and`, `or`, `not`, `eq`, `ne`, `gt`, `lt`, `has`, `exists`. A bare path is truthiness.
+## Checks and paths
 
-Readable namespaces (read only to hooks and predicates):
-
-| Namespace | Source |
-|---|---|
-| `request.*` | IP, user agent, locale |
-| `client.*` | Hydra client id, metadata (`first_party`, tenant) |
-| `hydra.*` | `skip`, `acr_values`, `requested_scope`, `login_hint` |
-| `tenant.*` | Tenant settings: `mfa_required` |
-| `user.*` | Set only by `identity.resolve`: existence, enrolled factors, policy |
-| `vars.*` | Writable by `set` and hooks |
-| `auth.*` | Engine owned: verified credentials, computed `amr`. Never writable. |
-
-## Static checks (run at validate and publish)
-
-Errors block publishing:
-
-1. **Schema**: every node well formed, every handler, screen type and predicate operator registered.
-2. **Identity before credential**: every path to `succeed` in `login` passes `identity.resolve` before any credential handler.
-3. **Credential on every success path**: every path to `succeed` in `login` includes at least one verified credential `call` that binds the subject.
-4. **Tenant policy**: if the tenant mandates MFA, every success path includes a second factor of a different `amr` class.
-5. **Tenant allowlist**: handlers, screens and hooks are enabled for this tenant; every egress target a hook declares is granted to the tenant.
-6. **Hooks pinned**: every `hook` references an existing hash.
-7. **Unique step ids** within a flow.
-
-Warnings shown but not blocking: unreachable options (predicate statically false), `retry` without a screen, `choose` with a single option.
-
-The checker also enumerates paths and reports them (for example: "7 success paths, minimum assurance: pwd; maximum: hwk+otp"). The Admin UI displays this summary on every edit.
-
-Because the language has no loops other than bounded `retry` and no recursion, path enumeration is finite. `retry` is treated as "body succeeds" or "body fails" for path purposes.
+The checker's rules, keyed by entry kind, are in ir-spec.md, Checks. It enumerates every path through each entry and reports them, for example `login: 7 success paths, 9 failure paths; assurance pwd (faye:1fa) to hwk+otp+pwd (faye:2fa)`. The Admin UI shows this summary and the paths on every edit.

@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * What a consent section grants.
+ * What a consent entry grants.
  *
  * @param idTokenClaims identity claims for the ID token, already filtered by granted scope
  */

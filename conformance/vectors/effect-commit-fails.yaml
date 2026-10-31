@@ -1,0 +1,15 @@
+name: an effect whose commit fails once the state is saved ends the flow with its code, unretried
+ir: flows/enroll-totp.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+  totp.enroll: [{ ok: { effects: [{ id: taken, fails: invalid_credentials }] } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: otp_enroll
+  - submit: { code: "123456" }
+  - expect_commits: []
+  - expect_result: { succeed: false, reason: invalid_credentials }

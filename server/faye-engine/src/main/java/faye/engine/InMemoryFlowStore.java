@@ -14,7 +14,7 @@ public final class InMemoryFlowStore implements FlowStore {
 
     @Override
     public Optional<FlowState> load(String flowId) {
-        return Optional.ofNullable(states.get(flowId)).map(FlowStateCodec::read);
+        return Optional.ofNullable(states.get(flowId)).flatMap(FlowStateCodec::read);
     }
 
     @Override
@@ -28,7 +28,9 @@ public final class InMemoryFlowStore implements FlowStore {
     public boolean replace(FlowState next) {
         boolean[] replaced = {false};
         states.computeIfPresent(next.flowId(), (id, current) -> {
-            if (FlowStateCodec.read(current).revision() != next.revision() - 1) return current;
+            if (FlowStateCodec.read(current).map(FlowState::revision).orElse(-1L) != next.revision() - 1) {
+                return current;
+            }
             replaced[0] = true;
             return FlowStateCodec.write(next);
         });

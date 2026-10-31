@@ -9,6 +9,8 @@ export async function GET(request: Request) {
   const done = (query: Record<string, string>) => {
     const res = NextResponse.redirect(new URL(`/?${new URLSearchParams(query)}`, config.baseUrl));
     res.cookies.delete(PENDING_COOKIE);
+    // Every outcome replaces the last sign in, so a failed one never shows an older ID token
+    res.cookies.delete(ID_TOKEN_COOKIE);
     return res;
   };
 

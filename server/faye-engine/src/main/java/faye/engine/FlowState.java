@@ -8,9 +8,13 @@ import org.jspecify.annotations.Nullable;
  * A suspended flow: plain data, persisted between requests.
  *
  * @param versionHash flow version pinned at creation; never changes
+ * @param kind the host challenge the flow answers
+ * @param entry id of the IR entry the flow runs, chosen by {@link EntrySelector} at creation
  * @param hostRef challenge id held for the FlowHost
+ * @param binder hex SHA-256 of the secret the browser that started the flow holds
  * @param stack continuation, top of stack last
  * @param awaiting the screen the flow is waiting on; null once the flow has finished
+ * @param pending writes the entry staged so far, applied only if it succeeds; empty once it ends
  * @param revision bumped on every save, for optimistic concurrency
  */
 public record FlowState(
@@ -18,10 +22,13 @@ public record FlowState(
         String tenantId,
         String versionHash,
         HostKind kind,
+        String entry,
         String hostRef,
+        String binder,
         List<Frame> stack,
         Env env,
         @Nullable Awaiting awaiting,
+        List<Effect> pending,
         long revision) {
 
     /**
@@ -46,9 +53,6 @@ public record FlowState(
 
     public FlowState {
         stack = List.copyOf(stack);
-    }
-
-    public String section() {
-        return kind.section();
+        pending = List.copyOf(pending);
     }
 }

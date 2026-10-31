@@ -1,18 +1,22 @@
 /** Building blocks of the condition builder; predicates are IR data, never strings to parse. */
+import { COMPARISONS, NAMESPACES, OPERATORS, ORDERINGS, PATH_PATTERN } from "@faye/contract";
 import type { Literal, Predicate } from "./flow.ts";
 
-export type Op = "eq" | "ne" | "has" | "gt" | "lt";
+/** The grammar facts come from schema/ir.schema.json through the generated contract. */
+export { NAMESPACES };
+
+export type Op = (typeof COMPARISONS)[number];
 export type Kind = "path" | "compare" | "exists" | "and" | "or" | "not";
 
-export const OPS: { op: Op; label: string }[] = [
-  { op: "eq", label: "equals" },
-  { op: "ne", label: "does not equal" },
-  { op: "has", label: "contains" },
-  { op: "gt", label: "greater than" },
-  { op: "lt", label: "less than" },
-];
+const LABELS: Record<Op, string> = {
+  eq: "equals",
+  ne: "does not equal",
+  has: "contains",
+  gt: "greater than",
+  lt: "less than",
+};
 
-export const NAMESPACES = ["user", "auth", "hydra", "client", "tenant", "vars", "request"] as const;
+export const OPS: { op: Op; label: string }[] = COMPARISONS.map((op) => ({ op, label: LABELS[op] }));
 
 /** Paths flows commonly read, with what they hold; any `vars.*` name works too. */
 export const KNOWN_PATHS: { path: string; type: "boolean" | "string" | "list" | "integer"; about: string }[] = [
@@ -24,8 +28,8 @@ export const KNOWN_PATHS: { path: string; type: "boolean" | "string" | "list" | 
   { path: "user.mfa_required", type: "boolean", about: "the account must use two factors" },
   { path: "auth.amr", type: "list", about: "credentials verified so far: pwd, hwk, otp" },
   { path: "auth.acr", type: "string", about: "faye:1fa or faye:2fa so far" },
-  { path: "hydra.acr_values", type: "list", about: "assurance the client asked for" },
-  { path: "hydra.login_hint", type: "string", about: "identifier the client suggested" },
+  { path: "host.acr_values", type: "list", about: "assurance the client asked for" },
+  { path: "host.login_hint", type: "string", about: "identifier the client suggested" },
   { path: "client.first_party", type: "boolean", about: "the client is the tenant's own app" },
   { path: "client.client_id", type: "string", about: "the OAuth client" },
   { path: "tenant.mfa_required", type: "boolean", about: "the tenant requires two factors" },
@@ -36,23 +40,46 @@ export const KNOWN_PATHS: { path: string; type: "boolean" | "string" | "list" | 
 export const KNOWN_VALUES: Record<string, string[]> = {
   "user.identified_by": ["identifier", "passkey"],
   "auth.acr": ["faye:1fa", "faye:2fa"],
-  "hydra.acr_values": ["faye:1fa", "faye:2fa"],
+  "host.acr_values": ["faye:1fa", "faye:2fa"],
   "auth.amr": ["pwd", "hwk", "otp"],
 };
 
-export const PATH = /^(request|client|hydra|tenant|user|vars|auth)(\.[a-z][a-z0-9_]*)+$/;
+const PATH = new RegExp(PATH_PATTERN);
+
+/** A path flows can read. The YAML surface still accepts `hydra.` for `host.`, so drafts written with it stay valid. */
+export function isPath(path: string): boolean {
+  return PATH.test(path.startsWith("hydra.") ? `host.${path.slice("hydra.".length)}` : path);
+}
+
+/**
+ * The operators this editor handles, which must be the schema's: a new operator fails typechecking
+ * here until the editor handles it.
+ */
+const HANDLED = {
+  and: "and",
+  or: "or",
+  not: "not",
+  exists: "exists",
+  eq: "compare",
+  ne: "compare",
+  has: "compare",
+  gt: "compare",
+  lt: "compare",
+} as const satisfies Record<(typeof OPERATORS)[number], Kind>;
+
+/** Comparisons whose literal is an integer. */
+export function ordering(op: string): boolean {
+  return (ORDERINGS as readonly string[]).includes(op);
+}
 
 export function kindOf(p: Predicate): Kind {
   if (typeof p === "string") return "path";
-  if ("and" in p) return "and";
-  if ("or" in p) return "or";
-  if ("not" in p) return "not";
-  if ("exists" in p) return "exists";
-  return "compare";
+  const op = Object.keys(p)[0] as keyof typeof HANDLED;
+  return HANDLED[op];
 }
 
 export function compare(op: Op, path: string, value: Literal): Predicate {
-  if (op === "gt" || op === "lt") return { [op]: [path, typeof value === "number" ? value : Number(value) || 0] } as Predicate;
+  if (ordering(op)) return { [op]: [path, typeof value === "number" ? value : Number(value) || 0] } as Predicate;
   return { [op]: [path, value] } as Predicate;
 }
 

@@ -13,6 +13,7 @@ import faye.engine.FlowVersions;
 import faye.engine.HandlerRegistry;
 import faye.engine.HookRunner;
 import faye.engine.HookStore;
+import faye.engine.ScreenRegistry;
 import faye.hooks.HttpEgress;
 import faye.hooks.QuickJsRuntime;
 import faye.hooks.SandboxedHooks;
@@ -47,8 +48,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 class EngineConfiguration {
 
     @Bean
-    FlowVersions flowVersions(JdbcClient db, TransactionTemplate tx) {
-        return new SqliteFlowVersions(db, tx);
+    FlowVersions flowVersions(JdbcClient db, TransactionTemplate tx, FayeProperties props) {
+        return new SqliteFlowVersions(db, tx, props.flowTtl(), Clock.systemUTC());
     }
 
     @Bean
@@ -87,10 +88,11 @@ class EngineConfiguration {
             FlowVersions versions,
             HookStore hooks,
             HandlerRegistry handlers,
+            ScreenRegistry screens,
             FayeProperties props,
             Tenants tenants,
             TenantConfigStore store) {
-        Publisher publisher = new Publisher(versions, hooks, handlers, tenants);
+        Publisher publisher = new Publisher(versions, hooks, handlers, screens, tenants);
         props.tenants().forEach((id, tenant) -> {
             FlowCompiler.Compiled compiled = compile(tenant.flow(), id);
             Flow flow = compiled.flow();
@@ -228,17 +230,24 @@ class EngineConfiguration {
         return new MockFlowHost("mock://callback", tenant);
     }
 
+    /** The screens of the screen protocol, which the Login UI renders. */
+    @Bean
+    ScreenRegistry screens() {
+        return ScreenRegistry.builtIn();
+    }
+
     /** Starts once the publisher has published and checked every tenant's flow. */
     @Bean
     @DependsOn("publisher")
     Engine engine(
             FlowVersions versions,
             HandlerRegistry handlers,
+            ScreenRegistry screens,
             FlowStore store,
             FlowHost host,
             HookRunner hooks,
             Tenants tenants,
             DraftPreviews previews) {
-        return new Engine(versions, handlers, store, host, tenants, hooks, previews);
+        return new Engine(versions, handlers, store, host, tenants, hooks, previews, screens);
     }
 }

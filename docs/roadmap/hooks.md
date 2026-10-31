@@ -12,14 +12,14 @@ export default async function (ctx, cap) {
 }
 ```
 
-`ctx` is a read only, deep frozen snapshot of `request`, `client`, `hydra`, `tenant`, `user`, `vars` (and `options`, the enabled option ids, for the hook of a `choose`). It never contains credentials, secrets or `auth.*`. The source is a script with one `export default` at the start of a line; it has no imports.
+`ctx` is a read only, deep frozen snapshot of `request`, `client`, `host` (the login request as the authorization server relays it), `tenant`, `user`, `vars` (and `options`, the enabled option ids, for the hook of a `choose`). It never contains credentials, secrets or `auth.*`. The source is a script with one `export default` at the start of a line; it has no imports.
 
 Allowed return values:
 
 | Return | Effect |
 |---|---|
-| `{ set: { … } }` | Merge into `vars.*` only: 1 to 16 names, each a string (up to 1024 characters), integer or boolean. Not allowed for the hook of a `choose` |
-| `{ fail: "reason" }` | Fail the current step (subject to enclosing `retry`); the reason is an id such as `too_risky` |
+| `{ set: { … } }` | Merge into `vars.*` only: 1 to 16 names (each a `key` of the IR schema), each a string (up to 1024 characters), integer or boolean. Not allowed for the hook of a `choose` |
+| `{ fail: "reason" }` | Fail the current step (subject to enclosing `retry`); the reason is an `id` of the IR schema of at most 64 characters, such as `too_risky` |
 | `{ pick: "optionId" }` | Only valid when the hook is the first child of a `choose`; selects one of the declared, enabled options |
 | `{}` | No op |
 

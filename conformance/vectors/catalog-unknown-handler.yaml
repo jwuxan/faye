@@ -1,0 +1,4 @@
+name: a version naming a handler this engine lacks never runs; the host is told the flow is unavailable
+ir: flows/unknown-handler.json
+events:
+  - expect_result: { succeed: false, reason: flow_unavailable }

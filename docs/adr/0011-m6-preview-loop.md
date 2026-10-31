@@ -88,7 +88,7 @@ GET  /api/preview/flows/{id}                  the same, without the token; the f
   * ~~Seeded accounts are global, so they work with every tenant's preview client, not only the tenant they were seeded for.~~ Fixed by [ADR 0018](0018-two-tenants-and-an-open-local-console.md): a seeded account carries its tenant, and `IdentityHandlers` treats it as unknown to other tenants' clients.
   * The feed's single polling thread writes to every follower. A client that stops reading can stall the others until the servlet write timeout.
   * Expected paths are enumerated under the tenant's settings when the run is read, not when it ran. A settings change in between can show a correct run as a mismatch.
-  * The checker models `subject_mismatch` as a retryable failure, while the engine ends the section. A run that hits it on an attempt other than the last matches no path.
+  * ~~The checker models `subject_mismatch` as a retryable failure, while the engine ends the section. A run that hits it on an attempt other than the last matches no path.~~ Fixed by [ADR 0024](0024-core-ir-as-a-narrow-waist.md): the checker models it as the engine runs it, and generated vectors (`mfa-policy`) pin it on a non-final attempt.
 
 ### Confirmation
 

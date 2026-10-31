@@ -43,11 +43,12 @@ class HookCompileTest {
         HookDef route = new HookDef("export default () => ({})", List.of(), HookDef.DEFAULT_TIMEOUT_MS);
         assertThat(compiled.hooks()).isEqualTo(Map.of(risk.hash(), risk, route.hash(), route));
         assertThat(IrCodec.canonicalJson(compiled.flow()))
-                .isEqualTo("[\"flow\",\"risk\",1,[\"login\",[\"seq\","
+                .isEqualTo("[\"flow\",1,\"risk\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
                         + "[\"step\",\"risk\",[\"hook\",\"risk\",\"" + risk.hash() + "\"]],"
-                        + "[\"step\",\"credential\",[\"choose\",[\"hook\",\"route\",\"" + route.hash() + "\"],"
+                        + "[\"step\",\"credential\",[\"choose\",["
                         + "[\"opt\",\"password\",[\"seq\",[\"screen\",\"password\"],[\"call\",\"password.verify\"]]],"
-                        + "[\"opt\",\"otp\",[\"seq\",[\"screen\",\"otp\"],[\"call\",\"totp.verify\"]]]]],"
+                        + "[\"opt\",\"otp\",[\"seq\",[\"screen\",\"otp\"],[\"call\",\"totp.verify\"]]]],"
+                        + "{\"pick\":[\"hook\",\"route\",\"" + route.hash() + "\"]}]],"
                         + "[\"succeed\"]]]]");
         // The IR reads back to the same flow
         assertThat(IrCodec.canonicalJson(IrCodec.readFlow(IrCodec.canonicalJson(compiled.flow()))))
@@ -96,7 +97,6 @@ class HookCompileTest {
                                         "t.yaml:7:36: timeout_ms must be an integer from 1 to 2000",
                                         "t.yaml:8:10: hook needs 'file' or 'source'",
                                         "t.yaml:11:16: unknown hook 'undeclared'; declare it under 'hooks'",
-                                        "t.yaml:12:16: unknown hook 'missing'; declare it under 'hooks'",
                                         "t.yaml:12:16: 'pick' needs an 'alternative' to pick from"));
     }
 

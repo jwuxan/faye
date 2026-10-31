@@ -3,11 +3,11 @@ package faye.check;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import faye.dsl.FlowCompiler;
-import faye.engine.Env;
 import faye.engine.Handler;
+import faye.engine.HandlerMeta;
 import faye.engine.HandlerRegistry;
+import faye.engine.Invocation;
 import faye.engine.Outcome;
-import faye.engine.Submission;
 import faye.ir.Flow;
 import faye.ir.HookDef;
 import faye.ir.IrCodec;
@@ -16,11 +16,9 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 /** Handler metadata from {@code conformance/handlers.yaml}, and the flows the tests check. */
 final class Fixtures {
@@ -41,17 +39,12 @@ final class Fixtures {
                     }
 
                     @Override
-                    public Set<String> amr() {
-                        return Fixtures.amr(m);
+                    public HandlerMeta meta() {
+                        return HandlerMeta.fromYaml(m);
                     }
 
                     @Override
-                    public boolean bindsSubject() {
-                        return m.path("binds_subject").asBoolean();
-                    }
-
-                    @Override
-                    public Outcome invoke(Env env, Submission input, Map<String, Object> args) {
+                    public Outcome invoke(Invocation call) {
                         throw new UnsupportedOperationException(name);
                     }
                 }));
@@ -69,12 +62,6 @@ final class Fixtures {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-    }
-
-    static Set<String> amr(JsonNode meta) {
-        Set<String> amr = new HashSet<>();
-        meta.path("amr").forEach(a -> amr.add(a.asText()));
-        return amr;
     }
 
     /**
