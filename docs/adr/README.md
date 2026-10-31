@@ -15,3 +15,4 @@ Format: [MADR 4](https://adr.github.io/madr/). One file per decision, `NNNN-titl
 | [0009](0009-m4-javascript-hooks-on-quickjs-wasm.md) | M4: JavaScript hooks on QuickJS in WebAssembly | Accepted |
 | [0010](0010-m5-admin-ui.md) | M5: Admin UI | Proposed |
 | [0011](0011-m6-preview-loop.md) | M6: Preview loop | Proposed |
+| [0012](0012-bootstrap-gradle-without-a-wrapper-jar.md) | Bootstrap Gradle without a wrapper jar | Proposed |
