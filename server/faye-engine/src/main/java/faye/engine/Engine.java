@@ -163,8 +163,11 @@ public final class Engine {
 
         switch (kind) {
             case LOGIN -> {
-                Optional<FlowVersion> found = preview ? previews.version(tenant) : Optional.of(current(tenant));
-                if (found.isEmpty()) return host.reject(req, "access_denied", "preview_unavailable");
+                Optional<FlowVersion> found = preview ? previews.version(tenant) : versions.current(tenant);
+                // A client naming a tenant with no published flow is refused, not a 5xx (ADR 0007)
+                if (found.isEmpty()) {
+                    return host.reject(req, "access_denied", preview ? "preview_unavailable" : FLOW_UNAVAILABLE);
+                }
                 version = found.get();
                 if (skip && subject != null) {
                     // The host remembers who, not how: a remembered session counts as one factor.
@@ -190,8 +193,10 @@ public final class Engine {
                     settings = login.get().env().tenant();
                     auth = login.get().env().auth();
                 } else {
-                    Optional<FlowVersion> found = preview ? previews.version(tenant) : Optional.of(current(tenant));
-                    if (found.isEmpty()) return host.reject(req, "access_denied", "preview_unavailable");
+                    Optional<FlowVersion> found = preview ? previews.version(tenant) : versions.current(tenant);
+                    if (found.isEmpty()) {
+                        return host.reject(req, "access_denied", preview ? "preview_unavailable" : FLOW_UNAVAILABLE);
+                    }
                     version = found.get();
                     auth = new Env.Auth(subject, List.of());
                 }
@@ -931,11 +936,6 @@ public final class Engine {
                         .map(String.class::cast)
                         .toList()
                 : List.of();
-    }
-
-    private FlowVersion current(String tenant) {
-        return versions.current(tenant)
-                .orElseThrow(() -> new IllegalStateException("no flow published for tenant " + tenant));
     }
 
     private static String tenantOf(HostRequest req) {

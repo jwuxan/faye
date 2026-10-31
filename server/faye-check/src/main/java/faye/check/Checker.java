@@ -391,7 +391,20 @@ public final class Checker {
                 yield runs;
             }
             case Step step -> walk(step.body(), run.with(new Entered(step.id(), step.source())));
-            case Screen screen -> List.of(run);
+            case Screen screen -> {
+                // Registering a passkey is a credential write, as webauthn.register is: its screen
+                // needs the subject a credential verified, or the engine has no one to register
+                // for (found by EngineFuzzTest, ADR 0007, O12)
+                if (Boolean.TRUE.equals(screen.opts().get("register"))
+                        && run.events().stream().noneMatch(e -> e instanceof Called c && c.verifiedSubject())) {
+                    error(
+                            screen.source(),
+                            "subject",
+                            "screen '" + screen.type() + "' registers a passkey, which needs a subject a credential"
+                                    + " verified earlier in the flow, but shows first on a path");
+                }
+                yield List.of(run);
+            }
             case Call call -> call(call, run);
             case Hook hook ->
                 bounded(List.of(

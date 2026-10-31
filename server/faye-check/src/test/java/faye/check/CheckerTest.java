@@ -343,6 +343,22 @@ class CheckerTest {
                         + " access to a subject its authenticate entry proved");
     }
 
+    /** Found by EngineFuzzTest: the registration screen is a credential write too. */
+    @Test
+    void aPasskeyRegistrationScreenNeedsAVerifiedSubjectFirst() {
+        Flow flow = Fixtures.yaml("tenant.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    identify: { screen: identifier, use: identity.resolve }
+                    add: { screen: { type: passkey, register: true }, use: webauthn.assert }
+                """);
+        assertThat(errors(check(flow)))
+                .contains("tenant.yaml:6:20: screen 'passkey' registers a passkey, which needs a subject a credential"
+                        + " verified earlier in the flow, but shows first on a path");
+    }
+
     @Test
     void aCredentialWriteNeedsAVerifiedSubjectFirst() {
         Flow flow = Fixtures.yaml("tenant.yaml", """
@@ -354,9 +370,11 @@ class CheckerTest {
                     enroll: { screen: { type: passkey, register: true }, use: webauthn.register }
                     credential: { screen: password, use: password.verify }
                 """);
+        // Both the registration screen and the handler are refused
         assertThat(errors(check(flow)))
-                .isNotEmpty()
-                .allSatisfy(e -> assertThat(e)
+                .hasSize(2)
+                .anySatisfy(e -> assertThat(e).startsWith("tenant.yaml:6:23: screen 'passkey' registers a passkey"))
+                .anySatisfy(e -> assertThat(e)
                         .startsWith("tenant.yaml:6:63: webauthn.register needs a subject a credential verified"
                                 + " earlier in the flow, but runs first on the path"));
     }
