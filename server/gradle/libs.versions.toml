@@ -15,8 +15,14 @@ quickjs4j = "0.1.1"
 sqlite-jdbc = "3.53.4.0"
 hydra-client = "2.2.0"
 jakarta-annotation = "2.1.1"
+# Coverage guided fuzzing, test only (ADR 0007)
+jazzer = "0.30.0"
+# Above the Boot managed 2.21.4: jackson-core advisories GHSA-649p-m576-vr99, GHSA-p6pp-m3f8-5c89, GHSA-7hhh-6rmp-j9qf (ADR 0007)
+jackson = "2.21.8"
 
 [libraries]
+jackson-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson" }
+jazzer-junit = { module = "com.code-intelligence:jazzer-junit", version.ref = "jazzer" }
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }
 jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations" }

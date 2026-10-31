@@ -3,6 +3,8 @@ package faye.engine;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.Optional;
 import java.util.Set;
@@ -21,7 +23,10 @@ public final class FlowStateCodec {
     /** The state formats this codec reads: the current one and, for one release after a bump, the one before. */
     public static final Set<Integer> FORMATS = Set.of(1);
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    /** Map keys sorted, so one state always writes the same bytes (ADR 0007, O9). */
+    private static final ObjectMapper MAPPER = JsonMapper.builder()
+            .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+            .build();
 
     private FlowStateCodec() {}
 

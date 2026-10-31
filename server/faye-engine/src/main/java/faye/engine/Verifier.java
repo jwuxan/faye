@@ -26,7 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Layer L1 of the checks (docs/roadmap/ir-spec.md, Checks): every handler and screen a flow names
- * is in the catalogs, every screen's options are ones it takes, and every call's args match its
+ * is in the catalogs, every screen's options are ones it takes (and none is the engine's own method
+ * picker), and every call's args match its
  * handler's schema. The schema (L0) has
  * already checked the shape; the checker (L2) adds paths and policy. The engine runs this whenever
  * it runs a version, so a catalog that lost a handler fails flows closed instead of mid run.
@@ -65,6 +66,12 @@ public final class Verifier {
                 var spec = screens.find(s.type());
                 if (spec.isEmpty()) {
                     out.add(new Problem(s.source(), "unknown screen type '" + s.type() + "'"));
+                } else if (s.type().equals(ScreenRegistry.METHOD_PICKER)) {
+                    // The engine shows it for an alternative, with that alternative's options; written
+                    // as a screen it has none, no answer fits it and the flow is stuck (ADR 0007, O14)
+                    out.add(new Problem(
+                            s.source(),
+                            "'" + s.type() + "' is shown by an 'alternative' for its options; a step cannot show it"));
                 } else {
                     s.opts().keySet().stream()
                             .filter(k -> !spec.get().options().contains(k))

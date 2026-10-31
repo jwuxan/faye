@@ -1,0 +1,11 @@
+["flow", 1, "mfa-policy", 1,
+  ["entry", "login", "authenticate",
+    ["seq",
+      ["step", "identify", ["seq", ["screen", "identifier"], ["call", "identity.resolve"]]],
+      ["step", "credential",
+        ["retry", 3, ["seq", ["screen", "password"], ["call", "password.verify"]]]],
+      ["step", "second-factor",
+        ["when",
+          {"or": ["tenant.mfa_required", "user.has_totp"]},
+          ["retry", 3, ["seq", ["screen", "otp"], ["call", "totp.verify"]]]]],
+      ["succeed"]]]]

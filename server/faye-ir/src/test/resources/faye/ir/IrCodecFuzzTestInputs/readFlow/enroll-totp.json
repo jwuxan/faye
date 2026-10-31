@@ -1,0 +1,7 @@
+["flow", 1, "enroll-totp", 1,
+  ["entry", "login", "authenticate",
+    ["seq",
+      ["step", "identify", ["seq", ["screen", "identifier"], ["call", "identity.resolve"]]],
+      ["step", "credential", ["retry", 3, ["seq", ["screen", "password"], ["call", "password.verify"]]]],
+      ["step", "enroll", ["retry", 3, ["seq", ["screen", "otp_enroll"], ["call", "totp.enroll"]]]],
+      ["succeed"]]]]
