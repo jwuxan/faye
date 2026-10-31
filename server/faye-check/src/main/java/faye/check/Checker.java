@@ -74,6 +74,9 @@ public final class Checker {
 
     private static final int MAX_EVENTS = 10_000;
 
+    /** The events all paths being enumerated may hold between them. */
+    private static final long MAX_LIVE_EVENTS = 1_000_000;
+
     /** Stands for the subject a credential bound; {@code auth.subject} itself is never decided. */
     private static final String SUBJECT = "subject";
 
@@ -399,7 +402,11 @@ public final class Checker {
                 List<Run> runs = List.of(run);
                 for (Node child : seq.children()) {
                     List<Run> next = new ArrayList<>();
-                    for (Run r : runs) next.addAll(r.stop() == null ? walk(child, r) : List.of(r));
+                    for (Run r : runs) {
+                        next.addAll(r.stop() == null ? walk(child, r) : List.of(r));
+                        // Bounded as it grows: the product of runs and outcomes is built here
+                        if (next.size() > MAX_PATHS) throw new TooComplex();
+                    }
                     runs = bounded(next);
                 }
                 yield runs;
@@ -531,6 +538,7 @@ public final class Checker {
             }
             taken.add(option);
             out.addAll(walk(option.body(), r));
+            if (out.size() > MAX_PATHS) throw new TooComplex();
         }
         if (hookFails != null) out.add(hookFails);
         if (mayBeNone) out.add(none.stop(new Failing("no_method", choose.source())));
@@ -549,7 +557,9 @@ public final class Checker {
             List<Run> again = new ArrayList<>();
             for (Run start : starts) {
                 for (Run r : walk(retry.body(), start)) {
-                    if (r.events().size() > MAX_EVENTS) throw new TooComplex();
+                    if (r.events().size() > MAX_EVENTS || out.size() + again.size() > MAX_PATHS) {
+                        throw new TooComplex();
+                    }
                     if (r.stop() instanceof Failing && attempt < retry.attempts()) {
                         again.add(new Run(r.events(), r.knowledge(), null));
                     } else {
@@ -566,8 +576,16 @@ public final class Checker {
         if (visited.add(node)) visitOrder.add(node);
     }
 
+    /**
+     * The runs, if there are not too many and they do not hold too many events between them: the
+     * two bounds alone allow MAX_PATHS paths of MAX_EVENTS events each, which a flow of a few
+     * nested retries reaches and which no heap holds (found by EngineFuzzTest in CI, ADR 0007).
+     */
     private static List<Run> bounded(List<Run> runs) {
         if (runs.size() > MAX_PATHS) throw new TooComplex();
+        long events = 0;
+        for (Run r : runs) events += r.events().size();
+        if (events > MAX_LIVE_EVENTS) throw new TooComplex();
         return runs;
     }
 

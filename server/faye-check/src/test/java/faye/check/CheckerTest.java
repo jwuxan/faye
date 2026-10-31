@@ -343,6 +343,23 @@ class CheckerTest {
                         + " access to a subject its authenticate entry proved");
     }
 
+    /**
+     * Found by EngineFuzzTest in CI: a few nested retries multiply into more paths than any heap
+     * holds before the path bound was checked. The checker refuses such a flow, quickly.
+     */
+    @Test
+    void aFlowWithTooManyPathsIsRefusedWithoutExhaustingMemory() {
+        String step = "[\"retry\",3,[\"seq\",[\"retry\",3,[\"call\",\"identity.resolve\"]],"
+                + "[\"retry\",3,[\"seq\",[\"screen\",\"password\"],[\"call\",\"password.verify\"]]],"
+                + "[\"retry\",3,[\"seq\",[\"screen\",\"otp\"],[\"call\",\"totp.verify\"]]]]]";
+        Flow flow = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"step\",\"a\"," + step + "],[\"step\",\"b\"," + step + "],[\"succeed\"]]]]");
+        long started = System.nanoTime();
+        assertThat(errors(check(flow)))
+                .anySatisfy(e -> assertThat(e).contains("paths").contains("split it"));
+        assertThat((System.nanoTime() - started) / 1_000_000).as("milliseconds").isLessThan(5_000);
+    }
+
     /** ADR 0025 review: consent in the sign in would ask too early and leave no consent entry. */
     @Test
     void consentBelongsOnTheConsentChallenge() {

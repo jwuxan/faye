@@ -62,7 +62,8 @@ import org.jspecify.annotations.Nullable;
  * HookDef}). docs/roadmap/dsl-and-ir.md has the lowering table.
  *
  * <p>Consent is a step like any other (ADR 0025): the steps of {@code login} up to the first one
- * that shows the consent screen or calls {@value #CONSENT_HANDLER} lower to the {@code authenticate} entry, and that step and
+ * that shows the consent screen or calls {@value #CONSENT_HANDLER} lower to the {@code authenticate}
+ * entry, and that step and
  * every step after it to the {@code consent} entry, since they run on the host's consent challenge,
  * after the sign in was accepted. The IR keeps the two entries.
  */

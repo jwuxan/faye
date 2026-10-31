@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.core.StreamReadFeature;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -66,6 +67,9 @@ public final class IrCodec {
                             .build())
                     .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
                     .build())
+            // 1e400 read as a double is infinite, which the schema validator cannot compare (F1);
+            // as a decimal it is exact, and the schema refuses it as not a literal
+            .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
             .build();
 
     private static final JsonNodeFactory JSON = JsonNodeFactory.instance;
@@ -320,10 +324,18 @@ public final class IrCodec {
                         if (options.stream().anyMatch(x -> x.id().equals(id))) {
                             throw new IrException(oat + "/1", "duplicate option " + id);
                         }
+                        // The schema says so too; the reader checks rather than trust it (F1 found
+                        // a key the validator let through, "#uard")
+                        if (o.has(3) && !(o.get(3).get("guard") instanceof JsonNode)) {
+                            throw new IrException(oat + "/3", "an option's options take only 'guard'");
+                        }
                         Predicate guard =
                                 o.has(3) ? IrCodec.mapPredicate(o.get(3).get("guard")) : null;
                         options.add(new Choose.Opt(
                                 id, node(o.get(2), oat + "/2"), guard, sources.apply(oat), sources.apply(oat + "/3")));
+                    }
+                    if (n > 2 && !(json.get(2).get("pick") instanceof JsonNode)) {
+                        throw new IrException(at + "/2", "a choose's options take only 'pick'");
                     }
                     Hook pick = n > 2 ? (Hook) node(json.get(2).get("pick"), at + "/2/pick") : null;
                     yield new Choose(options, pick, source);
