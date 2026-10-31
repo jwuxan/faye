@@ -479,6 +479,24 @@ class CheckerTest {
     }
 
     @Test
+    void aClientPathOutsideTheContractIsRefusedAtPublish() {
+        Flow flow = Fixtures.yaml("tenant.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    identify:
+                      if: { or: [client.tier, client.first_party, client.metadata.risk] }
+                      screen: identifier
+                      use: identity.resolve
+                    credential: { screen: password, use: password.verify }
+                """);
+        assertThat(errors(check(flow)).stream().filter(e -> e.contains("client contract")))
+                .singleElement()
+                .satisfies(e -> assertThat(e).contains("'client.tier' is not part of the client contract"));
+    }
+
+    @Test
     void aStoredVersionThatReadsAnUnknownHostPathStillLoads() {
         Flow stored = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
                 + "[\"when\",\"host.prompt\",[\"set\",\"x\",true]],"

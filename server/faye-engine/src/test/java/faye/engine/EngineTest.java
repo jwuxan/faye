@@ -390,6 +390,39 @@ class EngineTest {
     }
 
     @Test
+    void consentForAnotherTenantOrAPreviewDoesNotSeeTheLogin() throws Exception {
+        versions.publish(
+                Engine.DEFAULT_TENANT,
+                FlowVersion.of(IrCodec.readFlow(Files.readString(FLOW.resolveSibling("partner-consent.json")))));
+        versions.publish(
+                "acme",
+                FlowVersion.of(IrCodec.readFlow(Files.readString(FLOW.resolveSibling("partner-consent.json")))));
+        var engine = engine();
+        var s = (ScreenView) engine.start(HostKind.LOGIN, "c1", Map.of(), "binder");
+        s = (ScreenView) engine.submit(
+                s.flowId(), "binder", s.nonce(), new Submission(Map.of("identifier", "alice@example.com")));
+        engine.submit(s.flowId(), "binder", s.nonce(), new Submission(Map.of("password", "right")));
+        Map<String, Object> context = host.accepted().get(0).outcome().context();
+        HostParams params = HostParams.fromMap(
+                Map.of("subject", "alice", "requested_scope", List.of("email"), "context", context, "skip", true));
+
+        // The same subject and a relayed context, but the host decided another tenant, or a preview
+        host.register(new HostRequest(HostKind.CONSENT, "k-acme", "acme", false, Map.of("client_id", "x"), params));
+        host.register(new HostRequest(HostKind.CONSENT, "k-preview", null, true, Map.of("client_id", "x"), params));
+        engine.start(HostKind.CONSENT, "k-acme", Map.of(), "binder");
+        engine.start(HostKind.CONSENT, "k-preview", Map.of(), "binder");
+
+        // acme's consent is granted, with nothing of the default tenant's login; the preview one is
+        // refused, since no draft runs for it
+        assertThat(host.consented())
+                .singleElement()
+                .satisfies(c -> assertThat(c.outcome().user()).isEmpty());
+        assertThat(host.rejected())
+                .singleElement()
+                .satisfies(r -> assertThat(r.description()).isEqualTo("preview_unavailable"));
+    }
+
+    @Test
     void hostedPasskeyAnswersOnlyOneScreen() throws Exception {
         versions.publish(
                 Engine.DEFAULT_TENANT,

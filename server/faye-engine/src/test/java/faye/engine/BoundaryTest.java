@@ -34,6 +34,9 @@ class BoundaryTest {
     /** The host contract is the one place the protocol's parameter names are written down. */
     private static final String CONTRACT = "HostParams.java";
 
+    /** The client contract names its fields, metadata among them; nothing else in the core does. */
+    private static final String CLIENT_CONTRACT = "HostRequest.java";
+
     @Test
     void theCoreNamesNoHostAndNoScreen() {
         List<String> found = new ArrayList<>();
@@ -56,7 +59,9 @@ class BoundaryTest {
                 found.add(file + ": a built in screen, option or handler by name");
             }
             // Tenant and preview come typed from the host; claims are the host's (ADR 0025)
-            if (text.contains("\"metadata\"")) found.add(file + ": reads client metadata");
+            if (text.contains("\"metadata\"") && !file.endsWith(CLIENT_CONTRACT)) {
+                found.add(file + ": reads client metadata");
+            }
             if (Pattern.compile("\"(faye_flow_id|email_verified)\"|id_?token", Pattern.CASE_INSENSITIVE)
                     .matcher(text)
                     .find()) {

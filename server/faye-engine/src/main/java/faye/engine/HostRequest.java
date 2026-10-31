@@ -1,6 +1,7 @@
 package faye.engine;
 
 import java.util.Map;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -29,6 +30,23 @@ public record HostRequest(
     public HostRequest {
         tenant = tenant == null || tenant.isEmpty() ? null : tenant;
         client = Map.copyOf(client);
+    }
+
+    /**
+     * The keys of {@code client} a flow may read as {@code client.<x>}: the client contract. A host
+     * fills these and no others; the checker refuses any other path at publish. {@code metadata} is
+     * the operator's own data about the client, readable below it.
+     */
+    public static final Set<String> CLIENT_FIELDS = Set.of("client_id", "client_name", "first_party", "metadata");
+
+    /** The client field whose own keys a flow may read below it. */
+    public static final String CLIENT_FREE_FORM = "metadata";
+
+    /** Whether {@code client.<rest>} names a field of the client contract. */
+    public static boolean clientReadable(String rest) {
+        int dot = rest.indexOf('.');
+        String field = dot < 0 ? rest : rest.substring(0, dot);
+        return CLIENT_FIELDS.contains(field) && (dot < 0 || field.equals(CLIENT_FREE_FORM));
     }
 
     /** The tenant whose flow runs. */

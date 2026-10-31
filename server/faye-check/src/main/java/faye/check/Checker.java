@@ -15,6 +15,7 @@ import faye.engine.Handler;
 import faye.engine.HandlerMeta;
 import faye.engine.HandlerRegistry;
 import faye.engine.HostParams;
+import faye.engine.HostRequest;
 import faye.engine.Predicates;
 import faye.engine.ScreenRegistry;
 import faye.engine.TenantPolicy;
@@ -76,6 +77,7 @@ public final class Checker {
     private static final int MAX_EVENTS = 10_000;
 
     private static final String HOST = "host.";
+    private static final String CLIENT = "client.";
 
     private static String kinds(java.util.Collection<Entry.Kind> kinds) {
         return String.join(
@@ -294,6 +296,16 @@ public final class Checker {
     }
 
     private void hostPath(String path, SourceRef source) {
+        if (path.startsWith(CLIENT) && !HostRequest.clientReadable(path.substring(CLIENT.length()))) {
+            error(
+                    source,
+                    "client",
+                    "'" + path + "' is not part of the client contract; a flow reads only "
+                            + new java.util.TreeSet<>(HostRequest.CLIENT_FIELDS)
+                                    .stream().map(f -> CLIENT + f).toList()
+                            + ", and below " + CLIENT + HostRequest.CLIENT_FREE_FORM);
+            return;
+        }
         if (!path.startsWith(HOST)) return;
         if (!HostParams.readable(path.substring(HOST.length()))) {
             error(

@@ -5,14 +5,20 @@ import { bindingHeader, fayeServerUrl, flowCookie } from "../../../lib/faye-serv
 import { errorMessage } from "../../../lib/messages";
 import { FlowScreen } from "./flow-screen";
 
-/** The value if it is exactly one origin (scheme, host, port); anything else, `*` included, is null. */
+/**
+ * The value if it is exactly one origin (scheme, host, port; a trailing slash is allowed); anything
+ * else, `*` included, is null, and logged so a misconfiguration does not fail silently.
+ */
 function singleOrigin(value: string | undefined): string | null {
   if (!value) return null;
+  const trimmed = value.replace(/\/$/, "");
   try {
-    return new URL(value).origin === value ? value : null;
+    if (new URL(trimmed).origin === trimmed) return trimmed;
   } catch {
-    return null;
+    // not a URL
   }
+  console.error(`FAYE_EMBED_ORIGIN is not a single origin (${value}); handoff results will not be posted`);
+  return null;
 }
 
 export default async function FlowPage({ params }: { params: Promise<{ flowId: string }> }) {

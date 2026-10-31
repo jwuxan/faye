@@ -1012,8 +1012,12 @@ public final class Engine {
     private Optional<FlowState> linkedLogin(HostRequest req, String subject) {
         if (!(req.params().context().get("flowId") instanceof String flowId)) return Optional.empty();
         return store.load(flowId)
+                // Same tenant and same preview flag as this request: the host decides both, and a
+                // relayed context must not carry a consent into another tenant's or a draft's login
                 .filter(s -> s.kind() == HostKind.LOGIN
                         && s.awaiting() == null
+                        && s.tenantId().equals(req.tenantOrDefault())
+                        && s.preview() == req.preview()
                         && s.env().auth().subject() != null
                         && s.env().auth().subject().equals(subject));
     }

@@ -90,7 +90,11 @@ A flow reads its environment through predicate paths `namespace.key...`. A missi
 | `ui_locales` | list of strings | the person's preferred languages | any host, else empty |
 | `context` | object | the host's own data carried from one request to the next (a consent receives what the login's accept returned), readable as `host.context.<key>` | any host, else empty |
 
-Lists, `skip` and `context` are always present; an empty list is falsy, like null.
+Lists, `skip` and `context` are always present; an empty list is falsy, like null. Every list element is split on whitespace (OIDC encodes these lists as space separated strings), so no value of the contract contains a space.
+
+### Client contract
+
+`client.*` is closed the same way: `client_id`, `client_name`, `first_party`, and the operator's own `metadata` about the client, readable below it as `client.metadata.<key>`. The checker refuses any other `client.<x>` at publish. The host fills these; the engine decides nothing from them (the host decides the tenant and the preview flag, `HostRequest.tenant` and `preview`).
 
 ## Evaluation
 
