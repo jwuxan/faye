@@ -213,6 +213,9 @@ public final class IrCodec {
             return readFlow(MAPPER.readTree(json));
         } catch (JsonProcessingException e) {
             throw new IrException("", "not JSON: " + e.getOriginalMessage());
+        } catch (NumberFormatException e) {
+            // A number Jackson will not hold exactly, such as an exponent of 17 digits (fuzz finding)
+            throw new IrException("", "not JSON: a number out of range");
         }
     }
 

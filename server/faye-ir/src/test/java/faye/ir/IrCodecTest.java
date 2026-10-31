@@ -77,6 +77,13 @@ class IrCodecTest {
     }
 
     @Test
+    void aNumberJacksonCannotHoldIsRefusedNotThrown() {
+        assertThatThrownBy(() -> IrCodec.readFlow("[\"flow\",8e11111111111111111]"))
+                .isInstanceOf(IrException.class)
+                .hasMessageContaining("out of range");
+    }
+
+    @Test
     void refusesFormatsItDoesNotRead() {
         for (String format : List.of("0", "2", "99999999999")) {
             assertThatThrownBy(() -> IrCodec.readFlow(
