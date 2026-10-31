@@ -102,6 +102,53 @@ die () {
     exit 1
 } >&2
 
+if [ ! -f "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" ]; then
+    properties=$APP_HOME/gradle/wrapper/gradle-wrapper.properties
+    distribution_url=$( sed -n 's/^distributionUrl=//p' "$properties" | sed 's/\\:/:/g' )
+    distribution_sha=$( sed -n 's/^distributionSha256Sum=//p' "$properties" )
+    [ -n "$distribution_url" ] && [ -n "$distribution_sha" ] ||
+        die "Missing distributionUrl or distributionSha256Sum in $properties"
+    distribution_file=${distribution_url##*/}
+    distribution_name=${distribution_file%-bin.zip}
+    [ "$distribution_name-bin.zip" = "$distribution_file" ] ||
+        die "Expected a Gradle -bin.zip distribution: $distribution_url"
+    distribution_cache=$APP_HOME/.gradle/bootstrap/$distribution_sha
+    gradle_bin=$distribution_cache/$distribution_name/bin/gradle
+    if [ ! -x "$gradle_bin" ]; then
+        mkdir -p "$distribution_cache" || die "Cannot create $distribution_cache"
+        staging=$( mktemp -d "$distribution_cache/download.XXXXXXXX" ) || die "Cannot create download directory"
+        trap 'rm -rf "$staging"' 0
+        trap 'exit 1' HUP INT TERM
+        archive=$staging/distribution.zip
+        if command -v curl >/dev/null 2>&1; then
+            curl -fL --retry 3 -o "$archive" "$distribution_url" || die "Gradle download failed"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -O "$archive" "$distribution_url" || die "Gradle download failed"
+        else
+            die "Gradle bootstrap requires curl or wget"
+        fi
+        if command -v sha256sum >/dev/null 2>&1; then
+            actual_sha=$( sha256sum "$archive" ) || die "Cannot checksum Gradle distribution"
+        elif command -v shasum >/dev/null 2>&1; then
+            actual_sha=$( shasum -a 256 "$archive" ) || die "Cannot checksum Gradle distribution"
+        else
+            die "Gradle bootstrap requires sha256sum or shasum"
+        fi
+        [ "${actual_sha%% *}" = "$distribution_sha" ] || die "Gradle distribution checksum mismatch"
+        if [ -n "$JAVA_HOME" ]; then
+            jar_cmd=$JAVA_HOME/bin/jar
+        else
+            jar_cmd=jar
+        fi
+        ( cd "$staging" && "$jar_cmd" xf "$archive" ) || die "Cannot extract Gradle distribution; a JDK with jar is required"
+        chmod +x "$staging/$distribution_name/bin/gradle" || die "Cannot make Gradle executable"
+        mv "$staging/$distribution_name" "$distribution_cache/" || die "Cannot install Gradle distribution"
+        rm -rf "$staging"
+        trap - 0 HUP INT TERM
+    fi
+    exec "$gradle_bin" "$@"
+fi
+
 # OS specific support (must be 'true' or 'false').
 cygwin=false
 msys=false
