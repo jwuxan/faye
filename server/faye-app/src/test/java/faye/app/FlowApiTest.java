@@ -15,6 +15,7 @@ import faye.engine.FlowStore;
 import faye.engine.FlowVersions;
 import faye.engine.HookStore;
 import faye.engine.HostKind;
+import faye.engine.HostParams;
 import faye.engine.HostRequest;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
@@ -137,7 +138,7 @@ class FlowApiTest {
         JsonNode done = JSON.readTree(finished.getContentAsString());
         assertThat(done.at("/redirectTo").asText()).contains("challenge=c-api", "result=accepted");
         assertThat(host.accepted()).anySatisfy(a -> {
-            assertThat(a.request().challenge()).isEqualTo("c-api");
+            assertThat(a.request().ref()).isEqualTo("c-api");
             assertThat(a.outcome().subject()).isEqualTo("user-alice");
             assertThat(a.outcome().amr()).containsExactly("pwd");
         });
@@ -178,7 +179,7 @@ class FlowApiTest {
         JsonNode done = submit(flowId, again, Map.of("password", "guess"), status().isOk());
         assertThat(done.at("/redirectTo").asText()).contains("result=access_denied");
         assertThat(host.rejected()).anySatisfy(r -> {
-            assertThat(r.request().challenge()).isEqualTo("c-unknown");
+            assertThat(r.request().ref()).isEqualTo("c-unknown");
             assertThat(r.description()).isEqualTo("invalid_credentials");
         });
     }
@@ -189,7 +190,7 @@ class FlowApiTest {
                 HostKind.CONSENT,
                 "k-api",
                 Map.of("client_id", "demo"),
-                Map.of("subject", "user-alice", "requested_scope", List.of("openid"))));
+                HostParams.fromMap(Map.of("subject", "user-alice", "requested_scope", List.of("openid")))));
         String location = mvc.perform(get("/consent").param("consent_challenge", "k-api"))
                 .andExpect(status().isFound())
                 .andReturn()
@@ -197,7 +198,7 @@ class FlowApiTest {
                 .getRedirectedUrl();
         assertThat(location).contains("challenge=k-api", "result=accepted");
         assertThat(host.consented())
-                .anySatisfy(a -> assertThat(a.request().challenge()).isEqualTo("k-api"));
+                .anySatisfy(a -> assertThat(a.request().ref()).isEqualTo("k-api"));
     }
 
     @Test

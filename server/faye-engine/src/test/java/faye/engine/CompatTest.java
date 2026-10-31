@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import faye.host.mock.MockFlowHost;
 import faye.ir.IrCodec;
+import faye.screens.FixedIssuers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -49,8 +50,15 @@ class CompatTest {
         versions.publish(Engine.DEFAULT_TENANT, FlowVersion.of(IrCodec.readFlow(canonical)));
         var store = new InMemoryFlowStore();
         var host = new MockFlowHost();
-        host.register(new HostRequest(HostKind.LOGIN, "compat", Map.of("client_id", "demo"), Map.of()));
-        var engine = new Engine(versions, handlers(), store, host);
+        host.register(
+                new HostRequest(HostKind.LOGIN, "compat", Map.of("client_id", "demo"), HostParams.fromMap(Map.of())));
+        var engine = Engine.builder()
+                .versions(versions)
+                .handlers(handlers())
+                .store(store)
+                .host(host)
+                .screens(FixedIssuers.registry())
+                .build();
         var identifier = (ScreenView) engine.start(HostKind.LOGIN, "compat", Map.of(), BINDER);
         var password = (ScreenView) engine.submit(
                 identifier.flowId(),
@@ -78,8 +86,15 @@ class CompatTest {
         var store = new InMemoryFlowStore();
         store.create(state);
         var host = new MockFlowHost();
-        host.register(new HostRequest(HostKind.LOGIN, state.hostRef(), Map.of("client_id", "demo"), Map.of()));
-        var engine = new Engine(versions, handlers(), store, host);
+        host.register(new HostRequest(
+                HostKind.LOGIN, state.hostRef(), Map.of("client_id", "demo"), HostParams.fromMap(Map.of())));
+        var engine = Engine.builder()
+                .versions(versions)
+                .handlers(handlers())
+                .store(store)
+                .host(host)
+                .screens(FixedIssuers.registry())
+                .build();
 
         ScreenView waiting = engine.view(state.flowId(), BINDER);
         assertThat(waiting.screen()).containsEntry("type", "password");

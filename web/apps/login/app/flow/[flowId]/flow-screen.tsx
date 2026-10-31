@@ -3,6 +3,7 @@
 import type {
   Branding,
   ConsentScreen,
+  HandoffResponse,
   IdentifierScreen,
   MethodPickerScreen,
   OtpEnrollScreen,
@@ -28,13 +29,29 @@ import {
 import { autofillAvailable, cancelPasskeyCeremony, createPasskey, getPasskey } from "../../../lib/webauthn";
 
 type Payload = SubmitRequest["payload"];
+
+/**
+ * Gives a host's handoff result to the page that embeds or opened this one, and only when its
+ * origin is configured: the result may be a one time code, so it never goes to an unknown origin.
+ */
+function handOff(result: HandoffResponse["result"], embedOrigin: string | null) {
+  if (!embedOrigin) return;
+  const target = window.parent !== window ? window.parent : window.opener;
+  if (target) (target as Window).postMessage({ type: "faye:handoff", result }, embedOrigin);
+}
 type Send = (payload: Payload) => Promise<void>;
 
-/** Renders whichever typed screen the server sent; the UI never sees the flow itself. */
-export function FlowScreen({ initial }: { initial: ScreenResponse }) {
+/**
+ * Renders whichever typed screen the server sent; the UI never sees the flow itself.
+ *
+ * @param embedOrigin the origin of the page that embeds this one, for a host that hands off its
+ *   result rather than redirecting; null posts nothing
+ */
+export function FlowScreen({ initial, embedOrigin }: { initial: ScreenResponse; embedOrigin: string | null }) {
   const [current, setCurrent] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [handedOff, setHandedOff] = useState(false);
   const { screen } = current;
 
   async function send(payload: Payload) {
@@ -52,12 +69,31 @@ export function FlowScreen({ initial }: { initial: ScreenResponse }) {
         window.location.assign(body.redirectTo);
         return;
       }
+      if ("result" in body) {
+        handOff(body.result, embedOrigin);
+        setHandedOff(true);
+        setPending(false);
+        return;
+      }
       if ("error" in body) setError(errorMessage(body.error));
       else setCurrent(body);
     } catch {
       setError("Something went wrong. Try again.");
     }
     setPending(false);
+  }
+
+  if (handedOff) {
+    return (
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>Done</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">You can return to the app.</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   const failure = screen.errors?.[0];

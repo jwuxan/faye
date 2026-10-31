@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -103,8 +104,8 @@ class FlowCompilerTest {
     }
 
     @Test
-    void hydraPathsLowerToHostPaths() {
-        var flow = FlowCompiler.compile("f.yaml", """
+    void aliasedNamespacesLowerToTheirNamespace() {
+        var flow = FlowCompiler.compileWithHooks("f.yaml", """
                 flow: f
                 version: 1
                 login:
@@ -113,10 +114,24 @@ class FlowCompilerTest {
                       if: { or: [hydra.skip, { has: [hydra.acr_values, faye:2fa] }, { exists: hydra.login_hint },
                                  { eq: [user.note, hydra.literal] }] }
                       use: identity.resolve
-                """);
+                """, name -> Optional.empty(), Map.of("hydra", "host"))
+                .flow();
         assertThat(IrCodec.canonicalJson(flow))
                 .contains("{\"or\":[\"host.skip\",{\"has\":[\"host.acr_values\",\"faye:2fa\"]},"
                         + "{\"exists\":\"host.login_hint\"},{\"eq\":[\"user.note\",\"hydra.literal\"]}]}");
+    }
+
+    @Test
+    void theCompilerKnowsNoHostSpelling() {
+        assertThatThrownBy(() -> FlowCompiler.compile("f.yaml", """
+                        flow: f
+                        version: 1
+                        login:
+                          steps:
+                            a:
+                              if: hydra.skip
+                              use: identity.resolve
+                        """)).isInstanceOf(DslException.class);
     }
 
     @Test

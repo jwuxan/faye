@@ -26,5 +26,7 @@ export default async function FlowPage({ params }: { params: Promise<{ flowId: s
       </Card>
     );
   }
-  return <FlowScreen initial={(await res.json()) as ScreenResponse} />;
+  // Where a host that hands off (ADR 0025) embeds this page; unset, a handoff result is never posted
+  const embedOrigin = process.env.FAYE_EMBED_ORIGIN || null;
+  return <FlowScreen initial={(await res.json()) as ScreenResponse} embedOrigin={embedOrigin} />;
 }

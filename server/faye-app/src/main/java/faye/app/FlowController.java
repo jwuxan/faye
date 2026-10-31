@@ -6,6 +6,7 @@ import faye.engine.EngineResponse;
 import faye.engine.FlowException;
 import faye.engine.FlowException.Code;
 import faye.engine.FlowStore;
+import faye.engine.Handoff;
 import faye.engine.HostKind;
 import faye.engine.Redirect;
 import faye.engine.ScreenView;
@@ -46,6 +47,9 @@ class FlowController {
 
     record RedirectResponse(String redirectTo) {}
 
+    /** A finished flow whose host hands its result to the page that embeds the Login UI (ADR 0025). */
+    record HandoffResponse(Map<String, Object> result) {}
+
     record ErrorResponse(String error) {}
 
     /** The engine's screen, with the tenant's branding when it has any. */
@@ -70,17 +74,21 @@ class FlowController {
     }
 
     @GetMapping("/login")
-    ResponseEntity<Void> login(@RequestParam("login_challenge") String challenge, HttpServletRequest http) {
+    ResponseEntity<?> login(@RequestParam("login_challenge") String challenge, HttpServletRequest http) {
         return start(HostKind.LOGIN, challenge, http);
     }
 
     /** Runs the consent entry of the flow version the login ran. */
     @GetMapping("/consent")
-    ResponseEntity<Void> consent(@RequestParam("consent_challenge") String challenge, HttpServletRequest http) {
+    ResponseEntity<?> consent(@RequestParam("consent_challenge") String challenge, HttpServletRequest http) {
         return start(HostKind.CONSENT, challenge, http);
     }
 
-    private ResponseEntity<Void> start(HostKind kind, String challenge, HttpServletRequest http) {
+    /**
+     * The Hydra host's routes: a redirect to the Login UI, or Hydra's redirect if the flow ended at
+     * once. A host that hands off instead answers a flow that ended at once with its result.
+     */
+    private ResponseEntity<?> start(HostKind kind, String challenge, HttpServletRequest http) {
         Map<String, Object> request = new HashMap<>();
         request.put("ip", http.getRemoteAddr());
         String userAgent = http.getHeader("User-Agent");
@@ -94,6 +102,9 @@ class FlowController {
                 yield props.loginUiUrl() + "/flow/" + screen.flowId();
             }
             case Redirect redirect -> redirect.url();
+            case Handoff handoff -> {
+                return ResponseEntity.ok(new HandoffResponse(handoff.result()));
+            }
         };
         return response.location(URI.create(location)).build();
     }
@@ -143,6 +154,10 @@ class FlowController {
                 ResponseEntity.ok()
                         .header(HttpHeaders.SET_COOKIE, binderCookie(flowId, "", Duration.ZERO))
                         .body(new RedirectResponse(redirect.url()));
+            case Handoff handoff ->
+                ResponseEntity.ok()
+                        .header(HttpHeaders.SET_COOKIE, binderCookie(flowId, "", Duration.ZERO))
+                        .body(new HandoffResponse(handoff.result()));
         };
     }
 

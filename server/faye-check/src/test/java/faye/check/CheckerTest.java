@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import faye.engine.FlowVersion;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.TenantPolicy;
+import faye.engine.Verifier;
 import faye.ir.Flow;
 import faye.ir.IrCodec;
 import java.util.List;
@@ -25,7 +26,7 @@ class CheckerTest {
     }
 
     static Report check(Flow flow, TenantPolicy policy) {
-        return Checker.check(flow, Fixtures.handlers(), policy);
+        return Checker.check(flow, Fixtures.handlers(), Fixtures.screens(), policy);
     }
 
     static List<String> errors(Report report) {
@@ -306,7 +307,7 @@ class CheckerTest {
         var versions = new InMemoryFlowVersions();
         Flow passwordOnly = Fixtures.tenantFlow("password-only");
         Flow mfa = Fixtures.conformanceFlow("mfa-policy");
-        var open = new Publisher(versions, Fixtures.handlers(), Map.of());
+        var open = new Publisher(versions, Fixtures.handlers(), Fixtures.screens(), Map.of());
         FlowVersion first = open.publish("t", passwordOnly);
         FlowVersion second = open.publish("t", mfa);
         assertThat(versions.history("t")).containsExactly(first.hash(), second.hash());
@@ -317,7 +318,7 @@ class CheckerTest {
         assertThat(versions.current("t")).contains(second);
 
         // Under a policy that now requires MFA, the password only version cannot come back
-        var strict = new Publisher(versions, Fixtures.handlers(), Map.of("t", MFA));
+        var strict = new Publisher(versions, Fixtures.handlers(), Fixtures.screens(), Map.of("t", MFA));
         assertThatThrownBy(() -> strict.rollback("t", first.hash())).isInstanceOf(CheckFailed.class);
         assertThat(open.rollback("t", first.hash())).isEqualTo(first);
         assertThat(versions.current("t")).contains(first);
@@ -392,5 +393,38 @@ class CheckerTest {
         assertThat(errors(check(args)))
                 .singleElement()
                 .satisfies(e -> assertThat(e).startsWith(": args of 'identity.resolve': "));
+    }
+
+    @Test
+    void aHostPathOutsideTheContractIsRefusedAtPublish() {
+        Flow flow = Fixtures.yaml("tenant.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    identify:
+                      if: { or: [host.prompt, { has: [host.acr_values, "faye:2fa"] }, host.context.origin] }
+                      screen: identifier
+                      use: identity.resolve
+                    credential: { screen: password, use: password.verify }
+                """);
+        assertThat(errors(check(flow)))
+                .singleElement()
+                .satisfies(e ->
+                        assertThat(e).startsWith("tenant.yaml:6:11: 'host.prompt' is not part of the host contract"));
+    }
+
+    @Test
+    void aStoredVersionThatReadsAnUnknownHostPathStillLoads() {
+        Flow stored = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"when\",\"host.prompt\",[\"set\",\"x\",true]],"
+                + "[\"screen\",\"identifier\"],[\"call\",\"identity.resolve\"],"
+                + "[\"screen\",\"password\"],[\"call\",\"password.verify\"],[\"succeed\"]]]]");
+        // L0 and L1 hold it; only a new publish (L2) is held to the closed list
+        assertThat(Verifier.verify(stored, Fixtures.handlers(), Fixtures.screens()))
+                .isEmpty();
+        assertThat(errors(check(stored)))
+                .singleElement()
+                .satisfies(e -> assertThat(e).contains("'host.prompt'"));
     }
 }

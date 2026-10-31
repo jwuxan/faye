@@ -1,6 +1,7 @@
 dependencies {
     api(project(":faye-engine"))
     testImplementation(project(":faye-dsl"))
+    testImplementation(testFixtures(project(":faye-screens")))
     testImplementation(project(":faye-host-mock"))
     testImplementation(libs.jackson.yaml)
 }

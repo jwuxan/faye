@@ -20,6 +20,7 @@ import faye.engine.HandlerRegistry;
 import faye.engine.HookException;
 import faye.engine.HookRunner;
 import faye.engine.HostKind;
+import faye.engine.HostParams;
 import faye.engine.HostRequest;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
@@ -34,6 +35,7 @@ import faye.host.mock.MockFlowHost;
 import faye.ir.Entry;
 import faye.ir.Flow;
 import faye.ir.Predicate;
+import faye.screens.FixedIssuers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,7 +82,8 @@ class GeneratedVectorsTest {
             for (Path file : flows.sorted().toList()) {
                 String name = file.getFileName().toString().replace(".json", "");
                 Flow flow = Fixtures.conformanceFlow(name);
-                Report report = Checker.check(flow, Fixtures.handlers(), TenantPolicy.DEFAULT, Fixtures::hook);
+                Report report = Checker.check(
+                        flow, Fixtures.handlers(), Fixtures.screens(), TenantPolicy.DEFAULT, Fixtures::hook);
                 if (!report.ok()) continue;
                 for (int i = 0; i < report.paths().size(); i++) {
                     FlowPath path = report.paths().get(i);
@@ -235,9 +238,16 @@ class GeneratedVectorsTest {
         var versions = new InMemoryFlowVersions();
         versions.publish(Engine.DEFAULT_TENANT, FlowVersion.of(flow));
         var host = new MockFlowHost();
-        host.register(new HostRequest(kind, "challenge-1", client, params));
-        var engine =
-                new Engine(versions, new HandlerRegistry(handlers), new InMemoryFlowStore(), host, Map.of(), hooks);
+        host.register(new HostRequest(kind, "challenge-1", client, HostParams.fromMap(params)));
+        var engine = Engine.builder()
+                .versions(versions)
+                .handlers(new HandlerRegistry(handlers))
+                .store(new InMemoryFlowStore())
+                .host(host)
+                .tenants(Map.of())
+                .hooks(hooks)
+                .screens(FixedIssuers.registry())
+                .build();
 
         List<Map<String, Object>> events = new ArrayList<>();
         EngineResponse response = engine.start(kind, "challenge-1", Map.of(), "binder");

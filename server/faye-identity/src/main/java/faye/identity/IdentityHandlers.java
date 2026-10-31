@@ -20,8 +20,6 @@ import com.webauthn4j.data.client.Origin;
 import com.webauthn4j.data.client.challenge.DefaultChallenge;
 import com.webauthn4j.server.ServerProperty;
 import com.webauthn4j.verifier.exception.VerificationException;
-import faye.engine.Base32;
-import faye.engine.BuiltinScreen;
 import faye.engine.Effect;
 import faye.engine.Engine;
 import faye.engine.Env;
@@ -69,8 +67,8 @@ public final class IdentityHandlers {
     private static final AttestedCredentialDataConverter CREDENTIAL_DATA =
             new AttestedCredentialDataConverter(CONVERTER);
     private static final WebAuthnManager WEBAUTHN = WebAuthnManager.createNonStrictWebAuthnManager(CONVERTER);
-    /** The algorithms the Login UI offers at registration, from the one list the engine keeps. */
-    private static final List<PublicKeyCredentialParameters> ALGORITHMS = BuiltinScreen.PASSKEY_ALGORITHMS.stream()
+    /** The algorithms the Login UI offers at registration, from the one list the issuer keeps. */
+    private static final List<PublicKeyCredentialParameters> ALGORITHMS = IdentityIssuers.PASSKEY_ALGORITHMS.stream()
             .map(alg -> new PublicKeyCredentialParameters(
                     PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.create(alg)))
             .toList();

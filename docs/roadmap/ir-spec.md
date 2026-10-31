@@ -67,13 +67,30 @@ A flow reads its environment through predicate paths `namespace.key...`. A missi
 |---|---|---|
 | `request` | IP, user agent, locale of the request that started the flow | the engine, at start (a preview scenario may override it) |
 | `client` | the client's id and metadata (`first_party`, `tenant`, `preview`) | the host, at start |
-| `host` | the authorization request as the host relays it: `subject`, `skip`, `acr_values`, `requested_scope`, `login_hint`, `context` | the host, at start |
-| `tenant` | the tenant's settings when the flow started: `mfa_required` | the engine, at start |
+| `host` | the request as the host relays it, exactly the fields of the host contract below | the host, at start |
+| `tenant` | the tenant's settings when the flow started: `mfa_required`, and `name`, its display name, when it has one | the engine, at start |
 | `user` | what handlers learned about the person | handlers, by merging fields on success |
 | `vars` | the flow's own values | `set`, and hooks in steps |
 | `auth` | `subject`, `amr`, `acr` | the engine only, from credentials that verified |
 
 `user` merges shallowly and keeps its fields across retry attempts. Pinned by `login-hint`, `tenant-mfa-predicate`, `picker`, `hook-set-cannot-write-auth`.
+
+### Host contract
+
+`host.*` is closed ([ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)): a host maps its protocol into these fields (`HostParams`) and cannot add one, so a flow runs unchanged on any host. The checker refuses a predicate path `host.<x>` for any other `<x>`, and any path below a field other than `context`, at publish and preview; a stored version that reads one still loads, and reads null.
+
+| Field | Type | Means | Supplied by |
+|---|---|---|---|
+| `subject` | string, absent when none | who the host already knows: a remembered session (login with `skip`), a step up, the subject of a consent | redirecting authorization servers; an embedding host for a step up |
+| `skip` | boolean | the host remembers this subject (login) or this grant (consent) | redirecting authorization servers; false otherwise |
+| `acr_values` | list of strings | assurance the client asked for, most preferred first | any host that relays OIDC `acr_values`, else empty |
+| `requested_scope` | list of strings | scopes the client asks for; the consent screen lists them | OAuth2 hosts, else empty |
+| `requested_access_token_audience` | list of strings | audiences the client asks for | OAuth2 hosts, else empty |
+| `login_hint` | string, absent when none | who the client expects to sign in; prefills the identifier | any host |
+| `ui_locales` | list of strings | the person's preferred languages | any host, else empty |
+| `context` | object | the host's own data carried from one request to the next (a consent receives what the login's accept returned), readable as `host.context.<key>` | any host, else empty |
+
+Lists, `skip` and `context` are always present; an empty list is falsy, like null.
 
 ## Evaluation
 
@@ -203,7 +220,7 @@ A handler that binds a subject is a credential and must name a subject on succes
 
 ## Screen catalog
 
-A screen spec gives a screen type its options, the server data it issues, how it renders, which answers it accepts, and which later screen an answer to it also answers (a hosted answer: a passkey chosen from autofill on `identifier` also answers the next `passkey` screen that uses, not registers, a passkey, once). The engine uses the `method_picker` screen for `choose`. The types are those of `schema/screen.schema.json`. Pinned by `passkey-autofill`, `EngineTest.hostedPasskeyAnswersOnlyOneScreen`.
+A screen spec gives a screen type its options, the server data it issues (credential material through the issuer registered for it, never readable by predicates or hooks), how it renders, which answers it accepts, and which later screen an answer to it also answers (a hosted answer: a passkey chosen from autofill on `identifier` also answers the next `passkey` screen that uses, not registers, a passkey, once). The engine uses the `method_picker` screen for `choose`; the verifier refuses a `choose` of several options when the catalog has none. The built in types are those of `schema/screen.schema.json`. A screen whose issuer fails fails the step with `issuer_error`. Pinned by `passkey-autofill`, `EngineTest.hostedPasskeyAnswersOnlyOneScreen`.
 
 ## Checks
 

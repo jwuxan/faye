@@ -8,6 +8,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import faye.host.mock.MockFlowHost;
 import faye.ir.Hook;
 import faye.ir.IrCodec;
+import faye.screens.FixedIssuers;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -81,19 +82,21 @@ class ConformanceTest {
                 kind,
                 "challenge-1",
                 map(v.path("host").path("client")),
-                map(v.path("host").path("params"))));
+                HostParams.fromMap(map(v.path("host").path("params")))));
         var tenant = v.path("tenant");
         var policy = new TenantPolicy(tenant.path("mfa_required").asBoolean(), null, null);
         var previews = new ScriptedPreviews(v.path("preview"), versions);
         var store = new RacingStore();
-        var engine = new Engine(
-                versions,
-                new HandlerRegistry(fakes),
-                store,
-                host,
-                TenantPolicies.of(Map.of(Engine.DEFAULT_TENANT, policy)),
-                hooks,
-                previews);
+        var engine = Engine.builder()
+                .versions(versions)
+                .handlers(new HandlerRegistry(fakes))
+                .store(store)
+                .host(host)
+                .tenants(TenantPolicies.of(Map.of(Engine.DEFAULT_TENANT, policy)))
+                .hooks(hooks)
+                .previews(previews)
+                .screens(FixedIssuers.registry())
+                .build();
 
         EngineResponse last = engine.start(kind, "challenge-1", Map.of(), "binder");
         @Nullable String refused = null;

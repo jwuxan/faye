@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
  *
  * @param event {@code start} ({@code id} the version hash, {@code outcome} the entry id), {@code
  *     step}, {@code option} ({@code outcome} {@code only}, {@code user} or {@code hook}), {@code
- *     screen}, {@code call} ({@code outcome} {@code ok} or the error; {@code amr} what it proved),
+ *     screen} ({@code outcome} {@code issuer_error} when its issuer failed), {@code call} ({@code outcome} {@code ok} or the error; {@code amr} what it proved),
  *     {@code hook} ({@code outcome} {@code ok} or the failure), {@code retry} ({@code outcome} the
  *     error being retried), {@code commit} ({@code id} the handler, {@code outcome} the code of an
  *     effect whose commit failed), {@code end} ({@code outcome} {@code succeed} or the reason;

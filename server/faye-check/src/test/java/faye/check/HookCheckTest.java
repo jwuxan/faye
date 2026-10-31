@@ -47,6 +47,7 @@ class HookCheckTest {
         return Checker.check(
                 compiled.flow(),
                 Fixtures.handlers(),
+                Fixtures.screens(),
                 policy,
                 hash -> Optional.ofNullable(compiled.hooks().get(hash)));
     }
@@ -74,7 +75,8 @@ class HookCheckTest {
     @Test
     void hookThatIsNotStoredIsAnError() {
         var compiled = compile(RISK);
-        Report report = Checker.check(compiled.flow(), Fixtures.handlers(), GRANTED, hash -> Optional.empty());
+        Report report = Checker.check(
+                compiled.flow(), Fixtures.handlers(), Fixtures.screens(), GRANTED, hash -> Optional.empty());
         assertThat(errors(report))
                 .singleElement()
                 .asString()
@@ -135,7 +137,8 @@ class HookCheckTest {
         var compiled = compile(RISK);
         var versions = new InMemoryFlowVersions();
         var hooks = new InMemoryHookStore();
-        var publisher = new Publisher(versions, hooks, Fixtures.handlers(), Map.of("risky", GRANTED));
+        var publisher =
+                new Publisher(versions, hooks, Fixtures.handlers(), Fixtures.screens(), Map.of("risky", GRANTED));
         String hash = compiled.hooks().keySet().iterator().next();
 
         assertThatThrownBy(() -> publisher.publish("strict", compiled.flow(), compiled.hooks()))

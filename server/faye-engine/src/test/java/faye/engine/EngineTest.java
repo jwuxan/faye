@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import faye.engine.FlowException.Code;
 import faye.host.mock.MockFlowHost;
 import faye.ir.IrCodec;
+import faye.screens.FixedIssuers;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -38,8 +39,13 @@ class EngineTest {
                 in -> "right".equals(in.string("password"))
                         ? Outcome.subject("alice")
                         : Outcome.fail("invalid_credentials"));
-        return new Engine(
-                versions, new HandlerRegistry(List.of(resolve, verify, unused("consent.record"))), store, host);
+        return Engine.builder()
+                .versions(versions)
+                .handlers(new HandlerRegistry(List.of(resolve, verify, unused("consent.record"))))
+                .store(store)
+                .host(host)
+                .screens(FixedIssuers.registry())
+                .build();
     }
 
     @Test
@@ -117,8 +123,20 @@ class EngineTest {
                 return store.replace(next);
             }
         };
-        Engine a = new Engine(versions, handlers(), store, host);
-        Engine b = new Engine(versions, handlers(), racing, host);
+        Engine a = Engine.builder()
+                .versions(versions)
+                .handlers(handlers())
+                .store(store)
+                .host(host)
+                .screens(FixedIssuers.registry())
+                .build();
+        Engine b = Engine.builder()
+                .versions(versions)
+                .handlers(handlers())
+                .store(racing)
+                .host(host)
+                .screens(FixedIssuers.registry())
+                .build();
 
         // a finishes the flow; b, which read the screen before that, then loses the race
         assertThat(a.submit(first.flowId(), "binder", password.nonce(), answer)).isInstanceOf(Redirect.class);
@@ -209,13 +227,15 @@ class EngineTest {
                 FlowVersion.of(IrCodec.readFlow(Files.readString(FLOW.resolveSibling("two-credentials.json")))));
         String[] subjects = {"alice", "mallory"};
         int[] calls = {0};
-        Engine engine = new Engine(
-                versions,
-                new HandlerRegistry(List.of(
+        Engine engine = Engine.builder()
+                .versions(versions)
+                .handlers(new HandlerRegistry(List.of(
                         handler("identity.resolve", Set.of(), false, in -> Outcome.ok()),
-                        handler("password.verify", Set.of("pwd"), true, in -> Outcome.subject(subjects[calls[0]++])))),
-                store,
-                host);
+                        handler("password.verify", Set.of("pwd"), true, in -> Outcome.subject(subjects[calls[0]++])))))
+                .store(store)
+                .host(host)
+                .screens(FixedIssuers.registry())
+                .build();
 
         var s = (ScreenView) engine.start(HostKind.LOGIN, "c1", Map.of(), "binder");
         s = (ScreenView) engine.submit(s.flowId(), "binder", s.nonce(), new Submission(Map.of("identifier", "a")));
@@ -236,7 +256,7 @@ class EngineTest {
                 HostKind.LOGIN,
                 "c-acme",
                 Map.of("client_id", "acme-app", "metadata", Map.of("tenant", "acme")),
-                Map.of()));
+                HostParams.fromMap(Map.of())));
         var engine = engine();
         var s = (ScreenView) engine.start(HostKind.LOGIN, "c-acme", Map.of(), "binder");
         engine.submit(s.flowId(), "binder", s.nonce(), new Submission(Map.of("identifier", "a")));
@@ -249,7 +269,10 @@ class EngineTest {
     @Test
     void rememberedSessionIsReusedWhenItMeetsTheRequestedAcr() {
         host.register(new HostRequest(
-                HostKind.LOGIN, "c-skip", Map.of("client_id", "demo"), Map.of("skip", true, "subject", "alice")));
+                HostKind.LOGIN,
+                "c-skip",
+                Map.of("client_id", "demo"),
+                HostParams.fromMap(Map.of("skip", true, "subject", "alice"))));
         assertThat(engine().start(HostKind.LOGIN, "c-skip", Map.of(), "binder")).isInstanceOf(Redirect.class);
         assertThat(host.accepted()).singleElement().satisfies(a -> {
             assertThat(a.outcome().subject()).isEqualTo("alice");
@@ -264,7 +287,7 @@ class EngineTest {
                 HostKind.LOGIN,
                 "c-up",
                 Map.of("client_id", "demo"),
-                Map.of("skip", true, "subject", "mallory", "acr_values", List.of("faye:2fa"))));
+                HostParams.fromMap(Map.of("skip", true, "subject", "mallory", "acr_values", List.of("faye:2fa")))));
         var engine = engine();
         var s = (ScreenView) engine.start(HostKind.LOGIN, "c-up", Map.of(), "binder");
         s = (ScreenView) engine.submit(s.flowId(), "binder", s.nonce(), new Submission(Map.of("identifier", "a")));
@@ -297,7 +320,13 @@ class EngineTest {
                         "Alice")));
         Handler verify = handler("password.verify", Set.of("pwd"), true, in -> Outcome.subject("alice"));
         Handler record = handler("consent.record", Set.of(), false, in -> Outcome.ok());
-        var engine = new Engine(versions, new HandlerRegistry(List.of(resolve, verify, record)), store, host);
+        var engine = Engine.builder()
+                .versions(versions)
+                .handlers(new HandlerRegistry(List.of(resolve, verify, record)))
+                .store(store)
+                .host(host)
+                .screens(FixedIssuers.registry())
+                .build();
 
         var s = (ScreenView) engine.start(HostKind.LOGIN, "c1", Map.of(), "binder");
         s = (ScreenView) engine.submit(s.flowId(), "binder", s.nonce(), new Submission(Map.of("identifier", "a")));
@@ -310,7 +339,13 @@ class EngineTest {
                 HostKind.CONSENT,
                 "k1",
                 Map.of("client_id", "partner-app", "first_party", false),
-                Map.of("subject", "alice", "requested_scope", List.of("openid", "email"), "context", login.context())));
+                HostParams.fromMap(Map.of(
+                        "subject",
+                        "alice",
+                        "requested_scope",
+                        List.of("openid", "email"),
+                        "context",
+                        login.context()))));
         var consent = (ScreenView) engine.start(HostKind.CONSENT, "k1", Map.of(), "binder");
         assertThat(consent.screen())
                 .containsEntry("type", "consent")
@@ -342,13 +377,13 @@ class EngineTest {
                 HostKind.CONSENT,
                 "k1",
                 Map.of("client_id", "demo", "first_party", true),
-                Map.of(
+                HostParams.fromMap(Map.of(
                         "subject",
                         "bob",
                         "requested_scope",
                         List.of("email"),
                         "context",
-                        host.accepted().get(0).outcome().context())));
+                        host.accepted().get(0).outcome().context()))));
         engine.start(HostKind.CONSENT, "k1", Map.of(), "binder");
         assertThat(host.consented())
                 .singleElement()
@@ -368,17 +403,19 @@ class EngineTest {
                 Set.of("hwk", "user"),
                 true,
                 in -> calls[0]++ == 0 ? Outcome.fail("invalid_credentials") : Outcome.subject("alice"));
-        var engine = new Engine(
-                versions,
-                new HandlerRegistry(List.of(
+        var engine = Engine.builder()
+                .versions(versions)
+                .handlers(new HandlerRegistry(List.of(
                         resolve,
                         assertPasskey,
                         unused("password.verify"),
                         unused("totp.verify"),
                         unused("totp.enroll"),
-                        unused("webauthn.register"))),
-                store,
-                host);
+                        unused("webauthn.register"))))
+                .store(store)
+                .host(host)
+                .screens(FixedIssuers.registry())
+                .build();
 
         var s = (ScreenView) engine.start(HostKind.LOGIN, "c1", Map.of(), "binder");
         // The autofilled passkey fails; with no retry around it the section fails rather than
@@ -403,7 +440,7 @@ class EngineTest {
                 HostKind.CONSENT,
                 "k2",
                 Map.of("client_id", "demo"),
-                Map.of("subject", "alice", "requested_scope", List.of())));
+                HostParams.fromMap(Map.of("subject", "alice", "requested_scope", List.of()))));
         engine().start(HostKind.CONSENT, "k2", Map.of(), "binder");
         assertThat(host.consented()).isEmpty();
         assertThat(host.rejected())
@@ -456,8 +493,16 @@ class EngineTest {
                 HostKind.CONSENT,
                 "k1",
                 Map.of("client_id", "demo"),
-                Map.of("subject", "alice", "requested_scope", List.of(), "context", login.context())));
-        new Engine(forgetful, handlers(), store, host).start(HostKind.CONSENT, "k1", Map.of(), "binder");
+                HostParams.fromMap(
+                        Map.of("subject", "alice", "requested_scope", List.of(), "context", login.context()))));
+        Engine.builder()
+                .versions(forgetful)
+                .handlers(handlers())
+                .store(store)
+                .host(host)
+                .screens(FixedIssuers.registry())
+                .build()
+                .start(HostKind.CONSENT, "k1", Map.of(), "binder");
         assertThat(host.consented()).isEmpty();
         assertThat(host.rejected())
                 .singleElement()

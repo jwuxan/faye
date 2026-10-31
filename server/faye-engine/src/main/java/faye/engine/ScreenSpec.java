@@ -4,9 +4,11 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * One typed screen of {@code schema/screen.schema.json}: how the engine issues it, renders it and
- * judges an answer to it. Registered in a {@link ScreenRegistry}, like handlers in a {@link
- * HandlerRegistry}, so adding a screen touches neither the engine nor the checker.
+ * One typed screen: what the engine stores for it, the payload it sends for it and which answers it
+ * takes. Registered in a {@link ScreenRegistry}, like handlers in a {@link HandlerRegistry}, so
+ * adding a screen touches neither the engine nor the checker. The engine renders nothing: {@link
+ * #render} returns the screen protocol payload, and a separately deployed UI draws it. Credential
+ * material on a screen comes from its {@link CredentialIssuer}, never from the spec.
  */
 public interface ScreenSpec {
 
@@ -19,8 +21,17 @@ public interface ScreenSpec {
     }
 
     /**
-     * Server issued data for a new instance of this screen, persisted with the flow while it waits
-     * and handed to the handlers that consume the answer as {@link Submission#context()}.
+     * Whether this screen shows credential material, which the {@link CredentialIssuer} registered
+     * for it issues; the {@link ScreenRegistry} refuses a declaring screen without one.
+     */
+    default boolean issued() {
+        return false;
+    }
+
+    /**
+     * The screen's own data for a new instance, persisted with the flow while it waits and handed
+     * to the handlers that consume the answer as {@link Submission#context()}; the engine adds what
+     * the screen's issuer issues.
      *
      * @param opts the screen's IR options
      * @param previous data of the screen the flow last waited on, if it was this same screen node;
@@ -28,7 +39,10 @@ public interface ScreenSpec {
      */
     Map<String, Object> prepare(Env env, Map<String, Object> opts, Map<String, Object> previous);
 
-    /** The screen payload sent to the Login UI, without {@code errors} and {@code attemptsLeft}. */
+    /**
+     * The screen payload sent to the UI, without {@code errors}, {@code attemptsLeft} and what the
+     * screen's issuer presents, which the engine adds.
+     */
     Map<String, Object> render(Env env, Map<String, Object> data);
 
     /** Whether a submission is a well formed answer to this instance of the screen. */

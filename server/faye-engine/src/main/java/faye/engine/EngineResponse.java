@@ -1,4 +1,4 @@
 package faye.engine;
 
-/** Either the next screen to show or where to send the browser. */
-public sealed interface EngineResponse permits ScreenView, Redirect {}
+/** Either the next screen to show, or how the host completes the request. */
+public sealed interface EngineResponse permits ScreenView, Completion {}

@@ -21,11 +21,13 @@ import faye.host.hydra.HydraClientDirectory;
 import faye.host.hydra.HydraFlowHost;
 import faye.host.mock.MockFlowHost;
 import faye.identity.IdentityHandlers;
+import faye.identity.IdentityIssuers;
 import faye.identity.Passwords;
 import faye.identity.User;
 import faye.identity.UserStore;
 import faye.identity.WebAuthnSettings;
 import faye.ir.Flow;
+import faye.screens.BuiltinScreen;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
@@ -123,17 +125,25 @@ class EngineConfiguration {
         }
     }
 
+    /**
+     * Namespace spellings tenant YAML may still use: this app's flows were written for Hydra, and
+     * say {@code hydra.} for {@code host.}. The DSL knows no host; the alias comes from the host
+     * module.
+     */
+    static final Map<String, String> DSL_ALIASES = HydraFlowHost.DSL_PATH_ALIASES;
+
     /** Compiles a configured flow; a hook's {@code file:} is read from next to it. */
     static FlowCompiler.Compiled compile(Resource resource, String tenant) {
         return FlowCompiler.compileWithHooks(
                 Objects.requireNonNullElse(resource.getFilename(), tenant),
                 read(resource),
-                name -> sibling(resource, name));
+                name -> sibling(resource, name),
+                DSL_ALIASES);
     }
 
     /** Compiles a flow sent through the admin API; a hook's {@code file:} is read from next to the configured one. */
     static FlowCompiler.Compiled compileDraft(Resource configured, String tenant, String yaml) {
-        return FlowCompiler.compileWithHooks(tenant + ".yaml", yaml, name -> sibling(configured, name));
+        return FlowCompiler.compileWithHooks(tenant + ".yaml", yaml, name -> sibling(configured, name), DSL_ALIASES);
     }
 
     /** A hook file next to a configured flow. */
@@ -230,10 +240,13 @@ class EngineConfiguration {
         return new MockFlowHost("mock://callback", tenant);
     }
 
-    /** The screens of the screen protocol, which the Login UI renders. */
+    /**
+     * The screens of the screen protocol, which the Login UI renders, with the credential issuers of
+     * the identity module whose handlers verify what they issue.
+     */
     @Bean
     ScreenRegistry screens() {
-        return ScreenRegistry.builtIn();
+        return BuiltinScreen.registry(IdentityIssuers.create());
     }
 
     /** Starts once the publisher has published and checked every tenant's flow. */
@@ -248,6 +261,15 @@ class EngineConfiguration {
             HookRunner hooks,
             Tenants tenants,
             DraftPreviews previews) {
-        return new Engine(versions, handlers, store, host, tenants, hooks, previews, screens);
+        return Engine.builder()
+                .versions(versions)
+                .handlers(handlers)
+                .store(store)
+                .host(host)
+                .tenants(tenants)
+                .hooks(hooks)
+                .previews(previews)
+                .screens(screens)
+                .build();
     }
 }

@@ -27,8 +27,8 @@ The control plane and the runtime share exactly one thing: **an immutable flow v
 
 ## Boundaries that make Faye reusable
 
-1. **FlowHost**: the engine never imports Hydra. It talks to the authorization server through `load`, `accept`, `reject`. Hydra is the first implementation; a mock host and later a Keycloak host prove the boundary.
-2. **Typed screen protocol**: the Login UI knows a fixed set of screen types and capabilities, not flows. One frontend serves every tenant and every flow.
+1. **FlowHost**: the engine never imports Hydra. It talks to the system it runs flows for through `load`, `accept`, `reject`, reads the request only through the closed host contract `HostParams`, and answers with the host's `Completion`: a `Redirect` for an authorization server, a `Handoff` for a system that started the flow by API ([ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)). Hydra is the first implementation; a mock host and later a Keycloak host prove the boundary.
+2. **Typed screen protocol**: the Login UI knows a fixed set of screen types and capabilities, not flows. One frontend serves every tenant and every flow. The engine knows no screen type: the built in ones live in `faye-screens`, and their credential material comes from `CredentialIssuer`s of the module that verifies it.
 3. **Closed hook output**: hooks may only `set` variables, `fail`, or `pick` among declared options. Static checks therefore remain valid at runtime.
 4. **IR as JSON with a written spec and a conformance suite**: the engine can be reimplemented in another language and verified against the same test vectors.
 
@@ -65,9 +65,10 @@ faye/
 │   ├── faye-ir/                  sealed Node types, (de)serialization, hashing
 │   ├── faye-dsl/                 YAML → IR compiler, source maps
 │   ├── faye-check/               static checks, path enumeration
-│   ├── faye-engine/              interpreter, continuation model, handler registry
+│   ├── faye-engine/              interpreter, continuation model, the SPIs (host, store, catalogs, issuers)
+│   ├── faye-screens/             the screens of screen protocol v1 as ScreenSpecs
 │   ├── faye-hooks/               HookRuntime interface + QuickJS on Wasm implementation, egress
-│   ├── faye-identity/            users, password, TOTP, WebAuthn handlers
+│   ├── faye-identity/            users, password, TOTP, WebAuthn handlers and their issuers
 │   ├── faye-host-hydra/          FlowHost for Hydra
 │   ├── faye-host-mock/           FlowHost for tests
 │   └── faye-app/                 Spring Boot: screen API, admin API, wiring

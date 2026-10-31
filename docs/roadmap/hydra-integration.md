@@ -6,13 +6,14 @@ Ory Hydra (v2) is the authorization server: OAuth2 / OIDC endpoints, client regi
 
 ```java
 interface FlowHost {
-    HostRequest load(HostKind kind, String challenge);   // login | consent | logout
-    Redirect accept(HostRequest req, Outcome outcome);  // subject, amr, acr, remember, grants
-    Redirect reject(HostRequest req, String error, String description);
+    HostRequest load(HostKind kind, String ref);              // login | consent | logout; ref = the challenge
+    Completion accept(HostRequest req, Authenticated outcome); // subject, amr, acr
+    Completion accept(HostRequest req, Consented outcome);     // grants, ID token claims
+    Completion reject(HostRequest req, String error, String description);
 }
 ```
 
-The engine depends only on this interface. `faye-host-hydra` implements it with the Hydra admin API; `faye-host-mock` implements it in memory for tests and the conformance suite.
+The engine depends only on this interface ([ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)). Hydra returns `Redirect` for every completion. `HydraFlowHost.load` maps Hydra's request into `HostParams`, the host contract: `subject`, `skip`, `requested_scope`, `requested_access_token_audience`, and from `oidc_context` `acr_values`, `ui_locales` and `login_hint`; for a consent, the `context` our login accept set. `HydraFlowHost.DSL_PATH_ALIASES` lets tenant YAML still say `hydra.` for `host.`; the app hands it to the compiler. `faye-host-hydra` implements it with the Hydra admin API; `faye-host-mock` implements it in memory for tests and the conformance suite.
 
 ## Login
 

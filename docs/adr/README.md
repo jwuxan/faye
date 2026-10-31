@@ -28,4 +28,4 @@ Format: [MADR 4](https://adr.github.io/madr/). One file per decision, `NNNN-titl
 | [0022](0022-passkey-ceremonies-with-simplewebauthn.md) | Passkey ceremonies in the Login UI with SimpleWebAuthn, algorithms from the server | Accepted |
 | [0023](0023-one-container-many-processes.md) | One container, many processes | In progress |
 | [0024](0024-core-ir-as-a-narrow-waist.md) | The Core IR as a narrow waist: entries, format versions, handler and screen catalogs, effects after the compare and set, browser bound flows | In progress |
-| [0025](0025-host-neutral-boundaries-for-embedding.md) | Host neutral boundaries for embedding: host parameters, credential issuers and flow outcomes | Proposed |
+| [0025](0025-host-neutral-boundaries-for-embedding.md) | Host neutral boundaries for embedding: host parameters, credential issuers and flow outcomes | In progress |

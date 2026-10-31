@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in progress
 date: 2026-10-31
 decision-makers: Josh Wu
 ---
@@ -48,7 +48,7 @@ How should these three boundaries look so that a host other than Hydra, a separa
 
 ## Decision Outcome
 
-1B, 2B, 3B. None of them changes the IR grammar, the IR format or the screen protocol (`schema/screen.schema.json`).
+1B, 2B, 3B. None of them changes the IR grammar or the IR format. The screen protocol gains one additive response type, `HandoffResponse` (see Flow outcomes); no screen type changes.
 
 ### Host parameters (1B)
 
@@ -66,6 +66,8 @@ record HostParams(@Nullable String subject, boolean skip, List<String> acrValues
 * `context` is the one free-form field: the host's own data, carried to the outcome and readable as `host.context.*`.
 * Adding a field is a change to this contract, made through an ADR.
 * Each `FlowHost` maps its protocol into `HostParams`. For example, Hydra's `oidc_context.login_hint` becomes `loginHint`. An adapter cannot add a key.
+* `HostParams.toEnv()` is what the engine keeps as `host.*` in the flow state, so the state format does not change. Absent strings (`subject`, `login_hint`) are left out and read as null; `skip`, the lists and `context` are always present, a list possibly empty. A predicate's truthiness is the same either way; `exists host.<list>` is now always true, and no shipped flow or vector uses it.
+* `HostParams.fromMap` reads the wire form (conformance vectors, tests) and refuses a key that is not a field.
 * 1C was rejected because each host would then define its own namespace, which is the leak itself: a flow could still depend on one host's keys.
 
 ### Credential issuers (2B)
@@ -80,12 +82,14 @@ interface CredentialIssuer {
 
 * The credential module registers its issuers with its handlers. `faye-identity` provides today's behavior: random WebAuthn challenges, a TOTP secret that survives a retry, and the otpauth URI.
 * `BuiltinScreen.prepare` and `render` delegate the credential part to the issuer registered for the screen.
-* The tenant's display name replaces the hard-coded issuer `"Faye"` in the otpauth label.
+* The tenant's display name replaces the hard-coded issuer `"Faye"` in the otpauth label. `TenantPolicy` gains `name`, read as `tenant.name`: the tenant's branding name, else its id. Without one (a tenant that is not configured), the label is the client's name, else `Sign in`.
 * The passkey algorithms move to the issuer. `ScreenType.PASSKEY_ALGORITHMS` leaves the engine, and the Login UI still receives them in the screen, as in [ADR 0022](0022-passkey-ceremonies-with-simplewebauthn.md).
 * Issued data is stored, as today, only as the waiting screen's data (`FlowState.Awaiting.data`). It reaches the consuming handler only as `Submission.context()`. It is never in `Env`, so predicates and hooks cannot read it.
 * The issuer and the handler that consumes its output come from the same module.
 * A `ScreenSpec` declares whether it needs an issuer: `identifier` (only for passkey autofill), `passkey` and `otp_enroll` do, while `password`, `otp`, `method_picker`, `consent` and `error` do not.
 * At startup, the `ScreenRegistry` refuses a screen that declares an issuer and has none registered, rather than failing at the first flow. It also refuses an issuer registered for a screen that does not declare one.
+* The engine merges what the spec prepares with what the issuer issues into the one stored map, and what the spec renders with what the issuer presents into the one payload. A key both write is a bug and throws.
+* A failing `issue` fails the step with `issuer_error`, like a handler failure: an enclosing `retry` reruns it, else the entry fails and the host rejects. `present` runs on every view, so it must be local and deterministic.
 * Requirements for an upstream issuer:
   * The upstream service creates the challenge or secret.
   * The issuer returns an opaque reference the upstream can verify (for example `{ "challenge": ..., "upstream_ref": ... }`).
@@ -111,10 +115,11 @@ interface FlowHost {
 `EngineResponse` permits `ScreenView` and `Completion`:
 - A redirecting host (Hydra) returns `Redirect`, unchanged.
 - An embedding host returns `Handoff`. Its caller receives the result: for example, a one-time code the existing system exchanges server to server for the outcome, so `amr`/`acr` never travel through the browser as claims.
-- The HTTP layer of `faye-app` maps `Redirect` to `{redirectTo}` as now and `Handoff` to `{result}`. The Login UI hands a `Handoff` to its embedding page.
+- The HTTP layer of `faye-app` maps `Redirect` to `{redirectTo}` as now and `Handoff` to `{result}`, a new `HandoffResponse` of the screen protocol (additive: a Login UI that predates it never receives one from the Hydra host). The Login UI posts `{type: "faye:handoff", result}` to the page that frames or opened it, only to the origin `FAYE_EMBED_ORIGIN` names; unset, it posts nothing, so a one time code never reaches an unknown origin.
+- `Completion` extends `EngineResponse`, so `start` and `submit` return a `Completion` directly; which variant is the host's fixed choice, never the browser's.
 - `challenge` is renamed `ref`. It is the host's opaque id for the request (a Hydra challenge, or an id the existing system created).
 
-The embedding contract goes in `docs/roadmap/engine.md`:
+The embedding contract is in `docs/roadmap/engine.md` (Embedding):
 - `start(kind, ref, request, binder)`, `view(flowId, binder)` and `submit(flowId, binder, nonce, submission)`.
 - What each returns.
 - The binder rules from ADR 0024 10B: the caller creates the binder, keeps it from the page's scripts, and presents it on every call.
@@ -122,32 +127,53 @@ The embedding contract goes in `docs/roadmap/engine.md`:
 
 3C was rejected because it would move `accept` and `reject` out of the engine. The engine would then no longer save before it accepts (only the submit that wins the revision race may accept), and every host would have to re-implement that ordering.
 
+### The engine as an embeddable core
+
+The three boundaries are only useful if nothing else ties the engine to Hydra or to the Login UI. So, in the same change:
+
+* **Built in screens leave the engine.** The screens of `schema/screen.schema.json` move from `faye-engine` to a new module, `faye-screens` (`BuiltinScreen`, `BuiltinScreen.registry(issuers)`). The engine keeps the screen SPI (`ScreenSpec`, `ScreenRegistry`, `CredentialIssuer`) and knows one screen name, `method_picker`, because `choose` waits on it (ir-spec.md, choose). The verifier refuses a `choose` of several options when no `method_picker` is registered, instead of the registry requiring one, so an embedder with no choice in its flows registers only its own screens. `ScreenRegistry.builtIn()` is removed: `Checker`, `Publisher` and `Engine` take their screens explicitly.
+* **Registration is explicit.** `Engine.builder()` replaces the telescoping constructors: `versions`, `handlers`, `screens`, `store` and `host` are required, tenants, hooks and previews default to none. Nothing is discovered (no `ServiceLoader`), so the trusted set of handlers, screens and issuers is the list the embedder writes, and every catalog is validated when built (charter principle 2).
+* **The DSL knows no host.** The compiler's `hydra.` alias becomes a caller supplied namespace alias (`FlowCompiler.compileWithHooks(..., aliases)`). The app passes `HydraFlowHost.DSL_PATH_ALIASES` (`hydra` to `host`), so tenant YAML compiles as before; the compiler alone refuses `hydra.skip` as a grammar error.
+* **TOTP encoding leaves the engine.** `Base32` moves to `faye-identity`, which is the only module that uses it.
+
+Each choice follows what the SPI survey (More Information) found in mature identity engines: the module that verifies a credential also issues its challenge (Keycloak's WebAuthn authenticator, Kratos strategies, unlike Keycloak's TOTP secret, which the theme generates and the client sends back); issued material stays server side and out of hooks (Kratos `InternalContext`, PingAM transient state); and the UI only receives typed view models (Kratos `ui.nodes`).
+
 ### What stays as it is
 
 * `HostKind` (`LOGIN`, `CONSENT`, `LOGOUT`) names kinds of request, not Hydra endpoints. It and `EntrySelector` are unchanged.
 * The `/login?login_challenge=` and `/consent?consent_challenge=` routes are the Hydra host's HTTP surface. They stay in `faye-app`. An embedding host adds its own start route, or calls `Engine.start` as a library.
-* The screen protocol, the IR grammar and format 1, and `conformance/handlers.yaml` do not change. Only the handler modules gain issuers.
+* The IR grammar and format 1, the state format, the screen types and `conformance/handlers.yaml` do not change. Only the handler modules gain issuers.
+* `client.*` stays a map the host fills under documented keys (`client_id`, `client_name`, `first_party`, `metadata.tenant`, `metadata.preview`); typing it is left for a later record.
+* The consent outcome's ID token claims (`email`, `name` by granted scope) are still computed by the engine. A non-OIDC host ignores them; moving them to the host adapter is left for a later record.
 
 ### Consequences
 
 * Good, because a second host, a separately deployed Login UI and an upstream credential service each plug into one written contract (`HostParams`, `ScreenView`, `CredentialIssuer` with its handlers, `Completion`), and none of them changes the engine, the IR or a flow.
 * Good, because `host.*` becomes closed: a flow cannot come to depend on a key that only one host provides.
 * Good, because challenges and secrets can come from the service that verifies them, which an upstream credential owner requires.
-* Bad, because `FlowHost` and `HostRequest` change signature. `HydraFlowHost`, `MockFlowHost`, `EngineTest` and `FlowApiTest` change with them.
+* Bad, because `FlowHost`, `HostRequest`, `Engine`'s construction, `Checker` and `Publisher` change signature. Every host, test and the app's wiring change with them.
 * Bad, because an issuer adds a network call before a credential screen when the issuer is upstream. Its latency adds to the screen's (unmeasured).
 * Neutral: `Handoff` lets Faye return an outcome to a non-redirecting host. That is still reporting an outcome, not issuing a token (charter non-goal 2). The host owns what it does with the result.
 
 ### Confirmation
 
-These tests are proposed; none of them exists yet.
-
-* `cd server && ./gradlew build` with:
-  * `faye-engine`: `ConformanceTest` passes unchanged, which proves the behavior is the same. A new checker case refuses `host.unknown` at publish, and a stored version that reads it still loads.
-  * `faye-engine`: an `EngineTest` with a `FlowHost` that returns `Handoff`. A finished flow returns the handoff, and a lost race returns `conflict` without calling `accept`.
-  * `faye-identity`: an issuer test showing that the TOTP secret survives a retry, the otpauth label uses the tenant's display name, and a failing issuer fails the step closed.
-  * `faye-app`: a `ScreenRegistry` startup test that refuses a declaring screen with no issuer and accepts `password` and `consent` without one, and a `FlowApiTest` for a handoff response.
-  * The command `grep -rn 'login_hint\|requested_scope\|PASSKEY_ALGORITHMS\|"Faye"' server/faye-engine/src/main` prints nothing.
+* `cd server && ./gradlew build`, which runs:
+  * `faye-engine`: `ConformanceTest` with the conformance vectors unchanged, which proves the behavior is the same.
+  * `faye-engine`: `EmbeddingTest`, the engine built from its SPIs alone (no Hydra, no built in screen): a host that returns `Handoff`, an issuer whose material reaches the handler only as the submission's context and the UI only as what it presents, a failing issuer that fails the step closed, a lost race that returns `conflict` without calling `accept`, and the closed `HostParams`.
+  * `faye-engine`: `BoundaryTest`, which fails if the main sources of `faye-ir`, `faye-dsl`, `faye-engine` or `faye-check` name Hydra, a protocol parameter of a screen (`login_hint`, `requested_scope`), `otpauth`, the passkey algorithms or the `"Faye"` label, or if any of their build files depends on a host, screen or credential module.
+  * `faye-check`: `CheckerTest.aHostPathOutsideTheContractIsRefusedAtPublish`, and `CheckerTest.aStoredVersionThatReadsAnUnknownHostPathStillLoads`.
+  * `faye-screens`: `BuiltinScreenTest`, the built in screens equal the protocol's, a declaring screen without its issuer and an issuer for a screen that declares none are refused when the registry is built, and `password` and `consent` need none.
+  * `faye-identity`: `IdentityIssuersTest`, the TOTP secret survives a retry, the otpauth label uses the tenant's display name, and a passkey registration without a subject fails to issue.
+  * `faye-dsl`: `FlowCompilerTest.theCompilerKnowsNoHostSpelling` and `aliasedNamespacesLowerToTheirNamespace`.
+  * `faye-app`: `FlowApiTest`, the Hydra host's redirects are unchanged.
+* `cd web && pnpm generate && pnpm typecheck && pnpm lint && pnpm test`, and the contract diff check in CI.
 * `deploy/smoke.sh` passes on a fresh stack, which proves the Hydra behavior is unchanged.
+
+Open gaps, which keep this record `in progress`:
+
+* `deploy/smoke.sh` has not been run against this change (it needs the compose stack).
+* No `FlowApiTest` drives a `Handoff` through HTTP: the app ships only the Hydra and mock hosts, both redirecting. An embedding host's start route and its test come with the first such host.
+* The cost of an upstream issuer's network call before a credential screen is unmeasured.
 
 ## Pros and Cons of the Options
 
@@ -182,6 +208,8 @@ These tests are proposed; none of them exists yet.
 * Bad, because the save-before-accept ordering would move to every host.
 
 ## More Information
+
+* SPI survey for this record (sources opened during the change): Keycloak [`WebAuthnAuthenticator`](https://github.com/keycloak/keycloak/blob/main/services/src/main/java/org/keycloak/authentication/authenticators/browser/WebAuthnAuthenticator.java) issues its challenge into the auth session and verifies it; Keycloak [`TotpBean`](https://github.com/keycloak/keycloak/blob/main/services/src/main/java/org/keycloak/forms/login/freemarker/model/TotpBean.java) generates the TOTP secret in the theme, and [`UpdateTotp`](https://github.com/keycloak/keycloak/blob/main/services/src/main/java/org/keycloak/authentication/requiredactions/UpdateTotp.java) enrolls the secret the form posts back, the pattern 2B avoids; Ory Kratos [`login.Flow`](https://github.com/ory/kratos/blob/master/selfservice/flow/login/flow.go) keeps strategy data in `InternalContext` (never serialized) and sends the UI typed nodes, and its [login hook](https://github.com/ory/kratos/blob/master/selfservice/flow/login/hook.go) answers an API flow with data and a browser flow with a redirect, fixed per flow; PingAM [transient state](https://docs.pingidentity.com/pingam/8/auth-nodes/store-values-shared-state.md) separates sensitive node state from shared state (unverified beyond the documentation).
 
 * Charter: principles 1–3 and 7, non-goal 2, success criterion 4.
 * [ADR 0024](0024-core-ir-as-a-narrow-waist.md): 4B (`host.*`), 7B (screen catalog), 8B (verifier), 10B (binder).

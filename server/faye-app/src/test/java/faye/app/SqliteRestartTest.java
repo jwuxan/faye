@@ -7,6 +7,7 @@ import faye.dsl.FlowCompiler;
 import faye.engine.Engine;
 import faye.engine.FlowVersions;
 import faye.engine.HostKind;
+import faye.engine.HostParams;
 import faye.engine.HostRequest;
 import faye.engine.Redirect;
 import faye.engine.ScreenView;
@@ -91,7 +92,7 @@ class SqliteRestartTest {
                     .publish(tenant, FlowCompiler.compile("totp.yaml", MilestoneThreeTest.PASSWORD_TOTP))
                     .hash();
             before.getBean(MockFlowHost.class)
-                    .register(new HostRequest(HostKind.LOGIN, "c-published", client, Map.of()));
+                    .register(new HostRequest(HostKind.LOGIN, "c-published", client, HostParams.fromMap(Map.of())));
             Engine engine = before.getBean(Engine.class);
             var identifier = (ScreenView) engine.start(HostKind.LOGIN, "c-published", Map.of(), "binder");
             password = (ScreenView) engine.submit(

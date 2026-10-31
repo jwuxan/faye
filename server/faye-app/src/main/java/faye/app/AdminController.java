@@ -549,11 +549,15 @@ class AdminController {
     private Map<String, String> files(String tenant, String yaml) {
         Map<String, String> files = new TreeMap<>();
         try {
-            FlowCompiler.compileWithHooks(tenant + ".yaml", yaml, name -> {
-                Optional<String> text = EngineConfiguration.sibling(configured(tenant), name);
-                text.ifPresent(t -> files.put(name, t));
-                return text;
-            });
+            FlowCompiler.compileWithHooks(
+                    tenant + ".yaml",
+                    yaml,
+                    name -> {
+                        Optional<String> text = EngineConfiguration.sibling(configured(tenant), name);
+                        text.ifPresent(t -> files.put(name, t));
+                        return text;
+                    },
+                    EngineConfiguration.DSL_ALIASES);
         } catch (DslException e) {
             // Hooks compile before steps, so the files are known even when the flow has errors
         }

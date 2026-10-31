@@ -2,10 +2,10 @@ package faye.app;
 
 import faye.check.FlowPath;
 import faye.check.Publisher;
-import faye.engine.Base32;
 import faye.engine.FlowVersion;
 import faye.engine.FlowVersions;
 import faye.engine.TraceEvent;
+import faye.identity.Base32;
 import faye.identity.IdentityHandlers;
 import faye.identity.Passwords;
 import faye.identity.User;

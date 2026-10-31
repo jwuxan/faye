@@ -1,9 +1,11 @@
 package faye.host.hydra;
 
 import faye.engine.Authenticated;
+import faye.engine.Completion;
 import faye.engine.Consented;
 import faye.engine.FlowHost;
 import faye.engine.HostKind;
+import faye.engine.HostParams;
 import faye.engine.HostRequest;
 import faye.engine.Redirect;
 import java.net.URI;
@@ -43,47 +45,89 @@ public final class HydraFlowHost implements FlowHost {
         this.api = new OAuth2Api(client);
     }
 
+    /**
+     * What the Hydra spelling {@code hydra.} of the YAML surface means: flows written before ADR
+     * 0024 say {@code hydra.acr_values} for {@code host.acr_values}. The DSL knows no host; the app
+     * hands it these aliases.
+     */
+    public static final Map<String, String> DSL_PATH_ALIASES = Map.of("hydra", "host");
+
+    /**
+     * Maps a Hydra login, consent or logout request into the host contract: {@code oidc_context}'s
+     * {@code acr_values}, {@code ui_locales} and {@code login_hint}, the requested scope and
+     * audience, {@code skip}, {@code subject}, and for a consent the {@code context} our login
+     * accept set.
+     */
     @Override
-    public HostRequest load(HostKind kind, String challenge) {
+    public HostRequest load(HostKind kind, String ref) {
         try {
-            Map<String, Object> hydra = new LinkedHashMap<>();
             OAuth2Client client;
+            HostParams params;
             switch (kind) {
                 case LOGIN -> {
-                    var r = api.getOAuth2LoginRequest(challenge);
+                    var r = api.getOAuth2LoginRequest(ref);
                     client = r.getClient();
-                    put(r.getSkip(), "skip", hydra);
-                    put(r.getSubject(), "subject", hydra);
-                    put(r.getRequestedScope(), "requested_scope", hydra);
-                    put(r.getRequestedAccessTokenAudience(), "requested_access_token_audience", hydra);
-                    oidc(r.getOidcContext(), hydra);
+                    params = params(
+                            r.getSubject(),
+                            r.getSkip(),
+                            r.getRequestedScope(),
+                            r.getRequestedAccessTokenAudience(),
+                            r.getOidcContext(),
+                            Map.of());
                 }
                 case CONSENT -> {
-                    var r = api.getOAuth2ConsentRequest(challenge);
+                    var r = api.getOAuth2ConsentRequest(ref);
                     client = r.getClient();
-                    put(r.getSkip(), "skip", hydra);
-                    put(r.getSubject(), "subject", hydra);
-                    put(r.getRequestedScope(), "requested_scope", hydra);
-                    put(r.getRequestedAccessTokenAudience(), "requested_access_token_audience", hydra);
-                    oidc(r.getOidcContext(), hydra);
                     // Set by our login accept; links a consent to the login flow that preceded it.
-                    if (r.getContext() instanceof Map<?, ?> context) hydra.put("context", plain(context));
+                    Map<String, Object> context = new LinkedHashMap<>();
+                    if (r.getContext() instanceof Map<?, ?> c && plain(c) instanceof Map<?, ?> m) {
+                        m.forEach((k, v) -> context.put(String.valueOf(k), v));
+                    }
+                    params = params(
+                            r.getSubject(),
+                            r.getSkip(),
+                            r.getRequestedScope(),
+                            r.getRequestedAccessTokenAudience(),
+                            r.getOidcContext(),
+                            context);
                 }
                 case LOGOUT -> {
-                    var r = api.getOAuth2LogoutRequest(challenge);
+                    var r = api.getOAuth2LogoutRequest(ref);
                     client = r.getClient();
-                    put(r.getSubject(), "subject", hydra);
+                    params = params(r.getSubject(), null, null, null, null, Map.of());
                 }
                 default -> throw new IllegalStateException("unknown kind " + kind);
             }
-            return new HostRequest(kind, challenge, client(client), hydra);
+            return new HostRequest(kind, ref, client(client), params);
         } catch (ApiException e) {
             throw failure("GET", segment(kind), e);
         }
     }
 
+    private static HostParams params(
+            @Nullable String subject,
+            @Nullable Boolean skip,
+            @Nullable List<String> scope,
+            @Nullable List<String> audience,
+            @Nullable OAuth2ConsentRequestOpenIDConnectContext oidc,
+            Map<String, Object> context) {
+        return new HostParams(
+                subject,
+                Boolean.TRUE.equals(skip),
+                oidc == null ? List.of() : orEmpty(oidc.getAcrValues()),
+                orEmpty(scope),
+                orEmpty(audience),
+                oidc == null ? null : oidc.getLoginHint(),
+                oidc == null ? List.of() : orEmpty(oidc.getUiLocales()),
+                context);
+    }
+
+    private static List<String> orEmpty(@Nullable List<String> list) {
+        return list == null ? List.of() : List.copyOf(list);
+    }
+
     @Override
-    public Redirect accept(HostRequest request, Authenticated outcome) {
+    public Completion accept(HostRequest request, Authenticated outcome) {
         AcceptOAuth2LoginRequest body = new AcceptOAuth2LoginRequest()
                 .subject(outcome.subject())
                 .amr(outcome.amr())
@@ -91,41 +135,41 @@ public final class HydraFlowHost implements FlowHost {
                 .context(outcome.context());
         if (outcome.acr() != null) body.acr(outcome.acr());
         try {
-            return redirect(api.acceptOAuth2LoginRequest(request.challenge(), body));
+            return redirect(api.acceptOAuth2LoginRequest(request.ref(), body));
         } catch (ApiException e) {
             throw failure("PUT", "login/accept", e);
         }
     }
 
     @Override
-    public Redirect accept(HostRequest request, Consented outcome) {
+    public Completion accept(HostRequest request, Consented outcome) {
         AcceptOAuth2ConsentRequest body = new AcceptOAuth2ConsentRequest()
                 .grantScope(outcome.grantScope())
                 .grantAccessTokenAudience(outcome.grantAudience())
                 .remember(false)
                 .session(new AcceptOAuth2ConsentRequestSession().idToken(outcome.idTokenClaims()));
         try {
-            return redirect(api.acceptOAuth2ConsentRequest(request.challenge(), body));
+            return redirect(api.acceptOAuth2ConsentRequest(request.ref(), body));
         } catch (ApiException e) {
             throw failure("PUT", "consent/accept", e);
         }
     }
 
     @Override
-    public Redirect reject(HostRequest request, String error, String description) {
+    public Completion reject(HostRequest request, String error, String description) {
         try {
             return switch (request.kind()) {
                 case LOGIN ->
                     redirect(api.rejectOAuth2LoginRequest(
-                            request.challenge(),
+                            request.ref(),
                             new RejectOAuth2Request().error(error).errorDescription(description)));
                 case CONSENT ->
                     redirect(api.rejectOAuth2ConsentRequest(
-                            request.challenge(),
+                            request.ref(),
                             new RejectOAuth2Request().error(error).errorDescription(description)));
                 case LOGOUT -> {
                     // The generated logout reject carries no body and Hydra answers with no redirect
-                    api.rejectOAuth2LogoutRequest(request.challenge());
+                    api.rejectOAuth2LogoutRequest(request.ref());
                     throw new IllegalStateException("hydra response has no redirect_to");
                 }
             };
@@ -155,25 +199,6 @@ public final class HydraFlowHost implements FlowHost {
         // Only clients registered with metadata.first_party = true are first party.
         out.put("first_party", Boolean.TRUE.equals(metadata.get("first_party")));
         return out;
-    }
-
-    private static void oidc(@Nullable OAuth2ConsentRequestOpenIDConnectContext oidc, Map<String, Object> hydra) {
-        if (oidc == null) return;
-        put(oidc.getAcrValues(), "acr_values", hydra);
-        put(oidc.getUiLocales(), "ui_locales", hydra);
-        put(oidc.getLoginHint(), "login_hint", hydra);
-    }
-
-    private static void put(@Nullable Boolean value, String field, Map<String, Object> to) {
-        if (value != null) to.put(field, value);
-    }
-
-    private static void put(@Nullable String value, String field, Map<String, Object> to) {
-        if (value != null && !value.isEmpty()) to.put(field, value);
-    }
-
-    private static void put(@Nullable List<String> value, String field, Map<String, Object> to) {
-        if (value != null) to.put(field, List.copyOf(value));
     }
 
     private static Redirect redirect(@Nullable OAuth2RedirectTo body) {

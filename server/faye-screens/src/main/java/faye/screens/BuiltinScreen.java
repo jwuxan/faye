@@ -1,45 +1,41 @@
-package faye.engine;
+package faye.screens;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
-import java.util.Base64;
+import faye.engine.CredentialIssuer;
+import faye.engine.Env;
+import faye.engine.ScreenRegistry;
+import faye.engine.ScreenSpec;
+import faye.engine.Submission;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
 /**
- * The screens of {@code schema/screen.schema.json}, which the Login UI renders. {@link
- * ScreenRegistry#builtIn()} registers all of them; {@code ScreenRegistryTest} keeps the two lists
- * equal.
+ * The screens of {@code schema/screen.schema.json}, which the Login UI renders; {@code
+ * BuiltinScreenTest} keeps the two lists equal. The {@code identifier}, {@code passkey} and {@code
+ * otp_enroll} screens show credential material, which a {@link CredentialIssuer} supplies: these
+ * specs hold only the non-credential part of each screen.
  */
 public enum BuiltinScreen implements ScreenSpec {
     IDENTIFIER("identifier"),
     PASSWORD("password"),
-    METHOD_PICKER("method_picker"),
+    METHOD_PICKER(ScreenRegistry.METHOD_PICKER),
     PASSKEY("passkey"),
     OTP("otp"),
     OTP_ENROLL("otp_enroll"),
     CONSENT("consent"),
     ERROR("error");
 
-    private static final SecureRandom RANDOM = new SecureRandom();
-    /**
-     * The COSE algorithm ids {@code webauthn.register} verifies, in order of preference: ES256,
-     * then RS256. The passkey screen's {@code register} carries them so the Login UI offers exactly
-     * what the server accepts.
-     */
-    public static final List<Long> PASSKEY_ALGORITHMS = List.of(-7L, -257L);
-    /** Account label prefix in authenticator apps. */
-    private static final String ISSUER = "Faye";
-
     private final String wireName;
 
     BuiltinScreen(String wireName) {
         this.wireName = wireName;
+    }
+
+    /** A registry of every built in screen, with the issuers of the credential module in use. */
+    public static ScreenRegistry registry(List<? extends CredentialIssuer> issuers) {
+        return new ScreenRegistry(List.of(values()), issuers);
     }
 
     @Override
@@ -57,33 +53,28 @@ public enum BuiltinScreen implements ScreenSpec {
         };
     }
 
+    /** The identifier screen only for passkey autofill; see {@link #prepare}. */
+    @Override
+    public boolean issued() {
+        return switch (this) {
+            case IDENTIFIER, PASSKEY, OTP_ENROLL -> true;
+            case PASSWORD, METHOD_PICKER, OTP, CONSENT, ERROR -> false;
+        };
+    }
+
     /**
-     * Options: {@code passkey} (identifier: offer passkey autofill), {@code register} (passkey:
-     * create rather than use one), {@code code} (error).
+     * Options: {@code passkey} (identifier: offer passkey autofill, for which the issuer issues a
+     * challenge), {@code register} (passkey: create rather than use one), {@code code} (error).
      */
     @Override
     public Map<String, Object> prepare(Env env, Map<String, Object> opts, Map<String, Object> previous) {
         Map<String, Object> data = new LinkedHashMap<>();
         switch (this) {
-            case IDENTIFIER -> {
-                if (Boolean.TRUE.equals(opts.get("passkey"))) data.put("challenge", random(32));
-            }
             case PASSKEY -> {
-                data.put("challenge", random(32));
-                if (Boolean.TRUE.equals(opts.get("register"))) {
-                    if (env.auth().subject() == null) {
-                        throw new IllegalStateException("passkey registration needs a signed in subject");
-                    }
-                    data.put("register", true);
-                }
-            }
-            case OTP_ENROLL -> {
-                byte[] secret = new byte[20];
-                RANDOM.nextBytes(secret);
-                data.put("secret", previous.get("secret") instanceof String s ? s : Base32.encode(secret));
+                if (Boolean.TRUE.equals(opts.get("register"))) data.put("register", true);
             }
             case ERROR -> data.put("code", opts.get("code") instanceof String c ? c : "error");
-            case PASSWORD, METHOD_PICKER, OTP, CONSENT -> {}
+            case IDENTIFIER, PASSWORD, METHOD_PICKER, OTP, OTP_ENROLL, CONSENT -> {}
         }
         return data;
     }
@@ -96,40 +87,7 @@ public enum BuiltinScreen implements ScreenSpec {
                 this == IDENTIFIER ? env.host().get("login_hint") : env.user().get("identifier");
         if (identifier instanceof String s) out.put("identifier", s);
         switch (this) {
-            case IDENTIFIER -> {
-                if (data.get("challenge") != null) out.put("passkey", Map.of("challenge", data.get("challenge")));
-            }
             case METHOD_PICKER -> out.put("options", data.get("options"));
-            case PASSKEY -> {
-                out.put("challenge", data.get("challenge"));
-                if (Boolean.TRUE.equals(data.get("register"))) {
-                    String subject = Objects.requireNonNull(env.auth().subject(), "prepare checked the subject");
-                    String name = identifier instanceof String s ? s : subject;
-                    out.put(
-                            "register",
-                            Map.of(
-                                    "userId",
-                                    Base64.getUrlEncoder()
-                                            .withoutPadding()
-                                            .encodeToString(subject.getBytes(StandardCharsets.UTF_8)),
-                                    "userName",
-                                    name,
-                                    "displayName",
-                                    env.user().get("name") instanceof String n ? n : name,
-                                    "algorithms",
-                                    PASSKEY_ALGORITHMS));
-                }
-            }
-            case OTP_ENROLL -> {
-                String secret = (String) data.get("secret");
-                String label = ISSUER + ":" + (identifier instanceof String s ? s : "account");
-                out.put("secret", secret);
-                out.put(
-                        "uri",
-                        "otpauth://totp/"
-                                + URLEncoder.encode(label, StandardCharsets.UTF_8)
-                                        .replace("+", "%20") + "?secret=" + secret + "&issuer=" + ISSUER);
-            }
             case CONSENT -> {
                 Map<String, Object> client = new LinkedHashMap<>();
                 client.put("id", env.client().getOrDefault("client_id", ""));
@@ -138,7 +96,7 @@ public enum BuiltinScreen implements ScreenSpec {
                 out.put("scopes", env.host().get("requested_scope") instanceof List<?> l ? l : List.of());
             }
             case ERROR -> out.put("code", data.get("code"));
-            case PASSWORD, OTP -> {}
+            case IDENTIFIER, PASSKEY, OTP_ENROLL, PASSWORD, OTP -> {}
         }
         return out;
     }
@@ -182,11 +140,5 @@ public enum BuiltinScreen implements ScreenSpec {
 
     private static boolean credential(Map<String, Object> p) {
         return p.size() == 1 && p.get("passkey") instanceof Map<?, ?> m && !m.isEmpty();
-    }
-
-    private static String random(int bytes) {
-        byte[] out = new byte[bytes];
-        RANDOM.nextBytes(out);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(out);
     }
 }

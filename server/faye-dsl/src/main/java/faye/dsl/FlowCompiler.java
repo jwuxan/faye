@@ -57,7 +57,8 @@ import org.jspecify.annotations.Nullable;
  *
  * A body needs at least one of set, hook, screen, use, alternative, steps, fail; its parts run in
  * the order above. Option bodies take the same keys. Predicates have the IR shape ({@code eq},
- * {@code and}, ...); a path may still say {@code hydra.} for {@code host.}. Each entry compiles to
+ * {@code and}, ...). A caller may give namespace aliases, which predicates' paths are rewritten
+ * from (the app passes its host's legacy spelling); the compiler itself knows none. Each entry compiles to
  * {@code (seq (step ...) ... (succeed))}. A hook is pinned by the hash of its definition ({@link
  * HookDef}). docs/roadmap/dsl-and-ir.md has the lowering table.
  */
@@ -69,9 +70,6 @@ public final class FlowCompiler {
     /** The YAML keys that are entries, and the kind each lowers to. */
     private static final Map<String, Entry.Kind> ENTRIES =
             new LinkedHashMap<>(Map.of("login", Entry.Kind.AUTHENTICATE, "consent", Entry.Kind.CONSENT));
-
-    /** The namespace the YAML surface still accepts for {@code host.}. */
-    private static final String HOST_ALIAS = "hydra.";
 
     private static final JsonNodeFactory JSON = JsonNodeFactory.instance;
 
@@ -105,9 +103,13 @@ public final class FlowCompiler {
 
     private final Map<JsonNode, Map<Integer, Mark>> childMarks = new IdentityHashMap<>();
 
-    private FlowCompiler(String origin, Function<String, Optional<String>> files) {
+    /** Namespace aliases: a predicate path {@code <alias>.rest} lowers to {@code <namespace>.rest}. */
+    private final Map<String, String> aliases;
+
+    private FlowCompiler(String origin, Function<String, Optional<String>> files, Map<String, String> aliases) {
         this.origin = origin;
         this.files = files;
+        this.aliases = Map.copyOf(aliases);
     }
 
     /** @param origin file name used in source refs and diagnostics */
@@ -119,14 +121,24 @@ public final class FlowCompiler {
      * @param files reads a hook's {@code file:} next to the flow; empty if there is no such file
      */
     public static Compiled compileWithHooks(String origin, String yaml, Function<String, Optional<String>> files) {
-        FlowCompiler compiler = new FlowCompiler(origin, files);
+        return compileWithHooks(origin, yaml, files, Map.of());
+    }
+
+    /**
+     * @param files reads a hook's {@code file:} next to the flow; empty if there is no such file
+     * @param aliases predicate path namespaces the YAML may use for an IR namespace, e.g. {@code
+     *     legacy} for {@code host}
+     */
+    public static Compiled compileWithHooks(
+            String origin, String yaml, Function<String, Optional<String>> files, Map<String, String> aliases) {
+        FlowCompiler compiler = new FlowCompiler(origin, files, aliases);
         Flow flow = compiler.compile(yaml);
         return new Compiled(flow, compiler.hooks);
     }
 
     /** The IR JSON the YAML lowers to, before any check; for golden tests and tools. */
     static JsonNode lower(String origin, String yaml) {
-        FlowCompiler compiler = new FlowCompiler(origin, name -> Optional.empty());
+        FlowCompiler compiler = new FlowCompiler(origin, name -> Optional.empty(), Map.of());
         YamlReader.Read read = YamlReader.read(origin, yaml);
         compiler.errors.addAll(read.errors());
         ArrayNode json = compiler.lower(read.doc());
@@ -413,21 +425,23 @@ public final class FlowCompiler {
     }
 
     /**
-     * An {@code if} as an IR predicate. Paths are rewritten from the {@code hydra.} spelling to
-     * {@code host.}; the grammar checks the rest.
+     * An {@code if} as an IR predicate. Paths in an aliased namespace are rewritten to the namespace
+     * it stands for; the grammar checks the rest.
      */
     private JsonNode predicate(Doc value) {
         JsonNode json = json(value);
-        JsonNode out = hostPaths(json);
+        JsonNode out = aliased(json);
         if (out.isContainerNode()) mark(out, value.source(), "if");
         return out;
     }
 
     /** Rewrites the paths of a predicate (a bare path, an operand of exists, the left of a comparison). */
-    private static JsonNode hostPaths(JsonNode p) {
+    private JsonNode aliased(JsonNode p) {
         if (p.isTextual()) {
             String path = p.textValue();
-            return path.startsWith(HOST_ALIAS) ? JSON.textNode("host." + path.substring(HOST_ALIAS.length())) : p;
+            int dot = path.indexOf('.');
+            String namespace = dot < 0 ? null : aliases.get(path.substring(0, dot));
+            return namespace == null ? p : JSON.textNode(namespace + path.substring(dot));
         }
         if (!(p instanceof ObjectNode o) || o.size() != 1) return p;
         var e = o.properties().iterator().next();
@@ -435,14 +449,14 @@ public final class FlowCompiler {
         JsonNode rewritten = switch (e.getKey()) {
             case "and", "or" -> {
                 ArrayNode all = JSON.arrayNode();
-                arg.forEach(q -> all.add(hostPaths(q)));
+                arg.forEach(q -> all.add(aliased(q)));
                 yield arg.isArray() ? all : arg;
             }
-            case "not", "exists" -> hostPaths(arg);
+            case "not", "exists" -> aliased(arg);
             default -> {
                 if (!arg.isArray() || arg.isEmpty()) yield arg;
                 ArrayNode copy = ((ArrayNode) arg).deepCopy();
-                copy.set(0, hostPaths(arg.get(0)));
+                copy.set(0, aliased(arg.get(0)));
                 yield copy;
             }
         };
