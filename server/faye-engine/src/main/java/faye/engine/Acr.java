@@ -34,11 +34,19 @@ public final class Acr {
     /**
      * Whether {@code achieved} meets a request's {@code acr_values}: at least as strong as the
      * weakest value Faye knows. Unknown values are ignored; no known value means no requirement.
+     * {@code requested} is a list, or the space separated string OIDC defines; another type asks
+     * for nothing.
      */
     public static boolean satisfies(@Nullable String achieved, @Nullable Object requested) {
-        if (!(requested instanceof List<?> values)) return true;
+        // OIDC's acr_values is a space separated string; hosts relay it as a list. Either is read,
+        // so a host that sends the string does not silently drop the requirement (ADR 0007, F4).
+        List<?> values = switch (requested) {
+            case List<?> l -> l;
+            case String s -> List.of(s.trim().split("\\s+"));
+            case null, default -> List.of();
+        };
         int needed = values.stream()
-                .filter(LEVELS::containsKey)
+                .filter(v -> v instanceof String known && LEVELS.containsKey(known))
                 .mapToInt(LEVELS::get)
                 .min()
                 .orElse(0);

@@ -21,17 +21,38 @@ public sealed interface Frame {
     List<Integer> path();
 
     /** Evaluate the node at {@code path}. */
-    record Eval(List<Integer> path) implements Frame {}
+    record Eval(List<Integer> path) implements Frame {
+        public Eval {
+            path = List.copyOf(path);
+        }
+    }
 
     /** Continue the seq at {@code path} with child {@code next}. */
-    record SeqNext(List<Integer> path, int next) implements Frame {}
+    record SeqNext(List<Integer> path, int next) implements Frame {
+        public SeqNext {
+            path = List.copyOf(path);
+        }
+    }
 
     /** Leaving step {@code id}; marks the innermost enclosing step while below it on the stack. */
-    record StepExit(List<Integer> path, String id) implements Frame {}
+    record StepExit(List<Integer> path, String id) implements Frame {
+        public StepExit {
+            path = List.copyOf(path);
+            java.util.Objects.requireNonNull(id);
+        }
+    }
 
     /** Leaving the retry at {@code path} during its {@code attempt}th run (from 1); a failure below unwinds to here. */
-    record RetryExit(List<Integer> path, int attempt) implements Frame {}
+    record RetryExit(List<Integer> path, int attempt) implements Frame {
+        public RetryExit {
+            path = List.copyOf(path);
+        }
+    }
 
     /** The choose at {@code path} is waiting on the method picker; the submission names the option. */
-    record Pick(List<Integer> path) implements Frame {}
+    record Pick(List<Integer> path) implements Frame {
+        public Pick {
+            path = List.copyOf(path);
+        }
+    }
 }

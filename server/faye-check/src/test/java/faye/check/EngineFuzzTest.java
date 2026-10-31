@@ -333,6 +333,14 @@ class EngineFuzzTest {
                 return r;
             } catch (FlowException refused) {
                 reached("refused " + refused.code().wireName());
+                // A live flow is always found by its own browser, whatever was done to it before
+                // (F7's consistency check must never refuse a state the engine itself wrote); only
+                // another browser's binder (action 5) finds nothing
+                if (action != 5) {
+                    assertThat(refused.code())
+                            .as("a live flow is found")
+                            .isNotIn(FlowException.Code.FLOW_NOT_FOUND, FlowException.Code.FLOW_FINISHED);
+                }
                 // O6: a refusal changes nothing that lasts
                 assertThat(store.snapshot(flowId))
                         .as("refused: state unchanged")

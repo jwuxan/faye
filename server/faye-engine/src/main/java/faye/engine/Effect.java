@@ -15,6 +15,7 @@ import java.util.Map;
 public record Effect(String handler, Map<String, Object> data) {
 
     public Effect {
+        java.util.Objects.requireNonNull(handler);
         data = Map.copyOf(data);
     }
 }

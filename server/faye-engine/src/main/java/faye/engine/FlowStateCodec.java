@@ -28,6 +28,8 @@ public final class FlowStateCodec {
             .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
             .build();
 
+    private static final System.Logger LOG = System.getLogger(FlowStateCodec.class.getName());
+
     private FlowStateCodec() {}
 
     public static String write(FlowState state) {
@@ -40,17 +42,26 @@ public final class FlowStateCodec {
         }
     }
 
-    /** The state, or empty if it is in a format this reader does not support. */
+    /**
+     * The state, or empty if it is in a format this reader does not support or cannot be read at
+     * all: a corrupt or hand edited row fails its flow closed, as one that expired would, and the
+     * person starts the sign in again (ADR 0007, F7). Why is logged, without the state's content.
+     */
     public static Optional<FlowState> read(String json) {
         try {
-            ObjectNode node = (ObjectNode) MAPPER.readTree(json);
+            if (!(MAPPER.readTree(json) instanceof ObjectNode node)) return unreadable("not an object");
             JsonNode format = node.remove("stateFormat");
             if (format == null || !format.canConvertToInt() || !FORMATS.contains(format.intValue())) {
                 return Optional.empty();
             }
             return Optional.of(MAPPER.treeToValue(node, FlowState.class));
-        } catch (JsonProcessingException | ClassCastException e) {
-            throw new IllegalStateException("unreadable flow state", e);
+        } catch (JsonProcessingException | IllegalArgumentException e) {
+            return unreadable(e.getClass().getSimpleName());
         }
+    }
+
+    private static Optional<FlowState> unreadable(String why) {
+        LOG.log(System.Logger.Level.WARNING, "unreadable flow state ({0}); its flow ends", why);
+        return Optional.empty();
     }
 }
