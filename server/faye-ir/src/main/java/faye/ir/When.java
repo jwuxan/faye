@@ -1,4 +1,4 @@
 package faye.ir;
 
-/** Runs the body if the predicate holds; otherwise completes without running it. */
+/** {@code (when test body)} (docs/roadmap/ir-spec.md). */
 public record When(Predicate test, Node body, SourceRef source) implements Node {}

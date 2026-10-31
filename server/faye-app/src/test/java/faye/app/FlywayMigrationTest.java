@@ -21,7 +21,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /**
  * ADR 0020: a database the pre Flyway {@code schema.sql} made — Faye's tables, rows in them, and
  * unrelated tables standing in for Hydra's — upgrades without losing anything: Flyway baselines it
- * at 0, then applies V1.
+ * at 0, then applies V1 and every later migration (V2 drops the stored state of the unversioned IR
+ * format, not accounts; ADR 0024).
  */
 class FlywayMigrationTest {
 
@@ -55,9 +56,35 @@ class FlywayMigrationTest {
                     .containsExactly("hydra-1");
             List<Map<String, Object>> history =
                     jdbc.queryForList("SELECT version, success FROM faye_schema_history ORDER BY installed_rank");
-            assertThat(history).extracting(row -> row.get("version")).containsExactly("0", "1");
+            assertThat(history).extracting(row -> row.get("version")).containsExactly("0", "1", "2");
             assertThat(history).allSatisfy(row -> assertThat(row.get("success")).isIn(1, true));
         }
+    }
+
+    /**
+     * A migration a database has applied is never edited: Flyway refuses to start against a
+     * database whose recorded checksum no longer matches the file (it happened to a demo volume
+     * migrated by a draft of V1). Each file is pinned here; a schema change is a new V{n} file, added
+     * to this list.
+     */
+    static final Map<String, String> APPLIED = Map.of(
+            "V1__faye_schema.sql", "95c4bdb40dbdb43667530de7f417d66d7d6475fa1d7a94fbe4ad59b36a1dd3ee",
+            "V2__ir_format_1.sql", "0a12ad20dd8f28da0d8623f61ae3255ed2780d545534ba469897474e3be7faf9");
+
+    @Test
+    void migrationsAreNeverEdited() throws IOException, java.security.NoSuchAlgorithmException {
+        Path dir = Path.of(System.getProperty("faye.repoRoot"), "server/faye-app/src/main/resources/db/migration");
+        Map<String, String> actual = new java.util.TreeMap<>();
+        try (var files = java.nio.file.Files.list(dir)) {
+            for (Path f : files.toList()) {
+                byte[] digest =
+                        java.security.MessageDigest.getInstance("SHA-256").digest(java.nio.file.Files.readAllBytes(f));
+                actual.put(f.getFileName().toString(), java.util.HexFormat.of().formatHex(digest));
+            }
+        }
+        assertThat(actual)
+                .as("an applied migration changed, or a new one is not pinned; add a new V{n} file instead")
+                .isEqualTo(new java.util.TreeMap<>(APPLIED));
     }
 
     private static String migration() {

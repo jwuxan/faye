@@ -4,6 +4,8 @@
  * Everything here is pure, so the tests can build flows exactly as the UI does.
  */
 import { Document, isMap, isPair, isScalar, isSeq, parse, parseDocument } from "yaml";
+import { ID_PATTERN, KEY_PATTERN } from "@faye/contract";
+import { SECTIONS, type Section } from "./entries.ts";
 
 export type Literal = string | number | boolean;
 
@@ -41,7 +43,7 @@ export type Entry = { id: string; body: Body };
 /** A hook as declared in the flow: inline source, or a file next to the configured flow. */
 export type HookSpec = { id: string; source?: string; file?: string; http: string[]; timeoutMs?: number };
 
-export type Section = "login" | "consent";
+export type { Section };
 
 export type FlowDoc = {
   flow: string;
@@ -54,8 +56,9 @@ export type FlowDoc = {
   comment?: string;
 };
 
-export const ID = /^[a-z][a-z0-9_-]*$/;
-export const KEY = /^[a-z][a-z0-9_]*$/;
+/** Ids and vars names, as schema/ir.schema.json defines them. */
+export const ID = new RegExp(ID_PATTERN);
+export const KEY = new RegExp(KEY_PATTERN);
 
 // ---- YAML in ----
 
@@ -91,7 +94,7 @@ export function fromYaml(text: string): FlowDoc {
       });
     }
   }
-  for (const section of ["login", "consent"] as const) {
+  for (const section of SECTIONS) {
     const s = raw[section];
     if (s === undefined) continue;
     if (!isObject(s)) throw new FlowShapeError(`'${section}' must be a mapping with 'steps'`);
@@ -563,8 +566,7 @@ export function visitKeys(doc: FlowDoc): Map<string, string> {
       walk(e.body.steps, section, here, "steps", key);
     });
   };
-  walk(doc.login, "login", [], "steps", "");
-  if (doc.consent) walk(doc.consent, "consent", [], "steps", "");
+  for (const section of SECTIONS) walk(doc[section], section, [], "steps", "");
   return out;
 }
 

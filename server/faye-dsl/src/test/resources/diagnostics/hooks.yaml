@@ -1,0 +1,16 @@
+flow: f
+version: 1
+hooks:
+  risk: { file: missing.js }
+  slow: { source: "export default () => ({})", timeout_ms: 9000 }
+login:
+  steps:
+    a: { hook: nope }
+    b: { pick: risk, use: identity.resolve }
+
+# Hook declarations are surface only. A hook whose declaration failed is not reported again where it
+# is used.
+# expect: 4:17: hook file 'missing.js' not found
+# expect: 5:60: timeout_ms must be an integer from 1 to 2000
+# expect: 8:16: unknown hook 'nope'; declare it under 'hooks'
+# expect: 9:16: 'pick' needs an 'alternative' to pick from

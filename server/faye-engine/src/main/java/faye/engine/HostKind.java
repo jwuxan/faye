@@ -1,12 +1,8 @@
 package faye.engine;
 
+/** The kinds of challenge a host hands Faye. {@link EntrySelector} maps each to an IR entry. */
 public enum HostKind {
     LOGIN,
     CONSENT,
-    LOGOUT;
-
-    /** IR section run for this kind of challenge. */
-    public String section() {
-        return name().toLowerCase(java.util.Locale.ROOT);
-    }
+    LOGOUT
 }

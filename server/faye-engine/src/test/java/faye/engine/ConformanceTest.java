@@ -53,14 +53,20 @@ class ConformanceTest {
         String subject = v.path("subject").asText("alice");
 
         List<ScriptedHandler> fakes = new ArrayList<>();
-        v.path("handlers").properties().forEach(e -> {
-            JsonNode m = meta.get(e.getKey());
-            assertThat(m).as("handler metadata for " + e.getKey()).isNotNull();
-            Set<String> amr = new HashSet<>();
-            m.path("amr").forEach(a -> amr.add(a.asText()));
-            fakes.add(
-                    new ScriptedHandler(e.getKey(), amr, m.path("binds_subject").asBoolean(), subject, e.getValue()));
-        });
+        List<String> commits = new ArrayList<>();
+        v.path("handlers")
+                .fieldNames()
+                .forEachRemaining(name -> assertThat(meta.has(name))
+                        .as("handler metadata for " + name)
+                        .isTrue());
+        // Every handler of the catalog exists, as in production; only the scripted ones may be called
+        meta.properties()
+                .forEach(e -> fakes.add(new ScriptedHandler(
+                        e.getKey(),
+                        HandlerMeta.fromYaml(e.getValue()),
+                        subject,
+                        v.path("handlers").path(e.getKey()),
+                        commits)));
 
         var hooks = new ScriptedHooks(v.path("hooks"));
         var versions = new InMemoryFlowVersions();
@@ -75,21 +81,28 @@ class ConformanceTest {
                 kind,
                 "challenge-1",
                 map(v.path("host").path("client")),
-                map(v.path("host").path("hydra"))));
+                map(v.path("host").path("params"))));
         var tenant = v.path("tenant");
         var policy = new TenantPolicy(tenant.path("mfa_required").asBoolean(), null, null);
         var previews = new ScriptedPreviews(v.path("preview"), versions);
+        var store = new RacingStore();
         var engine = new Engine(
                 versions,
                 new HandlerRegistry(fakes),
-                new InMemoryFlowStore(),
+                store,
                 host,
                 TenantPolicies.of(Map.of(Engine.DEFAULT_TENANT, policy)),
                 hooks,
                 previews);
 
-        EngineResponse last = engine.start(kind, "challenge-1", Map.of());
+        EngineResponse last = engine.start(kind, "challenge-1", Map.of(), "binder");
+        @Nullable String refused = null;
         for (JsonNode event : v.path("events")) {
+            if (!event.has("expect_refused")) {
+                assertThat(refused)
+                        .as("a refused submit must be followed by expect_refused")
+                        .isNull();
+            }
             if (event.has("expect_screen")) {
                 assertThat(last).as(event.toString()).isInstanceOf(ScreenView.class);
                 ScreenView screen = (ScreenView) last;
@@ -128,7 +141,36 @@ class ConformanceTest {
                                 DIR.resolve(event.get("publish").asText())))));
             } else if (event.has("submit")) {
                 ScreenView screen = (ScreenView) last;
-                last = engine.submit(screen.flowId(), screen.nonce(), new Submission(map(event.get("submit"))));
+                // race: lost makes the store refuse this submit's save as if another had won; race:
+                // { winner: payload } runs another answer of the same screen first, which wins
+                store.loseNext = "lost".equals(event.path("race").asText());
+                if (event.path("race").has("winner")) {
+                    Submission winner = new Submission(map(event.path("race").get("winner")));
+                    store.beforeNextReplace = () -> engine.submit(screen.flowId(), "binder", screen.nonce(), winner);
+                }
+                try {
+                    last = engine.submit(
+                            screen.flowId(),
+                            event.path("binder").asText("binder"),
+                            screen.nonce(),
+                            new Submission(map(event.get("submit"))));
+                    refused = null;
+                } catch (FlowException e) {
+                    refused = e.code().wireName();
+                }
+            } else if (event.has("expect_refused")) {
+                assertThat(refused)
+                        .as(event.toString())
+                        .isEqualTo(event.get("expect_refused").asText());
+                refused = null;
+            } else if (event.has("expect_accepted")) {
+                assertThat(host.accepted())
+                        .as("host accepts")
+                        .hasSize(event.get("expect_accepted").asInt());
+            } else if (event.has("expect_commits")) {
+                List<String> expected = new ArrayList<>();
+                event.get("expect_commits").forEach(c -> expected.add(c.asText()));
+                assertThat(commits).as("committed effects").isEqualTo(expected);
             } else if (event.has("expect_result")) {
                 JsonNode expected = event.get("expect_result");
                 assertThat(last).isInstanceOf(Redirect.class);
@@ -161,6 +203,9 @@ class ConformanceTest {
                 throw new AssertionError("unknown event " + event);
             }
         }
+        assertThat(refused)
+                .as("a refused submit must be followed by expect_refused")
+                .isNull();
         fakes.forEach(f ->
                 assertThat(f.script).as("unconsumed outcomes for " + f.name).isEmpty());
         hooks.scripts.forEach((id, script) ->
@@ -195,7 +240,7 @@ class ConformanceTest {
         public @Nullable Object run(String tenantId, Hook hook, Map<String, Object> ctx) {
             JsonNode next = scripts.getOrDefault(hook.id(), new ArrayDeque<>()).poll();
             if (next == null) throw new AssertionError("no scripted outcome left for hook " + hook.id());
-            Set<String> keys = new HashSet<>(List.of("request", "client", "hydra", "tenant", "user", "vars"));
+            Set<String> keys = new HashSet<>(List.of("request", "client", "host", "tenant", "user", "vars"));
             if (ctx.containsKey("options")) keys.add("options");
             assertThat(ctx.keySet()).as("ctx of hook " + hook.id()).isEqualTo(keys);
             if (next.has("expect_options")) {
@@ -248,18 +293,54 @@ class ConformanceTest {
         }
     }
 
+    /** A store where another submit can be made to win the next revision race. */
+    static final class RacingStore implements FlowStore {
+        final InMemoryFlowStore inner = new InMemoryFlowStore();
+        boolean loseNext;
+
+        @Nullable
+        Runnable beforeNextReplace;
+
+        @Override
+        public Optional<FlowState> load(String flowId) {
+            return inner.load(flowId);
+        }
+
+        @Override
+        public void create(FlowState state) {
+            inner.create(state);
+        }
+
+        @Override
+        public boolean replace(FlowState next) {
+            if (loseNext) {
+                loseNext = false;
+                return false;
+            }
+            Runnable first = beforeNextReplace;
+            beforeNextReplace = null;
+            if (first != null) first.run();
+            return inner.replace(next);
+        }
+    }
+
+    /**
+     * Answers each call with the next scripted outcome: {@code ok}, {@code {ok: {user, amr, subject,
+     * effects}}} or {@code {fail: code}}. An effect is scripted as its id, or {@code {id, fails: code}}
+     * for one whose commit fails; committed effects are recorded as {@code handler:id}.
+     */
     static final class ScriptedHandler implements Handler {
         final String name;
-        final Set<String> amr;
-        final boolean binds;
+        final HandlerMeta meta;
         final String subject;
         final Deque<JsonNode> script = new ArrayDeque<>();
+        final List<String> commits;
 
-        ScriptedHandler(String name, Set<String> amr, boolean binds, String subject, JsonNode outcomes) {
+        ScriptedHandler(String name, HandlerMeta meta, String subject, JsonNode outcomes, List<String> commits) {
             this.name = name;
-            this.amr = amr;
-            this.binds = binds;
+            this.meta = meta;
             this.subject = subject;
+            this.commits = commits;
             outcomes.forEach(script::add);
         }
 
@@ -269,19 +350,15 @@ class ConformanceTest {
         }
 
         @Override
-        public Set<String> amr() {
-            return amr;
+        public HandlerMeta meta() {
+            return meta;
         }
 
         @Override
-        public boolean bindsSubject() {
-            return binds;
-        }
-
-        @Override
-        public Outcome invoke(Env env, Submission input, Map<String, Object> args) {
+        public Outcome invoke(Invocation call) {
             JsonNode next = script.poll();
             if (next == null) throw new AssertionError("no scripted outcome left for " + name);
+            boolean binds = meta.bindsSubject();
             if (next.isTextual() && next.asText().equals("ok")) {
                 return binds ? Outcome.subject(subject) : Outcome.ok();
             }
@@ -292,10 +369,29 @@ class ConformanceTest {
                     proven = new HashSet<>();
                     for (JsonNode a : ok.get("amr")) proven.add(a.asText());
                 }
-                return new Outcome.Ok(map(ok.path("user")), binds ? subject : null, proven);
+                List<Effect> effects = new ArrayList<>();
+                ok.path("effects")
+                        .forEach(e -> effects.add(new Effect(
+                                name,
+                                e.isTextual()
+                                        ? Map.of("id", e.asText())
+                                        : Map.of(
+                                                "id",
+                                                e.path("id").asText(),
+                                                "fails",
+                                                e.path("fails").asText()))));
+                String who = binds ? ok.path("subject").asText(subject) : null;
+                return new Outcome.Ok(map(ok.path("user")), who, proven, effects);
             }
             if (next.has("fail")) return Outcome.fail(next.get("fail").asText());
             throw new AssertionError("bad outcome " + next);
+        }
+
+        @Override
+        public @Nullable String commit(Effect effect) {
+            if (effect.data().get("fails") instanceof String code) return code;
+            commits.add(name + ":" + effect.data().get("id"));
+            return null;
         }
     }
 }

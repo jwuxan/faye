@@ -120,7 +120,7 @@ class MilestoneFiveTest {
         JsonNode version = admin(get("/admin/tenants/editor/versions/" + published), status().isOk());
         assertThat(version.get("yaml").asText()).isEqualTo(next);
         assertThat(version.get("current").asBoolean()).isTrue();
-        assertThat(JSON.readTree(version.get("ir").asText()).get(1).asText()).isEqualTo("password-totp");
+        assertThat(JSON.readTree(version.get("ir").asText()).get(2).asText()).isEqualTo("password-totp");
 
         JsonNode old = admin(get("/admin/tenants/editor/versions/" + original), status().isOk());
         assertThat(old.get("yaml").asText()).isEqualTo(configured);

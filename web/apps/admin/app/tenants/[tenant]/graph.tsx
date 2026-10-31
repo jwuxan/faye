@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@faye/ui/components/too
 import { cn } from "@faye/ui/lib/utils";
 import { CircleCheck, type LucideIcon, Maximize, Minus, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ENTRIES, SECTIONS } from "../../../lib/entries";
 import { addressKey, type Entry, type FlowDoc, type ListKind, type Section } from "../../../lib/flow";
 import { kindOf } from "../../../lib/kinds";
 import type { Findings } from "./tree";
@@ -61,14 +62,14 @@ function layout(doc: FlowDoc): { nodes: GNode[]; width: number; height: number }
     });
     return previous;
   };
-  for (const section of ["login", "consent"] as const) {
+  for (const section of SECTIONS) {
     if (!doc[section]) continue;
     const key = `section:${section}`;
-    nodes.push({ key, label: section === "login" ? "Sign in" : "Consent", detail: section, x: 0, y: row++ * (H + GAP_Y), option: false, kind: "section", sign: "" });
+    nodes.push({ key, label: ENTRIES[section].title, detail: section, x: 0, y: row++ * (H + GAP_Y), option: false, kind: "section", sign: "" });
     const last = place(doc[section], section, [], "steps", 0, key);
     nodes.push({
       key: `end:${section}`,
-      label: section === "login" ? "signed in" : "consented",
+      label: ENTRIES[section].done,
       detail: "",
       x: 0,
       y: row++ * (H + GAP_Y),

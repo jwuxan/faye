@@ -1,0 +1,19 @@
+name: a submit that loses the revision race applies none of its effects; the winner's are applied once
+ir: flows/enroll-totp.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+  totp.enroll: [{ ok: { effects: [lost] } }, { ok: { effects: [won] } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: otp_enroll
+  - submit: { code: "123456" }
+    race: lost
+  - expect_refused: conflict
+  - expect_commits: []
+  - submit: { code: "123456" }
+  - expect_commits: ["totp.enroll:won"]
+  - expect_result: { succeed: true, subject: alice, amr: [pwd, otp], acr: "faye:2fa" }

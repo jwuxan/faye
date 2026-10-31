@@ -14,7 +14,7 @@ Faye is login flow middleware in front of an authorization server; Ory Hydra is 
 | `server/faye-ir` | Sealed IR node types, JSON codec. |
 | `server/faye-dsl` | YAML to IR compiler. |
 | `server/faye-check` | Static checks and path enumeration; `Publisher`, the only way a flow version becomes current. Generates `conformance/generated/`. |
-| `server/faye-engine` | Interpreter, continuations, `FlowHost`, `FlowStore`, handler registry, `Previews` (what preview clients run, and their trace events). Runs the conformance suite. |
+| `server/faye-engine` | Interpreter, continuations, `FlowHost`, `FlowStore`, the handler and screen catalogs (`HandlerRegistry`, `ScreenRegistry`), the verifier, `Previews` (what preview clients run, and their trace events). Runs the conformance suite. |
 | `server/faye-hooks` | `HookRuntime` (QuickJS on WebAssembly via quickjs4j: deadline, 16 MiB memory cap, no host access), `SandboxedHooks` (the engine's `HookRunner`; egress grants), `HttpEgress` (named targets). |
 | `server/faye-identity` | Identity handlers (`identity.resolve`, `password.verify`, `totp.*`, `webauthn.*`, `consent.record`) over a `UserStore`; the app's store is each tenant's user pool in SQLite, written by `deploy/directory/seed.mjs`. An account with a `tenant` is unknown to other tenants' clients. Preview only accounts exist only for preview clients. |
 | `server/faye-host-hydra` | `FlowHost` and the read only `ClientDirectory` for Hydra's admin API. |
@@ -22,7 +22,7 @@ Faye is login flow middleware in front of an authorization server; Ory Hydra is 
 | `server/faye-app` | Spring Boot wiring, screen API, admin API (validate, publish, roll back; on when `FAYE_ADMIN_TOKEN` is set), preview API (draft previews, scenarios, seeded accounts, trace feed over SSE; on when `FAYE_PREVIEW_ENABLED=true`), SQLite flow, version, hook, settings, trace and user stores (`src/main/resources/db/migration/`, Flyway, [ADR 0020](docs/adr/0020-versioned-schema-migrations-with-flyway.md), `FAYE_DATABASE`). Two tenants in `application.yaml` (`faye.tenants`: `acme`, `bank`), their flows in `src/main/resources/flows/*.yaml`; no accounts or passwords in it ([ADR 0018](docs/adr/0018-two-tenants-and-an-open-local-console.md)). Tests use `src/test/resources/application.yaml` instead, with their own tenants and fixed test accounts. |
 | `web/` | pnpm workspace, Next.js App Router, TypeScript. `Dockerfile` builds one image holding the three apps' standalone output. |
 | `web/packages/contract` | TS types generated from `schema/screen.schema.json`. Never edit `src/` by hand. |
-| `web/packages/ui` | Shared shadcn/ui components and Geist theme. |
+| `web/packages/ui` | Shared shadcn/ui components and theme (system UI and mono fonts, Geist Serif wordmark). |
 | `web/apps/login` | Renders typed screens (`:3000`). |
 | `web/apps/demo-client` | OIDC relying party (`:3001`) of every client bootstrap registers, reading the applications' secrets from `CLIENT_REGISTRATIONS` (the secrets volume): launch panel, and a result view with the preview trace and the `amr` / `acr` expectation check. |
 | `web/apps/admin` | Admin UI (`:3002`): a console with a collapsible sidebar. Login flow (blocks or YAML beside the live graph; block inspector, paths and Preview in a side panel), Hooks, Versions, read only Applications (from the authorization server, each with Try sign in through the demo client) and Users (the tenant's user pool), General and Branding settings ([ADR 0013](docs/adr/0013-admin-console-shell-and-flow-workspace.md)). Has no sign in: it proxies the admin API with the server token, so it must only be reachable locally (compose binds it to 127.0.0.1). `lib/` holds the editor's document model and its tests. |
@@ -63,7 +63,7 @@ CI (`.github/workflows/ci.yml`) runs the server build, the web checks plus a dif
 
 ## Rules
 
-1. Changing the IR or screen protocol means changing `schema/` first, then the Java types, the generated TS (`pnpm generate`), and conformance vectors together.
+1. Changing the IR or screen protocol means changing `schema/` first, then the Java types, the generated TS (`pnpm generate`), [ir-spec.md](docs/roadmap/ir-spec.md) and conformance vectors together. A change to what the IR means bumps the IR format ([ADR 0024](docs/adr/0024-core-ir-as-a-narrow-waist.md)).
 2. Engine behavior changes need a conformance vector, not just a Java unit test. Every scripted handler outcome in a vector must be consumed. Never edit `conformance/generated/` by hand; regenerate it.
 3. The engine never imports Hydra. Authorization server specifics stay behind `FlowHost`.
 4. Hooks (later milestones) may only `set`, `fail`, or `pick` among declared options; they can never complete authentication. `amr`/`acr` are computed by the engine from credentials that actually verified, never configured.
@@ -75,9 +75,9 @@ CI (`.github/workflows/ci.yml`) runs the server build, the web checks plus a dif
 
 ## Decisions
 
-Record significant decisions as ADRs in [docs/adr/](docs/adr/README.md), MADR 4 format, one file per decision (`NNNN-title.md`, next free number, never renumbered).
+Record breaking changes as ADRs in [docs/adr/](docs/adr/README.md), MADR 4 format, one file per decision (`NNNN-title.md`, next free number, never renumbered).
 
-1. Write an ADR before changing a boundary, changing the charter, adding or swapping a dependency, changing the IR or screen protocol, or choosing between approaches with real tradeoffs. Skip it for changes that follow an existing decision.
+1. Write an ADR only for a breaking change: one that changes a boundary, the charter, the IR or screen protocol, persisted state that existing data or clients must still read, or an API or configuration contract that callers depend on. Everything else (dependency bumps, UI and styling, refactors, fixes) needs no ADR; update the docs it makes stale instead.
 2. List the options actually considered, with pros and cons, and a `Confirmation` section naming the command or test that proves the decision holds.
 3. Mark unverified claims as such, with how to verify them. Back claims with evidence (a benchmark, a test, a link to the source) where you can.
 4. A record's status is one of four:

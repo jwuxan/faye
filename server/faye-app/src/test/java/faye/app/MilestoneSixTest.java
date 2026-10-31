@@ -226,7 +226,7 @@ class MilestoneSixTest {
 
         run = json(get("/api/preview/flows/" + flowId));
         assertThat(run.get("tenant").asText()).isEqualTo("traced");
-        assertThat(run.get("section").asText()).isEqualTo("login");
+        assertThat(run.get("entry").asText()).isEqualTo("login");
         assertThat(run.get("draft").asBoolean()).isTrue();
         assertThat(texts(run.get("visits"))).containsExactly("identify", "credential", "second-factor");
         assertThat(run.at("/events/0/event").asText()).isEqualTo("start");

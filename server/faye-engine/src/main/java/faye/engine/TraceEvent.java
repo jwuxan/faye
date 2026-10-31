@@ -9,12 +9,13 @@ import org.jspecify.annotations.Nullable;
  * One thing a preview flow did, for its live trace. Events carry ids and codes, never what the
  * person typed.
  *
- * @param event {@code start} ({@code id} the version hash, {@code outcome} the section), {@code
+ * @param event {@code start} ({@code id} the version hash, {@code outcome} the entry id), {@code
  *     step}, {@code option} ({@code outcome} {@code only}, {@code user} or {@code hook}), {@code
  *     screen}, {@code call} ({@code outcome} {@code ok} or the error; {@code amr} what it proved),
  *     {@code hook} ({@code outcome} {@code ok} or the failure), {@code retry} ({@code outcome} the
- *     error being retried), {@code end} ({@code outcome} {@code succeed} or the reason; {@code amr}
- *     and {@code acr} of a login that succeeded)
+ *     error being retried), {@code commit} ({@code id} the handler, {@code outcome} the code of an
+ *     effect whose commit failed), {@code end} ({@code outcome} {@code succeed} or the reason;
+ *     {@code amr} and {@code acr} of a login that succeeded)
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TraceEvent(

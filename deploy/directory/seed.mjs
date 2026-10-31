@@ -1,6 +1,6 @@
-// Seeds each tenant's user pool: 1000 accounts over the two tenants, each with a random password
-// and some with TOTP. Runs once, in compose's demo service (or from deploy/dev.sh), and writes
-// nothing to the repo:
+// Seeds each tenant's user pool: 1000 accounts over the two tenants, each with its name as the
+// password (first.last, lowercase) and some with TOTP. Runs once, in compose's demo service (or
+// from deploy/dev.sh), and writes nothing to the repo:
 //
 //   $DATABASE           the SQLite database Faye and Hydra share (ADR 0017): Faye's tables, which
 //                       Faye itself migrates (Flyway, ADR 0020), and the accounts in faye_user,
@@ -82,11 +82,8 @@ function base32(bytes) {
   return bits > 0 ? text + BASE32[(value << (5 - bits)) & 31] : text;
 }
 
-/** 16 random characters from a set without look-alikes. */
-function password() {
-  const set = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  return [...randomBytes(16)].map((b) => set[b % set.length]).join("");
-}
+/** Lowercase ASCII, as in the identifier: "Müller" becomes "muller". */
+const ascii = (text) => text.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "");
 
 const accounts = [];
 const rows = ["tenant,identifier,password,totp_secret"];
@@ -95,11 +92,9 @@ for (const [tenant, domain, count] of TENANTS) {
   for (let i = 1; i <= count; i++, n++) {
     const first = FIRST[n % FIRST.length];
     const last = LAST[Math.floor(n / FIRST.length) % LAST.length];
-    const identifier = `${first}.${last}.${String(i).padStart(4, "0")}@${domain}`
-      .toLowerCase()
-      .normalize("NFKD")
-      .replace(/[̀-ͯ]/g, "");
-    const secret = password();
+    const identifier = ascii(`${first}.${last}.${String(i).padStart(4, "0")}@${domain}`);
+    // The account's name as its password, so a demo sign in needs no lookup
+    const secret = ascii(`${first}.${last}`);
     // A third of the accounts have an authenticator app enrolled
     const totp = i % 3 === 0 ? base32(randomBytes(20)) : null;
     accounts.push([randomUUID(), identifier, `${first} ${last}`, tenant, hash(secret), totp]);

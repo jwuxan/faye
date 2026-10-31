@@ -10,9 +10,9 @@ export const HOOK_GLOBALS: Record<string, Member> = {
     children: {
       request: { label: "request", detail: "the browser's request", children: { ip: leaf("string"), user_agent: leaf("string") } },
       client: { label: "client", detail: "the OAuth client", children: { client_id: leaf("string"), first_party: leaf("boolean"), tenant: leaf("string") } },
-      hydra: {
-        label: "hydra",
-        detail: "the login request",
+      host: {
+        label: "host",
+        detail: "the login request, as the authorization server relays it",
         children: { acr_values: leaf("string[]"), login_hint: leaf("string"), requested_scope: leaf("string[]"), skip: leaf("boolean") },
       },
       tenant: { label: "tenant", detail: "tenant settings", children: { mfa_required: leaf("boolean") } },
@@ -51,7 +51,7 @@ export default async function (ctx, cap) {
 export const SAMPLE_CTX = {
   request: { ip: "203.0.113.7", user_agent: "Mozilla/5.0" },
   client: { client_id: "demo", first_party: true },
-  hydra: { acr_values: [], skip: false },
+  host: { acr_values: [], skip: false },
   tenant: { mfa_required: false },
   user: { exists: true, identified_by: "identifier", has_password: true, has_passkey: false, has_totp: true, mfa_required: false },
   vars: {},

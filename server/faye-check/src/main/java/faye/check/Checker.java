@@ -12,12 +12,15 @@ import faye.check.FlowPath.Succeeded;
 import faye.engine.Acr;
 import faye.engine.Env;
 import faye.engine.Handler;
+import faye.engine.HandlerMeta;
 import faye.engine.HandlerRegistry;
 import faye.engine.Predicates;
-import faye.engine.ScreenType;
+import faye.engine.ScreenRegistry;
 import faye.engine.TenantPolicy;
+import faye.engine.Verifier;
 import faye.ir.Call;
 import faye.ir.Choose;
+import faye.ir.Entry;
 import faye.ir.Fail;
 import faye.ir.Flow;
 import faye.ir.Hook;
@@ -40,6 +43,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -48,12 +52,16 @@ import org.jspecify.annotations.Nullable;
 /**
  * The static checks of a flow against a tenant's policy, run before a version is published.
  *
- * <p>The checker enumerates every path through each section. The language has no loops other than
+ * <p>Layer L2 of the checks in docs/roadmap/ir-spec.md: L0 (the schema) and L1 ({@link Verifier})
+ * have run, and their findings are errors here too. The checker enumerates every path through each
+ * entry once, then applies the rules of the entry's kind to those paths. The language has no loops other than
  * bounded {@code retry} and no recursion, so the paths are finite. A predicate is decided when it
  * reads only what is known before the flow runs ({@code tenant.*}, {@code vars.*} written by {@code
  * set}, {@code auth.amr} and {@code auth.acr} from the credentials verified so far on the path, and
  * an empty {@code user.*} until a handler succeeds); otherwise both outcomes are paths. A call either
- * succeeds, proving any nonempty part of its handler's amr, or fails. A retry's attempt may fail and
+ * succeeds, proving any nonempty part of its handler's amr, or fails; a call of a handler that binds
+ * the subject may also prove someone else, which ends the entry with {@code subject_mismatch}
+ * exactly as the engine does, since a subject may be bound before it. A retry's attempt may fail and
  * the next one runs from the state it left. A hook in a step either fails or may set any {@code
  * vars}, which are unknown from then on; the hook of a choose either fails or picks one of the
  * options that may be enabled. The result over-approximates what can happen at run time, so a check
@@ -61,11 +69,8 @@ import org.jspecify.annotations.Nullable;
  */
 public final class Checker {
 
-    /** Enumerating more paths than this in one section is an error rather than a partial check. */
+    /** Enumerating more paths than this in one entry is an error rather than a partial check. */
     public static final int MAX_PATHS = 10_000;
-
-    /** The handler that fills {@code user.*} from what the person typed. */
-    public static final String IDENTITY_HANDLER = "identity.resolve";
 
     private static final int MAX_EVENTS = 10_000;
 
@@ -73,6 +78,7 @@ public final class Checker {
     private static final String SUBJECT = "subject";
 
     private final HandlerRegistry handlers;
+    private final ScreenRegistry screens;
     private final TenantPolicy policy;
     private final Function<String, Optional<HookDef>> hooks;
     private final Map<String, Finding> errors = new LinkedHashMap<>();
@@ -83,8 +89,13 @@ public final class Checker {
     private final List<Object> visitOrder = new ArrayList<>();
     private final Set<Object> taken = Collections.newSetFromMap(new IdentityHashMap<>());
 
-    private Checker(HandlerRegistry handlers, TenantPolicy policy, Function<String, Optional<HookDef>> hooks) {
+    private Checker(
+            HandlerRegistry handlers,
+            ScreenRegistry screens,
+            TenantPolicy policy,
+            Function<String, Optional<HookDef>> hooks) {
         this.handlers = handlers;
+        this.screens = screens;
         this.policy = policy;
         this.hooks = hooks;
     }
@@ -97,82 +108,140 @@ public final class Checker {
     /** @param hooks the stored hook definition for a hash, if there is one */
     public static Report check(
             Flow flow, HandlerRegistry handlers, TenantPolicy policy, Function<String, Optional<HookDef>> hooks) {
-        return new Checker(handlers, policy, hooks).run(flow);
+        return check(flow, handlers, ScreenRegistry.builtIn(), policy, hooks);
+    }
+
+    /**
+     * @param screens the screens flows may show
+     * @param hooks the stored hook definition for a hash, if there is one
+     */
+    public static Report check(
+            Flow flow,
+            HandlerRegistry handlers,
+            ScreenRegistry screens,
+            TenantPolicy policy,
+            Function<String, Optional<HookDef>> hooks) {
+        return new Checker(handlers, screens, policy, hooks).run(flow);
     }
 
     private Report run(Flow flow) {
+        Verifier.verify(flow, handlers, screens).forEach(p -> error(p.source(), "catalog", p.message()));
+        entries(flow);
         Map<String, SourceRef> stepIds = new HashMap<>();
-        flow.sections().values().forEach(body -> structure(body, stepIds));
+        flow.entries().values().forEach(e -> structure(e.body(), e.kind(), stepIds));
 
         List<FlowPath> paths = new ArrayList<>();
-        flow.sections().forEach((section, body) -> {
+        flow.entries().forEach((id, entry) -> {
+            List<FlowPath> own;
             try {
-                paths.addAll(enumerate(section, body));
+                own = enumerate(id, entry);
             } catch (TooComplex e) {
                 error(
-                        body.source(),
+                        entry.body().source(),
                         "too-complex",
-                        "the " + section + " section has more than " + MAX_PATHS + " paths or a path longer than "
-                                + MAX_EVENTS + " steps; split it");
+                        "entry '" + id + "' has more than " + MAX_PATHS + " paths or a path longer than " + MAX_EVENTS
+                                + " steps; split it");
+                return;
             }
+            paths.addAll(own);
+            own.forEach(this::subjectFirst);
+            if (entry.kind() == Entry.Kind.AUTHENTICATE) authenticate(id, entry, own);
         });
         reachability();
+        return new Report(List.copyOf(errors.values()), List.copyOf(warnings.values()), paths);
+    }
 
-        List<FlowPath> success = paths.stream()
-                .filter(p -> p.section().equals("login") && p.succeeded())
-                .toList();
+    /**
+     * The rules of an authenticate entry: every success path resolves the identity before any
+     * credential and verifies a credential that binds the subject, reaching {@code faye:2fa} if the
+     * tenant requires MFA.
+     */
+    private void authenticate(String id, Entry entry, List<FlowPath> paths) {
+        List<FlowPath> success = paths.stream().filter(FlowPath::succeeded).toList();
         success.forEach(this::credentials);
-        Node login = flow.sections().get("login");
-        if (login != null && success.isEmpty() && errors.isEmpty()) {
-            warn(login.source(), "login never succeeds");
-        } else if (login != null && success.stream().noneMatch(p -> Acr.TWO_FACTOR.equals(p.acr()))) {
+        if (success.isEmpty() && errors.isEmpty()) {
+            warn(entry.body().source(), "entry '" + id + "' never succeeds");
+        } else if (success.stream().noneMatch(p -> Acr.TWO_FACTOR.equals(p.acr()))) {
             warn(
-                    login.source(),
+                    entry.body().source(),
                     "no path reaches " + Acr.TWO_FACTOR + "; clients that request it in acr_values are refused");
         }
-        return new Report(List.copyOf(errors.values()), List.copyOf(warnings.values()), paths);
     }
 
     // ---- checks on the tree ----
 
-    private void structure(Node node, Map<String, SourceRef> stepIds) {
+    /**
+     * A flow has an authenticate entry, and at most one entry of each kind: the engine selects an
+     * entry by kind, and how to choose among several is not defined yet.
+     */
+    private void entries(Flow flow) {
+        SourceRef first = flow.entries().values().stream()
+                .map(e -> e.body().source())
+                .findFirst()
+                .orElse(SourceRef.NONE);
+        if (flow.entriesOf(Entry.Kind.AUTHENTICATE).isEmpty()) {
+            error(first, "entry", "a flow needs an authenticate entry");
+        }
+        for (Entry.Kind kind : Entry.Kind.values()) {
+            List<String> ids = flow.entriesOf(kind);
+            for (int i = 1; i < ids.size(); i++) {
+                error(
+                        Objects.requireNonNull(flow.entries().get(ids.get(i)))
+                                .body()
+                                .source(),
+                        "entry",
+                        "entry '" + ids.get(i) + "' is a second " + kind.wireName() + " entry; a flow has at most one");
+            }
+        }
+    }
+
+    private void structure(Node node, Entry.Kind kind, Map<String, SourceRef> stepIds) {
         switch (node) {
-            case Seq seq -> seq.children().forEach(c -> structure(c, stepIds));
+            case Seq seq -> seq.children().forEach(c -> structure(c, kind, stepIds));
             case Step step -> {
                 SourceRef first = stepIds.putIfAbsent(step.id(), step.source());
                 if (first != null) {
                     error(step.source(), "step-id", "step id '" + step.id() + "' is already used at " + first);
                 }
-                structure(step.body(), stepIds);
+                structure(step.body(), kind, stepIds);
             }
             case Screen screen -> {
-                if (ScreenType.of(screen.type()).isEmpty()) {
-                    error(screen.source(), "screen", "unknown screen type '" + screen.type() + "'");
-                } else if (policy.screens() != null && !policy.screens().contains(screen.type())) {
+                // An unknown screen is an L1 finding, reported above
+                if (screens.find(screen.type()).isPresent()
+                        && policy.screens() != null
+                        && !policy.screens().contains(screen.type())) {
                     error(screen.source(), "screen", "screen '" + screen.type() + "' is not enabled for this tenant");
                 }
             }
             case Call call -> {
-                if (handlers.find(call.handler()).isEmpty()) {
-                    error(call.source(), "handler", "unknown handler '" + call.handler() + "'");
-                } else if (policy.handlers() != null && !policy.handlers().contains(call.handler())) {
+                Optional<Handler> handler = handlers.find(call.handler());
+                if (handler.isEmpty()) break;
+                if (policy.handlers() != null && !policy.handlers().contains(call.handler())) {
                     error(call.source(), "handler", "handler '" + call.handler() + "' is not enabled for this tenant");
+                }
+                HandlerMeta meta = handler.get().meta();
+                if (kind == Entry.Kind.CONSENT && (meta.credential() || meta.bindsSubject())) {
+                    error(
+                            call.source(),
+                            "consent",
+                            call.handler() + " verifies a credential; a consent entry only grants access to a subject"
+                                    + " its authenticate entry proved");
                 }
             }
             case Hook hook -> hook(hook);
             case Choose choose -> {
                 if (choose.pick() != null) hook(choose.pick());
                 if (choose.options().size() == 1) {
-                    warn(choose.source(), "'alternative' has a single option; use its body directly");
+                    warn(choose.source(), "a choose has a single option; use its body directly");
                 }
-                choose.options().forEach(o -> structure(o.body(), stepIds));
+                choose.options().forEach(o -> structure(o.body(), kind, stepIds));
             }
-            case When when -> structure(when.body(), stepIds);
+            case When when -> structure(when.body(), kind, stepIds);
             case Retry retry -> {
                 if (!hasScreen(retry.body())) {
                     warn(retry.source(), "retry without a screen asks nothing new on each attempt");
                 }
-                structure(retry.body(), stepIds);
+                structure(retry.body(), kind, stepIds);
             }
             case SetVar set -> {}
             case Succeed succeed -> {}
@@ -217,23 +286,25 @@ public final class Checker {
     // ---- checks on the paths ----
 
     /**
-     * Every login path to success resolves the identity before any credential handler runs, verifies
-     * a credential that binds the subject, and reaches {@code faye:2fa} if the tenant requires MFA.
+     * On a success path of an authenticate entry, a handler that identifies (fills {@code user.*}
+     * from what the person typed) succeeds before any credential handler runs, a credential that
+     * binds the subject verifies, and the path reaches {@code faye:2fa} if the tenant requires MFA.
      */
     private void credentials(FlowPath path) {
         boolean identified = false;
         boolean verified = false;
         for (Event e : path.events()) {
             if (!(e instanceof Called c)) continue;
-            if (c.handler().equals(IDENTITY_HANDLER)) {
+            HandlerMeta meta = meta(c.handler());
+            if (meta.identifies()) {
                 identified |= c.ok();
-            } else if (credential(c.handler()) && !identified) {
+            } else if (meta.credential() && !identified) {
                 error(
                         c.source(),
                         "identity",
-                        c.handler() + " runs before " + IDENTITY_HANDLER + " on the path " + path.describe());
+                        c.handler() + " runs before any handler identifies the person on the path " + path.describe());
             }
-            verified |= c.amr() != null && c.bindsSubject() && !c.amr().isEmpty();
+            verified |= c.verifiedSubject();
         }
         if (!verified) {
             error(path.decidedAt(), "credential", "a path succeeds without verifying a credential: " + path.describe());
@@ -245,9 +316,33 @@ public final class Checker {
         }
     }
 
-    private boolean credential(String handler) {
-        return handlers.find(handler).map(h -> !h.amr().isEmpty()).orElse(false);
+    /**
+     * On every path of every entry, a handler that requires a subject runs only after a credential
+     * verified one in this flow. It guards credential writes: enrolling a factor or registering a
+     * passkey for an account nobody has proven.
+     */
+    private void subjectFirst(FlowPath path) {
+        boolean verified = false;
+        for (Event e : path.events()) {
+            if (!(e instanceof Called c)) continue;
+            if (meta(c.handler()).requiresSubject() && !verified) {
+                error(
+                        c.source(),
+                        "subject",
+                        c.handler() + " needs a subject a credential verified earlier in the flow, but runs first"
+                                + " on the path " + path.describe());
+            }
+            verified |= c.verifiedSubject();
+        }
     }
+
+    /** A handler the checker did not find has no metadata; it is an L1 error already. */
+    private HandlerMeta meta(String handler) {
+        return handlers.find(handler).map(Handler::meta).orElse(UNKNOWN);
+    }
+
+    private static final HandlerMeta UNKNOWN =
+            new HandlerMeta(Set.of(), false, false, false, HandlerMeta.EffectKind.WRITE, HandlerMeta.NO_ARGS);
 
     private void reachability() {
         for (Object node : visitOrder) {
@@ -263,12 +358,15 @@ public final class Checker {
 
     // ---- path enumeration ----
 
-    private List<FlowPath> enumerate(String section, Node body) {
+    private List<FlowPath> enumerate(String id, Entry entry) {
         Env empty = new Env(Map.of(), Map.of(), policy.env(), Map.of(), Map.of(), Map.of(), Env.Auth.NONE);
-        // A login may start with a subject Hydra remembers; a consent sees whatever its login did.
-        Set<String> unknown = "login".equals(section)
-                ? Set.of("request", "client", "hydra", "auth.subject")
-                : Set.of("request", "client", "hydra", "user", "auth");
+        // An authenticate entry may start with a subject the host remembers (a step up); a consent
+        // entry sees whatever its authenticate entry did.
+        Set<String> unknown = switch (entry.kind()) {
+            case AUTHENTICATE -> Set.of("request", "client", "host", "auth.subject");
+            case CONSENT -> Set.of("request", "client", "host", "user", "auth");
+        };
+        Node body = entry.body();
         List<FlowPath> out = new ArrayList<>();
         for (Run r : walk(body, new Run(List.of(), new Knowledge(empty, unknown), null))) {
             End end = switch (r.stop()) {
@@ -276,7 +374,7 @@ public final class Checker {
                 case Ended e -> e.end();
                 case Failing f -> new Failed(f.reason(), f.source());
             };
-            out.add(new FlowPath(section, r.events(), end));
+            out.add(new FlowPath(id, entry.kind(), r.events(), end));
         }
         return out;
     }
@@ -329,18 +427,25 @@ public final class Checker {
         };
     }
 
-    /** One path per part of the handler's amr it may prove, and one where it fails. */
+    /**
+     * One path per part of the handler's amr it may prove, one where it fails, and for a handler that
+     * binds the subject one where it proves someone else: that ends the entry, unretried.
+     */
     private List<Run> call(Call call, Run run) {
-        Optional<Handler> handler = handlers.find(call.handler());
-        boolean binds = handler.map(Handler::bindsSubject).orElse(false);
-        List<String> amr = handler.map(h -> h.amr().stream().sorted().toList()).orElse(List.of());
+        HandlerMeta meta = meta(call.handler());
+        boolean binds = meta.bindsSubject();
+        List<String> amr = meta.amr().stream().sorted().toList();
         List<Run> out = new ArrayList<>();
         for (List<String> proven : subsets(amr)) {
-            out.add(run.with(new Called(call.handler(), proven, binds, call.source()))
+            out.add(run.with(new Called(call.handler(), proven, binds, false, call.source()))
                     .knowing(run.knowledge().afterOk(call.handler(), proven, binds)));
         }
-        out.add(run.with(new Called(call.handler(), null, binds, call.source()))
+        out.add(run.with(new Called(call.handler(), null, binds, false, call.source()))
                 .stop(new Failing(FlowPath.HANDLER_ERROR, call.source())));
+        if (binds && !amr.isEmpty()) {
+            out.add(run.with(new Called(call.handler(), amr, binds, true, call.source()))
+                    .stop(new Ended(new Failed(FlowPath.SUBJECT_MISMATCH, call.source()))));
+        }
         return bounded(out);
     }
 
@@ -360,7 +465,7 @@ public final class Checker {
 
     /**
      * Each option that may be enabled is a path; so is "no option enabled" ({@code no_method}) when
-     * every option has a condition that may be false. With a hook, each option's path has the hook
+     * every option has a guard that may be false. With a hook, each option's path has the hook
      * pick it, and one more path has the hook fail once the first option that may be enabled is.
      */
     private List<Run> choose(Choose choose, Run run) {
@@ -373,20 +478,18 @@ public final class Checker {
             Run r = run.with(new Chose(option.id(), option.source()));
             // The run up to the hook: the option is enabled, none chosen yet
             Run enabledAt = run;
-            Node body = option.body();
-            if (body instanceof When w) {
-                Tri enabled = run.knowledge().test(w.test());
+            Predicate guard = option.guard();
+            if (guard != null) {
+                Tri enabled = run.knowledge().test(guard);
                 if (enabled == Tri.FALSE) continue;
                 if (enabled == Tri.UNKNOWN) {
-                    r = r.with(new Assumed(w.test(), true, run.knowledge().env(), w.source()));
+                    r = r.with(new Assumed(guard, true, run.knowledge().env(), option.guardSource()));
                     enabledAt = enabledAt.with(
-                            new Assumed(w.test(), true, run.knowledge().env(), w.source()));
-                    none = none.with(
-                            new Assumed(w.test(), false, run.knowledge().env(), w.source()));
+                            new Assumed(guard, true, run.knowledge().env(), option.guardSource()));
+                    none = none.with(new Assumed(guard, false, run.knowledge().env(), option.guardSource()));
                 } else {
                     mayBeNone = false;
                 }
-                body = w.body();
             } else {
                 mayBeNone = false;
             }
@@ -400,7 +503,7 @@ public final class Checker {
                 r = r.with(new Hooked(pick.id(), true, option.id(), pick.source()));
             }
             taken.add(option);
-            out.addAll(walk(body, r));
+            out.addAll(walk(option.body(), r));
         }
         if (hookFails != null) out.add(hookFails);
         if (mayBeNone) out.add(none.stop(new Failing("no_method", choose.source())));
@@ -463,7 +566,7 @@ public final class Checker {
 
     private record Ended(End end) implements Stop {}
 
-    /** A failure unwinding to the innermost retry, or ending the section if there is none. */
+    /** A failure unwinding to the innermost retry, or ending the entry if there is none. */
     private record Failing(String reason, SourceRef source) implements Stop {}
 
     /** A partial path: its events so far, what is known at its end, and why it stopped, if it did. */
@@ -540,7 +643,7 @@ public final class Checker {
             Map<String, Object> vars = new HashMap<>(env.vars());
             vars.put(name, value);
             return new Knowledge(
-                    new Env(env.request(), env.client(), env.tenant(), env.hydra(), env.user(), vars, env.auth()),
+                    new Env(env.request(), env.client(), env.tenant(), env.host(), env.user(), vars, env.auth()),
                     unknown);
         }
 
@@ -565,7 +668,7 @@ public final class Checker {
                 auth = new Env.Auth(binds ? SUBJECT : auth.subject(), verified);
             }
             return new Knowledge(
-                    new Env(env.request(), env.client(), env.tenant(), env.hydra(), env.user(), env.vars(), auth),
+                    new Env(env.request(), env.client(), env.tenant(), env.host(), env.user(), env.vars(), auth),
                     Set.copyOf(next));
         }
     }

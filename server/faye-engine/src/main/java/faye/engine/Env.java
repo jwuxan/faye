@@ -16,7 +16,7 @@ public record Env(
         Map<String, Object> request,
         Map<String, Object> client,
         Map<String, Object> tenant,
-        Map<String, Object> hydra,
+        Map<String, Object> host,
         Map<String, Object> user,
         Map<String, Object> vars,
         Auth auth) {
@@ -52,13 +52,13 @@ public record Env(
         client = Map.copyOf(client);
         // State saved before tenant settings existed has none
         tenant = tenant == null ? Map.of() : Map.copyOf(tenant);
-        hydra = Map.copyOf(hydra);
+        host = Map.copyOf(host);
         user = Map.copyOf(user);
         vars = Map.copyOf(vars);
     }
 
     /**
-     * The value at a predicate path such as {@code user.has_totp} or {@code hydra.acr_values}, or
+     * The value at a predicate path such as {@code user.has_totp} or {@code host.acr_values}, or
      * null. {@code auth} exposes {@code subject}, {@code amr} and {@code acr}; {@code tenant} is the
      * tenant's {@link TenantPolicy#env()} when the flow started.
      */
@@ -68,7 +68,7 @@ public record Env(
             case "request" -> request;
             case "client" -> client;
             case "tenant" -> tenant;
-            case "hydra" -> hydra;
+            case "host" -> host;
             case "user" -> user;
             case "vars" -> vars;
             case "auth" -> {
@@ -89,24 +89,24 @@ public record Env(
     Env withVar(String name, Object value) {
         Map<String, Object> merged = new HashMap<>(vars);
         merged.put(name, value);
-        return new Env(request, client, tenant, hydra, user, merged, auth);
+        return new Env(request, client, tenant, host, user, merged, auth);
     }
 
     Env withVars(Map<String, Object> patch) {
         Map<String, Object> merged = new HashMap<>(vars);
         merged.putAll(patch);
-        return new Env(request, client, tenant, hydra, user, merged, auth);
+        return new Env(request, client, tenant, host, user, merged, auth);
     }
 
     Env withUser(Map<String, Object> patch) {
         Map<String, Object> merged = new HashMap<>(user);
         merged.putAll(patch);
-        return new Env(request, client, tenant, hydra, merged, vars, auth);
+        return new Env(request, client, tenant, host, merged, vars, auth);
     }
 
     Env withVerified(@Nullable String subject, Verified verified) {
         List<Verified> all = new ArrayList<>(auth.verified());
         all.add(verified);
-        return new Env(request, client, tenant, hydra, user, vars, new Auth(subject, all));
+        return new Env(request, client, tenant, host, user, vars, new Auth(subject, all));
     }
 }

@@ -1,5 +1,5 @@
-["flow", "no-terminal", 1,
-  ["login",
+["flow", 1, "no-terminal", 1,
+  ["entry", "login", "authenticate",
     ["seq",
       ["step", "identify", ["seq", ["screen", "identifier"], ["call", "identity.resolve"]]],
       ["step", "credential", ["seq", ["screen", "password"], ["call", "password.verify"]]]]]]

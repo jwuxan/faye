@@ -101,7 +101,7 @@ class HookCheckTest {
                 """);
         assertThat(errors(check(compiled, TenantPolicy.DEFAULT)))
                 .containsExactly("tenant.yaml:10:11: a path succeeds without verifying a credential:"
-                        + " identify > trust > credential > (if at 10 false) > succeed with no credential");
+                        + " identify > trust > credential > (condition at 10 false) > succeed with no credential");
     }
 
     @Test

@@ -1,0 +1,28 @@
+flow: f
+version: 1
+login:
+  steps:
+    a:
+      if: { xor: [user.a] }
+      retry: 0
+      use: password.verify
+    b:
+      alternative: {}
+    c:
+      screen: { type: Password }
+      set: { Risk: 1.5 }
+    d:
+      if: secrets.key
+      fail: no way
+
+# Grammar errors come from schema/ir.schema.json, mapped back from the IR to the YAML that produced
+# the offending node; the compiler holds no copy of the grammar.
+# expect: 6:11: if: property 'xor' name is not valid: does not have a value in the enumeration ["and", "or", "not", "exists", "eq", "ne", "has", "gt", "lt"]
+# expect: 7:14: retry: must have a minimum value of 1
+# expect: 9:5: step needs one of 'set', 'hook', 'screen', 'use', 'alternative', 'steps' or 'fail'
+# expect: 10:20: 'alternative' must be a non empty mapping
+# expect: 12:23: screen type: does not match the regex pattern ^[a-z][a-z0-9_-]*$
+# expect: 13:14: variable name: does not match the regex pattern ^[a-z][a-z0-9_]*$
+# expect: 13:20: value of Risk: number found, [string, integer, boolean] expected
+# expect: 15:11: if: does not match the regex pattern ^(request|client|host|tenant|user|vars|auth)(\.[a-z][a-z0-9_]*)+$
+# expect: 16:13: fail reason: does not match the regex pattern ^[a-z][a-z0-9_-]*$

@@ -10,12 +10,16 @@ import faye.engine.HostKind;
 import faye.engine.Redirect;
 import faye.engine.ScreenView;
 import faye.engine.Submission;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,9 +29,18 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Hydra's login and consent entry points and the screen protocol API used by the Login UI. */
+/**
+ * The host's login and consent entry points and the screen protocol API used by the Login UI.
+ *
+ * <p>Starting a flow sets a cookie, {@code faye_flow_<flowId>}, holding the flow's binder; reading or
+ * answering the flow needs it, and without it the flow does not exist (ADR 0024). One cookie per
+ * flow lets several tabs sign in at once. The Login UI forwards the cookie from the browser.
+ */
 @RestController
 class FlowController {
+
+    /** The cookie that binds a flow to the browser that started it is this prefix and the flow id. */
+    static final String COOKIE_PREFIX = "faye_flow_";
 
     record SubmitRequest(String nonce, String action, Map<String, Object> payload) {}
 
@@ -61,7 +74,7 @@ class FlowController {
         return start(HostKind.LOGIN, challenge, http);
     }
 
-    /** Runs the consent section of the flow version the login ran. */
+    /** Runs the consent entry of the flow version the login ran. */
     @GetMapping("/consent")
     ResponseEntity<Void> consent(@RequestParam("consent_challenge") String challenge, HttpServletRequest http) {
         return start(HostKind.CONSENT, challenge, http);
@@ -73,29 +86,63 @@ class FlowController {
         String userAgent = http.getHeader("User-Agent");
         if (userAgent != null) request.put("user_agent", userAgent);
 
-        String location = switch (engine.start(kind, challenge, request)) {
-            case ScreenView screen -> props.loginUiUrl() + "/flow/" + screen.flowId();
+        String binder = Engine.newBinder();
+        var response = ResponseEntity.status(HttpStatus.FOUND);
+        String location = switch (engine.start(kind, challenge, request, binder)) {
+            case ScreenView screen -> {
+                response.header(HttpHeaders.SET_COOKIE, binderCookie(screen.flowId(), binder, props.flowTtl()));
+                yield props.loginUiUrl() + "/flow/" + screen.flowId();
+            }
             case Redirect redirect -> redirect.url();
         };
-        return ResponseEntity.status(HttpStatus.FOUND)
-                .location(URI.create(location))
-                .build();
+        return response.location(URI.create(location)).build();
+    }
+
+    /**
+     * HttpOnly and Lax, so scripts and cross site posts never carry it. Secure when the Login UI,
+     * where the browser presents it, is served over https; host only, so the Login UI and these
+     * endpoints must share a host name (ports may differ).
+     */
+    private String binderCookie(String flowId, String binder, Duration maxAge) {
+        return ResponseCookie.from(COOKIE_PREFIX + flowId, binder)
+                .httpOnly(true)
+                .secure(props.loginUiUrl().startsWith("https://"))
+                .sameSite("Lax")
+                .path("/")
+                .maxAge(maxAge)
+                .build()
+                .toString();
+    }
+
+    /** The binder the browser sent for this flow; empty when it sent none, which no flow matches. */
+    private static String binder(String flowId, HttpServletRequest http) {
+        if (http.getCookies() == null) return "";
+        for (Cookie c : http.getCookies()) {
+            if (c.getName().equals(COOKIE_PREFIX + flowId)) return c.getValue();
+        }
+        return "";
     }
 
     @GetMapping("/api/flows/{flowId}")
-    ScreenResponse view(@PathVariable String flowId) {
-        return branded(engine.view(flowId));
+    ScreenResponse view(@PathVariable String flowId, HttpServletRequest http) {
+        return branded(engine.view(flowId, binder(flowId, http)));
     }
 
+    /** A finished flow's answer also expires its cookie, so cookies do not pile up for the TTL. */
     @PostMapping("/api/flows/{flowId}/submit")
-    Object submit(@PathVariable String flowId, @RequestBody SubmitRequest body) {
+    ResponseEntity<Object> submit(
+            @PathVariable String flowId, @RequestBody SubmitRequest body, HttpServletRequest http) {
         if (body.nonce() == null || !"submit".equals(body.action()) || body.payload() == null) {
             throw new FlowException(Code.INVALID_SUBMISSION);
         }
-        EngineResponse response = engine.submit(flowId, body.nonce(), new Submission(body.payload()));
+        EngineResponse response =
+                engine.submit(flowId, binder(flowId, http), body.nonce(), new Submission(body.payload()));
         return switch (response) {
-            case ScreenView screen -> branded(screen);
-            case Redirect redirect -> new RedirectResponse(redirect.url());
+            case ScreenView screen -> ResponseEntity.ok(branded(screen));
+            case Redirect redirect ->
+                ResponseEntity.ok()
+                        .header(HttpHeaders.SET_COOKIE, binderCookie(flowId, "", Duration.ZERO))
+                        .body(new RedirectResponse(redirect.url()));
         };
     }
 

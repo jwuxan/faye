@@ -7,9 +7,9 @@ import faye.identity.User;
 import faye.identity.UserStore;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.UnaryOperator;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -79,9 +79,57 @@ final class SqliteUserStore implements UserStore {
                 .update();
     }
 
+    /** One statement, so atomic: the step advances, or stays and was used by this same flow. */
     @Override
-    public void update(String subject, UnaryOperator<User> change) {
-        tx.executeWithoutResult(s -> bySubject(subject).ifPresent(u -> save(change.apply(u))));
+    public boolean useTotpStep(String subject, long step, String flowId) {
+        return db.sql("UPDATE faye_user SET totp_last_step = ?, totp_last_flow = ?"
+                                + " WHERE subject = ? AND totp_secret IS NOT NULL"
+                                + " AND (totp_last_step < ? OR (totp_last_step = ? AND totp_last_flow = ?))")
+                        .params(step, flowId, subject, step, step, flowId)
+                        .update()
+                == 1;
+    }
+
+    @Override
+    public void enrollTotp(String subject, String secret, long step, String flowId) {
+        db.sql("UPDATE faye_user SET totp_secret = ?, totp_last_step = ?, totp_last_flow = ? WHERE subject = ?")
+                .params(secret, step, flowId, subject)
+                .update();
+    }
+
+    /** In a write transaction, so the credential id cannot be taken between the check and the insert. */
+    @Override
+    public boolean addPasskey(String subject, User.Passkey passkey) {
+        return Boolean.TRUE.equals(tx.execute(s -> {
+            Optional<String> owner = db.sql("SELECT u.subject FROM faye_user u, json_each(u.passkeys) p"
+                            + " WHERE json_extract(p.value, '$.credentialId') = ?")
+                    .param(passkey.credentialId())
+                    .query(String.class)
+                    .optional();
+            if (owner.isPresent()) return owner.get().equals(subject);
+            Optional<User> user = bySubject(subject);
+            if (user.isEmpty()) return false;
+            List<User.Passkey> all = new ArrayList<>(user.get().passkeys());
+            all.add(passkey);
+            db.sql("UPDATE faye_user SET passkeys = ? WHERE subject = ?")
+                    .params(write(all), subject)
+                    .update();
+            return true;
+        }));
+    }
+
+    @Override
+    public void raiseSignCount(String subject, String credentialId, long count) {
+        tx.executeWithoutResult(s -> bySubject(subject)
+                .ifPresent(u -> db.sql("UPDATE faye_user SET passkeys = ? WHERE subject = ?")
+                        .params(
+                                write(u.passkeys().stream()
+                                        .map(p -> p.credentialId().equals(credentialId) && count > p.signCount()
+                                                ? new User.Passkey(p.credentialId(), p.attestedCredentialData(), count)
+                                                : p)
+                                        .toList()),
+                                subject)
+                        .update()));
     }
 
     private static User user(ResultSet rs, int row) throws SQLException {

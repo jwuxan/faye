@@ -1,0 +1,14 @@
+name: a flow answered without the binder of the browser that started it does not exist
+ir: flows/password-only.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+    binder: someone-elses
+  - expect_refused: flow_not_found
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

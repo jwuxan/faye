@@ -1,7 +1,7 @@
 name: acr_values faye:2fa makes an account without a second factor enroll TOTP, then offers a passkey
 ir: flows/passkey-totp.json
 host:
-  hydra: { acr_values: ["faye:2fa"] }
+  params: { acr_values: ["faye:2fa"] }
 handlers:
   identity.resolve: [{ ok: { user: { identified_by: identifier, has_passkey: false, has_totp: false } } }]
   password.verify: [ok]

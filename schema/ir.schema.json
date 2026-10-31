@@ -1,36 +1,49 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://faye.invalid/schema/ir.schema.json",
-  "title": "Faye flow IR",
-  "description": "A flow as an S expression tree stored as JSON arrays. Canonical form (input to the version hash): UTF-8, no insignificant whitespace, object keys sorted, empty opts and args objects omitted. Forms not listed here are not yet part of the language.",
+  "title": "Faye Core IR, format 1",
+  "description": "The grammar of the Core IR: an S expression tree whose only serialization is JSON arrays. This file is the normative grammar; docs/roadmap/ir-spec.md is the normative semantics, and descriptions here only name what each position holds. Every node is [head, required positional arguments..., options?]: a form's positional arity is fixed within a format, and every optional parameter lives in the trailing options object. seq and flow take a variadic tail and no options object.",
   "type": "array",
   "prefixItems": [
     { "const": "flow" },
+    { "description": "IR format. A reader refuses any format it does not support.", "const": 1 },
     { "$ref": "#/$defs/id" },
-    { "type": "integer", "minimum": 1 }
+    { "description": "The author's version of this flow.", "type": "integer", "minimum": 1, "maximum": 2147483647 }
   ],
-  "items": { "$ref": "#/$defs/section" },
-  "minItems": 4,
+  "items": { "$ref": "#/$defs/entry" },
+  "minItems": 5,
   "$defs": {
     "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" },
-    "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" },
-    "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
-    "literal": { "type": ["string", "integer", "boolean"] },
+    "name": { "description": "A handler name.", "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" },
+    "key": { "description": "A vars name.", "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "literal": {
+      "description": "Integers are 64 bit.",
+      "type": ["string", "integer", "boolean"],
+      "minimum": -9223372036854775808,
+      "maximum": 9223372036854775807
+    },
     "literals": {
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/id" },
       "additionalProperties": { "$ref": "#/$defs/literal" }
     },
     "path": {
-      "description": "A value in the flow environment; the first segment is a namespace.",
+      "description": "A value in the flow environment. The first segment is a namespace (ir-spec.md, Environment).",
       "type": "string",
-      "pattern": "^(request|client|hydra|tenant|user|vars|auth)(\\.[a-z][a-z0-9_]*)+$"
+      "pattern": "^(request|client|host|tenant|user|vars|auth)(\\.[a-z][a-z0-9_]*)+$"
     },
-    "section": {
+    "entry": {
+      "description": "[entry, id, kind, body]: a body the host can start, typed by kind (ir-spec.md, Entries).",
       "type": "array",
-      "prefixItems": [{ "enum": ["login", "consent"] }, { "$ref": "#/$defs/node" }],
+      "prefixItems": [
+        { "const": "entry" },
+        { "$ref": "#/$defs/id" },
+        { "enum": ["authenticate", "consent"] },
+        { "$ref": "#/$defs/node" }
+      ],
       "items": false,
-      "minItems": 2
+      "minItems": 4
     },
     "node": {
       "description": "Dispatches on the form name, so only that form's schema checks the children. A oneOf over the forms would check every child against every form, which costs time exponential in the nesting depth.",
@@ -52,116 +65,128 @@
       ]
     },
     "seq": {
-      "description": "(seq a b ...) runs children in order; any failure fails the sequence.",
+      "description": "[seq, node, ...]: one or more children.",
       "type": "array",
       "prefixItems": [{ "const": "seq" }],
       "items": { "$ref": "#/$defs/node" },
       "minItems": 2
     },
     "step": {
-      "description": "(step id body) names a boundary for audit, metrics and source maps.",
+      "description": "[step, id, body].",
       "type": "array",
       "prefixItems": [{ "const": "step" }, { "$ref": "#/$defs/id" }, { "$ref": "#/$defs/node" }],
       "items": false,
       "minItems": 3
     },
     "screen": {
-      "description": "(screen :type opts?) suspends and emits a typed screen.",
+      "description": "[screen, type, options?]: type names a screen in the screen catalog; options are its literals.",
       "type": "array",
       "prefixItems": [{ "const": "screen" }, { "$ref": "#/$defs/id" }, { "$ref": "#/$defs/literals" }],
       "items": false,
       "minItems": 2
     },
     "call": {
-      "description": "(call handler args?) invokes a registered server handler.",
+      "description": "[call, handler, args?]: handler names a handler in the handler catalog, whose entry also gives the schema of args.",
       "type": "array",
       "prefixItems": [{ "const": "call" }, { "$ref": "#/$defs/name" }, { "$ref": "#/$defs/literals" }],
       "items": false,
       "minItems": 2
     },
     "hook": {
-      "description": "(hook id hash) runs the tenant JavaScript hook stored under hash. It may only set vars, fail, or (first in a choose) pick an enabled option.",
+      "description": "[hook, id, hash]: the hook definition stored under hash.",
       "type": "array",
       "prefixItems": [{ "const": "hook" }, { "$ref": "#/$defs/id" }, { "$ref": "#/$defs/hash" }],
       "items": false,
       "minItems": 3
     },
-    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "choose": {
-      "description": "(choose (hook id hash)? (opt id body) ...) offers the enabled options and runs the chosen one. An option is enabled unless its body is a when whose predicate is false. A leading hook runs once some option is enabled and may pick one of them.",
+      "description": "[choose, [opt, ...], options?]: options.pick is a hook that may pick one of the enabled options.",
       "type": "array",
-      "prefixItems": [{ "const": "choose" }, { "anyOf": [{ "$ref": "#/$defs/hook" }, { "$ref": "#/$defs/opt" }] }],
-      "items": { "$ref": "#/$defs/opt" },
-      "minItems": 2,
-      "if": { "prefixItems": [true, { "prefixItems": [{ "const": "hook" }] }] },
-      "then": { "minItems": 3 }
+      "prefixItems": [
+        { "const": "choose" },
+        { "type": "array", "items": { "$ref": "#/$defs/opt" }, "minItems": 1 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": { "pick": { "$ref": "#/$defs/hook" } }
+        }
+      ],
+      "items": false,
+      "minItems": 2
     },
     "opt": {
+      "description": "[opt, id, body, options?]: options.guard is the predicate that enables the option; without one it is always enabled.",
       "type": "array",
-      "prefixItems": [{ "const": "opt" }, { "$ref": "#/$defs/id" }, { "$ref": "#/$defs/node" }],
+      "prefixItems": [
+        { "const": "opt" },
+        { "$ref": "#/$defs/id" },
+        { "$ref": "#/$defs/node" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": { "guard": { "$ref": "#/$defs/predicate" } }
+        }
+      ],
       "items": false,
       "minItems": 3
     },
     "when": {
-      "description": "(when pred body) runs body if the predicate holds, else completes.",
+      "description": "[when, predicate, body].",
       "type": "array",
       "prefixItems": [{ "const": "when" }, { "$ref": "#/$defs/predicate" }, { "$ref": "#/$defs/node" }],
       "items": false,
       "minItems": 3
     },
     "retry": {
-      "description": "(retry n body) runs body up to n times in total while a handler in it fails; the next screen shows the error.",
+      "description": "[retry, attempts, body]: attempts in total, 1 to 10.",
       "type": "array",
       "prefixItems": [{ "const": "retry" }, { "type": "integer", "minimum": 1, "maximum": 10 }, { "$ref": "#/$defs/node" }],
       "items": false,
       "minItems": 3
     },
     "set": {
-      "description": "(set name value) writes a literal to vars.name.",
+      "description": "[set, key, literal]: writes vars.key.",
       "type": "array",
       "prefixItems": [{ "const": "set" }, { "$ref": "#/$defs/key" }, { "$ref": "#/$defs/literal" }],
       "items": false,
       "minItems": 3
     },
     "succeed": {
+      "description": "[succeed].",
       "type": "array",
       "prefixItems": [{ "const": "succeed" }],
       "items": false,
       "minItems": 1
     },
     "fail": {
+      "description": "[fail, reason].",
       "type": "array",
       "prefixItems": [{ "const": "fail" }, { "$ref": "#/$defs/id" }],
       "items": false,
       "minItems": 2
     },
     "predicate": {
-      "description": "A bare path tests truthiness. Comparisons take [path, literal]; has tests list membership.",
-      "oneOf": [
-        { "$ref": "#/$defs/path" },
-        { "$ref": "#/$defs/and" },
-        { "$ref": "#/$defs/or" },
-        { "$ref": "#/$defs/not" },
-        { "$ref": "#/$defs/exists" },
-        { "$ref": "#/$defs/compare" }
-      ]
-    },
-    "and": { "type": "object", "required": ["and"], "additionalProperties": false, "properties": { "and": { "$ref": "#/$defs/predicates" } } },
-    "or": { "type": "object", "required": ["or"], "additionalProperties": false, "properties": { "or": { "$ref": "#/$defs/predicates" } } },
-    "not": { "type": "object", "required": ["not"], "additionalProperties": false, "properties": { "not": { "$ref": "#/$defs/predicate" } } },
-    "exists": { "type": "object", "required": ["exists"], "additionalProperties": false, "properties": { "exists": { "$ref": "#/$defs/path" } } },
-    "compare": {
-      "description": "Exactly one of eq, ne, has (any literal) or gt, lt (an integer).",
-      "type": "object",
-      "minProperties": 1,
-      "maxProperties": 1,
-      "additionalProperties": false,
-      "properties": {
-        "eq": { "$ref": "#/$defs/comparison" },
-        "ne": { "$ref": "#/$defs/comparison" },
-        "has": { "$ref": "#/$defs/comparison" },
-        "gt": { "$ref": "#/$defs/ordering" },
-        "lt": { "$ref": "#/$defs/ordering" }
+      "description": "A bare path, or an object with exactly one operator (ir-spec.md, Predicates). Dispatches on the operator, as node does on the form.",
+      "type": ["string", "object"],
+      "if": { "type": "string" },
+      "then": { "$ref": "#/$defs/path" },
+      "else": {
+        "minProperties": 1,
+        "maxProperties": 1,
+        "propertyNames": { "enum": ["and", "or", "not", "exists", "eq", "ne", "has", "gt", "lt"] },
+        "properties": {
+          "and": { "$ref": "#/$defs/predicates" },
+          "or": { "$ref": "#/$defs/predicates" },
+          "not": { "$ref": "#/$defs/predicate" },
+          "exists": { "$ref": "#/$defs/path" },
+          "eq": { "$ref": "#/$defs/comparison" },
+          "ne": { "$ref": "#/$defs/comparison" },
+          "has": { "$ref": "#/$defs/comparison" },
+          "gt": { "$ref": "#/$defs/ordering" },
+          "lt": { "$ref": "#/$defs/ordering" }
+        }
       }
     },
     "predicates": { "type": "array", "items": { "$ref": "#/$defs/predicate" }, "minItems": 1 },
@@ -173,7 +198,7 @@
     },
     "ordering": {
       "type": "array",
-      "prefixItems": [{ "$ref": "#/$defs/path" }, { "type": "integer" }],
+      "prefixItems": [{ "$ref": "#/$defs/path" }, { "type": "integer", "minimum": -9223372036854775808, "maximum": 9223372036854775807 }],
       "items": false,
       "minItems": 2
     }

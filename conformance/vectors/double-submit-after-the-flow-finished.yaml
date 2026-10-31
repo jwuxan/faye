@@ -1,0 +1,13 @@
+name: an answer that loses the race to one that finished the flow is told it finished; the host is told once
+ir: flows/password-only.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok, ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+    race: { winner: { password: right } }
+  - expect_refused: flow_finished
+  - expect_accepted: 1

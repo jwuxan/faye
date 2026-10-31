@@ -65,7 +65,7 @@ Error codes and capability flags are part of `schema/screen.schema.json`; copy l
 Shared in `web/packages/ui` and used by Login UI, Admin UI and Demo client:
 
 1. **shadcn/ui** components (Card, Input, Button, Form, Label, Alert, InputOTP, Dialog, Tabs, Badge) on Tailwind CSS, with theme tokens as CSS variables and light / dark modes.
-2. **Geist** for all UI text; **Geist Mono** for identifiers, OTP digits, IR, YAML, JSON and tokens. Loaded through the `geist` package with `next/font`, no external font requests.
+2. The **system font** for all UI text; the **system monospace** font for identifiers, OTP digits, IR, YAML, JSON and tokens. No web fonts, no external font requests.
 3. Login layout: a single centered card, tenant logo, one primary action per screen, the identifier shown as an editable chip on every later screen ("alice@example.com · Change").
 4. Accessibility baseline: WCAG 2.1 AA, keyboard complete, correct `autocomplete` attributes (`username webauthn`, `current-password`, `one-time-code`), focus moves to the first field on each screen, errors announced via live region.
 5. Tenant branding limited to logo, name, primary color and radius. Layout is not tenant configurable.

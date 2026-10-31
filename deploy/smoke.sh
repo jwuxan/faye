@@ -37,7 +37,8 @@ walk() {
   url=$1
   while :; do
     case "$url" in
-      http://localhost:3000/flow/*) curl -fsS "http://localhost:8080/api/flows/${url##*/}"; return ;;
+      # The flow is bound to this "browser": Faye's /login set its cookie in the jar (ADR 0024)
+      http://localhost:3000/flow/*) curl -fsS -b "$jar" "http://localhost:8080/api/flows/${url##*/}"; return ;;
       http://localhost:3001/ | "http://localhost:3001/?"*) curl -fsS -b "$jar" "$url"; return ;;
       "") echo "redirect chain ended without a screen or result" >&2; exit 1 ;;
     esac
@@ -52,7 +53,7 @@ start() { : > "$jar"; walk "http://localhost:3001/login?$1"; }
 answer() {
   flow=$(printf '%s' "$1" | field flowId)
   nonce=$(printf '%s' "$1" | field nonce)
-  res=$(curl -fsS -X POST "http://localhost:3000/api/flows/$flow/submit" -H 'content-type: application/json' \
+  res=$(curl -fsS -b "$jar" -X POST "http://localhost:3000/api/flows/$flow/submit" -H 'content-type: application/json' \
     -d "{\"nonce\":\"$nonce\",\"action\":\"submit\",\"payload\":$2}")
   next=$(printf '%s' "$res" | field redirectTo)
   if [ -n "$next" ]; then walk "$next"; else printf '%s' "$res"; fi

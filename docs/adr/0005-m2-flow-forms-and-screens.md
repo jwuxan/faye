@@ -39,3 +39,7 @@ The tradeoffs were within each form, listed below, rather than between whole alt
 ### Confirmation
 
 `cd server && ./gradlew build` runs the vectors in `conformance/vectors/` (retry, picker, no_method, passkey autofill, step up, consent), plus `IrCodecTest` and `FlowCompilerTest`.
+
+### Changes since this decision
+
+* [ADR 0024](0024-core-ir-as-a-narrow-waist.md) (IR format 1): an option is enabled by an explicit guard, `(opt id body {:guard predicate})`, not by its body being a `when`; a `choose`'s pick hook moved to its trailing options, `(choose (opt...) {:pick hook})`; the `hydra.*` namespace is `host.*`. The YAML surface is unchanged. Hosted answers are a property of the screen catalog (`ScreenSpec.hosted`), not of a `ScreenType` enum. The normative semantics are now [ir-spec.md](../roadmap/ir-spec.md).

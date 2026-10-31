@@ -115,7 +115,7 @@ class HydraFlowHostTest {
         assertThat(metadata.get("ratio")).isInstanceOf(Double.class);
         Map<?, ?> nested = (Map<?, ?>) java.util.Objects.requireNonNull(metadata.get("nested"));
         assertThat(nested.get("n")).isInstanceOf(Integer.class);
-        assertThat(req.hydra())
+        assertThat(req.params())
                 .containsEntry("skip", false)
                 .containsEntry("requested_scope", List.of("openid", "email"))
                 .containsEntry("acr_values", List.of("faye:2fa"))
@@ -145,7 +145,7 @@ class HydraFlowHostTest {
     @Test
     void acceptsConsentWithGrantsAndIdTokenClaims() throws Exception {
         HostRequest req = host.load(HostKind.CONSENT, "k1");
-        assertThat(req.hydra())
+        assertThat(req.params())
                 .containsEntry("subject", "user-alice")
                 .containsEntry("context", Map.of("flowId", "f_1", "versionHash", "sha256:ab"));
 
@@ -181,7 +181,7 @@ class HydraFlowHostTest {
         HostRequest req = host.load(HostKind.LOGOUT, "l1");
 
         assertThat(req.kind()).isEqualTo(HostKind.LOGOUT);
-        assertThat(req.hydra()).containsEntry("subject", "user-alice");
+        assertThat(req.params()).containsEntry("subject", "user-alice");
         assertThat(received).containsKey("GET /admin/oauth2/auth/requests/logout?logout_challenge=l1");
     }
 

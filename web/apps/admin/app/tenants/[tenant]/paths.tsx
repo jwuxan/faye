@@ -49,7 +49,7 @@ export function Paths({ validation, selected, onSelect }: { validation: Validati
                 <span className="flex items-center gap-1.5 text-xs">
                   <span className={cn("size-1.5 shrink-0 rounded-full", p.succeeds ? "bg-success" : "bg-muted-foreground/50")} />
                   <span className={p.succeeds ? "font-medium" : "text-muted-foreground"}>{p.succeeds ? "succeeds" : "fails"}</span>
-                  <span className="font-mono text-muted-foreground">{p.section}</span>
+                  <span className="font-mono text-muted-foreground">{p.entry}</span>
                   <span className="ml-auto flex gap-1">
                     {p.amr.map((a) => (
                       <Badge key={a} variant="secondary" className="h-4 rounded-[3px] px-1 font-mono text-[10px] font-normal">

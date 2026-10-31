@@ -1,4 +1,4 @@
-name: a section that runs off its end fails as incomplete
+name: an entry that runs off its end fails as incomplete
 ir: flows/no-terminal.json
 handlers:
   identity.resolve: [ok]

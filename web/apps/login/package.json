@@ -12,7 +12,6 @@
     "@faye/contract": "workspace:*",
     "@faye/ui": "workspace:*",
     "@simplewebauthn/browser": "13.3.0",
-    "geist": "1.8.2",
     "next": "16.4.3",
     "react": "19.3.1",
     "react-dom": "19.3.1",

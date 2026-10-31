@@ -1,5 +1,6 @@
 /** Maps a position in the YAML (from a server diagnostic) to the block it belongs to. */
 import { isMap, isScalar, LineCounter, parseDocument, type YAMLMap } from "yaml";
+import { isSection } from "./entries.ts";
 import { addressKey, type ListKind, type Section } from "./flow.ts";
 
 type Span = { key: string; start: number; end: number; depth: number };
@@ -19,7 +20,7 @@ export function locate(text: string, line: number, column: number): string | nul
     if (name === "hooks" && isMap(pair.value)) {
       for (const h of pair.value.items) spans.push({ key: `hook:${scalar(h.key)}`, ...range(h), depth: 0 });
     }
-    if ((name === "login" || name === "consent") && isMap(pair.value)) {
+    if (isSection(name) && isMap(pair.value)) {
       walk(pair.value.get("steps", true), name, [], "steps", 0, spans);
     }
   }

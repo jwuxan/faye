@@ -5,6 +5,7 @@ import faye.engine.FlowVersions;
 import faye.engine.HandlerRegistry;
 import faye.engine.HookStore;
 import faye.engine.InMemoryHookStore;
+import faye.engine.ScreenRegistry;
 import faye.engine.TenantPolicies;
 import faye.engine.TenantPolicy;
 import faye.ir.Flow;
@@ -23,6 +24,7 @@ public final class Publisher {
     private final FlowVersions versions;
     private final HookStore hooks;
     private final HandlerRegistry handlers;
+    private final ScreenRegistry screens;
     private final TenantPolicies tenants;
 
     /** @param tenants policy per tenant id; a tenant not listed gets {@link TenantPolicy#DEFAULT} */
@@ -33,9 +35,23 @@ public final class Publisher {
 
     /** @param tenants looked up on every check, so a version is checked under the current settings */
     public Publisher(FlowVersions versions, HookStore hooks, HandlerRegistry handlers, TenantPolicies tenants) {
+        this(versions, hooks, handlers, ScreenRegistry.builtIn(), tenants);
+    }
+
+    /**
+     * @param screens the screens flows may show
+     * @param tenants looked up on every check, so a version is checked under the current settings
+     */
+    public Publisher(
+            FlowVersions versions,
+            HookStore hooks,
+            HandlerRegistry handlers,
+            ScreenRegistry screens,
+            TenantPolicies tenants) {
         this.versions = versions;
         this.hooks = hooks;
         this.handlers = handlers;
+        this.screens = screens;
         this.tenants = tenants;
     }
 
@@ -58,6 +74,7 @@ public final class Publisher {
         return Checker.check(
                 flow,
                 handlers,
+                screens,
                 policy,
                 hash -> Optional.ofNullable(newHooks.get(hash)).or(() -> hooks.get(hash)));
     }

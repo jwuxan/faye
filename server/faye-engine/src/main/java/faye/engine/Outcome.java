@@ -1,5 +1,6 @@
 package faye.engine;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -12,14 +13,22 @@ public sealed interface Outcome {
      * @param subject subject proven by a credential handler; required iff the handler binds one
      * @param amr the subset of the handler's amr this invocation proved (a passkey without user
      *     verification proves {@code hwk} but not {@code user}); null for all of them
+     * @param effects lasting changes to apply once the flow state is saved; only a {@code write}
+     *     handler returns any
      */
     record Ok(
             Map<String, Object> user,
             @Nullable String subject,
-            @Nullable Set<String> amr) implements Outcome {
+            @Nullable Set<String> amr,
+            List<Effect> effects) implements Outcome {
         public Ok {
             user = Map.copyOf(user);
             amr = amr == null ? null : Set.copyOf(amr);
+            effects = List.copyOf(effects);
+        }
+
+        public Ok(Map<String, Object> user, @Nullable String subject, @Nullable Set<String> amr) {
+            this(user, subject, amr, List.of());
         }
     }
 

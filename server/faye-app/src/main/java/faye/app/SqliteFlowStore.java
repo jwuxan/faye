@@ -31,7 +31,7 @@ final class SqliteFlowStore implements FlowStore {
                 .params(flowId, clock.millis())
                 .query(String.class)
                 .optional()
-                .map(FlowStateCodec::read);
+                .flatMap(FlowStateCodec::read);
     }
 
     @Override

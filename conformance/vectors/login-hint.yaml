@@ -1,7 +1,7 @@
 name: login_hint prefills the identifier screen
 ir: flows/default-login.json
 host:
-  hydra: { login_hint: bob@example.com }
+  params: { login_hint: bob@example.com }
 subject: bob
 handlers:
   identity.resolve: [ok]

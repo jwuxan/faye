@@ -31,7 +31,7 @@ login:
           - or:
               - user.has_totp
               - user.mfa_required
-              - { has: [hydra.acr_values, "faye:2fa"] }
+              - { has: [host.acr_values, "faye:2fa"] }
       alternative:
         totp:
           if: user.has_totp

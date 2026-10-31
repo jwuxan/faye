@@ -36,7 +36,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - name: Generated contract types match schema/screen.schema.json
+      - name: Generated contract (screen types, IR grammar facts) matches schema/
         run: pnpm generate && git diff --exit-code -- packages/contract/src
       - run: pnpm typecheck
       - run: pnpm lint

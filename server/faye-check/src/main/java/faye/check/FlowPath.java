@@ -2,6 +2,7 @@ package faye.check;
 
 import faye.engine.Acr;
 import faye.engine.Env;
+import faye.ir.Entry;
 import faye.ir.Predicate;
 import faye.ir.SourceRef;
 import java.util.ArrayList;
@@ -11,16 +12,21 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
- * One way through a section, as the checker enumerates it: the decisions taken in order, then how
- * the section ends. A retry whose body fails repeats that body's events once per attempt.
+ * One way through an entry, as the checker enumerates it: the decisions taken in order, then how
+ * the entry ends. A retry whose body fails repeats that body's events once per attempt.
+ *
+ * @param entry the entry's id
  */
-public record FlowPath(String section, List<Event> events, End end) {
+public record FlowPath(String entry, Entry.Kind kind, List<Event> events, End end) {
 
     /** Failure reason of a path where a handler failed; scripted fakes fail with this code. */
     public static final String HANDLER_ERROR = "handler_error";
 
     /** Failure reason of a path where a hook failed; scripted hooks fail with this code. */
     public static final String HOOK_ERROR = "hook_error";
+
+    /** Failure reason of a path where a credential proved someone other than the bound subject. */
+    public static final String SUBJECT_MISMATCH = "subject_mismatch";
 
     public FlowPath {
         events = List.copyOf(events);
@@ -45,15 +51,23 @@ public record FlowPath(String section, List<Event> events, End end) {
      * @param amr what an ok call proved, sorted; empty for a handler that is not a credential; null
      *     when the call failed
      * @param bindsSubject the handler binds the subject
+     * @param mismatch the call proved a subject other than the one already bound, which ends the
+     *     entry with {@link #SUBJECT_MISMATCH}
      */
-    public record Called(String handler, @Nullable List<String> amr, boolean bindsSubject, SourceRef source)
+    public record Called(
+            String handler, @Nullable List<String> amr, boolean bindsSubject, boolean mismatch, SourceRef source)
             implements Event {
         public Called {
             amr = amr == null ? null : List.copyOf(amr);
         }
 
         public boolean ok() {
-            return amr != null;
+            return amr != null && !mismatch;
+        }
+
+        /** It verified a credential for the subject the flow binds. */
+        public boolean verifiedSubject() {
+            return ok() && bindsSubject && amr != null && !amr.isEmpty();
         }
     }
 
@@ -81,7 +95,7 @@ public record FlowPath(String section, List<Event> events, End end) {
     public List<String> amr() {
         Set<String> out = new LinkedHashSet<>();
         for (Event e : events) {
-            if (e instanceof Called c && c.amr() != null) out.addAll(c.amr());
+            if (e instanceof Called c && c.ok() && c.amr() != null) out.addAll(c.amr());
         }
         return List.copyOf(out);
     }
@@ -100,7 +114,7 @@ public record FlowPath(String section, List<Event> events, End end) {
         return end.source();
     }
 
-    /** e.g. {@code identify > credential/password > second-factor (if at 22 false)} */
+    /** e.g. {@code identify > credential/password > second-factor (condition at 22 false)} */
     public String describe() {
         List<String> parts = new ArrayList<>();
         for (Event e : events) {
@@ -109,7 +123,10 @@ public record FlowPath(String section, List<Event> events, End end) {
                 case Chose c -> parts.add((parts.isEmpty() ? "" : parts.removeLast()) + "/" + c.option());
                 case Assumed a -> {
                     if (!a.holds()) {
-                        parts.add(a.source().line() > 0 ? "(if at " + a.source().line() + " false)" : "(if false)");
+                        parts.add(
+                                a.source().line() > 0
+                                        ? "(condition at " + a.source().line() + " false)"
+                                        : "(condition false)");
                     }
                 }
                 case Called c -> {}

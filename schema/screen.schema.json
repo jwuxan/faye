@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://faye.invalid/schema/screen.schema.json",
   "title": "Faye screen protocol v1",
-  "description": "Contract between the Faye server and the Login UI. GET /api/flows/{flowId} returns a ScreenResponse; POST /api/flows/{flowId}/submit takes a SubmitRequest and returns a ScreenResponse or a RedirectResponse. Failures return an ErrorResponse. The root schema accepts any response.",
+  "description": "Contract between the Faye server and the Login UI. GET /api/flows/{flowId} returns a ScreenResponse; POST /api/flows/{flowId}/submit takes a SubmitRequest and returns a ScreenResponse or a RedirectResponse. Failures return an ErrorResponse. Both calls need the cookie faye_flow_{flowId} that Faye set when the flow started; without its value the flow is answered as unknown (404, flow_not_found). The root schema accepts any response.",
   "oneOf": [
     { "$ref": "#/$defs/ScreenResponse" },
     { "$ref": "#/$defs/RedirectResponse" },

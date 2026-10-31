@@ -16,7 +16,7 @@ public interface HookRunner {
     };
 
     /**
-     * @param ctx read only snapshot of {@code request}, {@code client}, {@code hydra}, {@code tenant},
+     * @param ctx read only snapshot of {@code request}, {@code client}, {@code host}, {@code tenant},
      *     {@code user}, {@code vars} and, for a hook that picks, {@code options}; never {@code auth}
      * @return the hook's result as JSON values (maps, lists, strings, numbers, booleans, null)
      * @throws HookException if the hook is missing, throws, or exceeds a limit

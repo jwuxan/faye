@@ -246,6 +246,6 @@ export interface ErrorResponse {
 }
 
 /**
- * Contract between the Faye server and the Login UI. GET /api/flows/{flowId} returns a ScreenResponse; POST /api/flows/{flowId}/submit takes a SubmitRequest and returns a ScreenResponse or a RedirectResponse. Failures return an ErrorResponse. The root schema accepts any response.
+ * Contract between the Faye server and the Login UI. GET /api/flows/{flowId} returns a ScreenResponse; POST /api/flows/{flowId}/submit takes a SubmitRequest and returns a ScreenResponse or a RedirectResponse. Failures return an ErrorResponse. Both calls need the cookie faye_flow_{flowId} that Faye set when the flow started; without its value the flow is answered as unknown (404, flow_not_found). The root schema accepts any response.
  */
 export type ScreenProtocolResponse = ScreenResponse | RedirectResponse | ErrorResponse;

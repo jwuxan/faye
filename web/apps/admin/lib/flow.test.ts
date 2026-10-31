@@ -93,7 +93,7 @@ test("passkey, or password plus a second factor", () => {
   doc = updateBody(doc, step(2), {
     if: all(
       compare("ne", "auth.acr", "faye:2fa"),
-      any("user.has_totp", "user.mfa_required", compare("has", "hydra.acr_values", "faye:2fa")),
+      any("user.has_totp", "user.mfa_required", compare("has", "host.acr_values", "faye:2fa")),
     ),
   });
   doc = add(doc, options(2), "TOTP");

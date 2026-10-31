@@ -38,7 +38,7 @@ The flow workspace keeps the blocks (or the YAML) and the graph of the same docu
 1. **Block palette** (the "Add block" command list, `/`): high level blocks ("Password", "Passkey", "TOTP") expand to IR fragments (`screen` + `call` + `retry`) with sensible defaults. Logic blocks expose `choose`, `when`, `retry`, `hook`.
 2. **Tree editor** (native drag and drop, with keyboard moves): drag to reorder or nest, with drop targets only where the grammar allows. Each block shows its step id, a one line summary and validation badges.
 3. **Inspector**: forms per block type; a condition builder for predicates (namespace aware path picker, operator dropdown, typed value); hook picker with capability summary.
-4. **YAML view** (CodeMirror 6, Geist Mono; a switch in the editor panel): editable; parse errors and check errors shown inline via source maps. Round trips to the same IR.
+4. **YAML view** (CodeMirror 6, system monospace; a switch in the editor panel): editable; parse errors and check errors shown inline via source maps. Round trips to the same IR.
 5. **Graph** (SVG drawn by the app, read only, beside the blocks): branching, the selected block, the highlighted path or preview run, and the blocks the last edit changed; zoom and fit.
 6. **Paths** (side panel): enumerated success and failure paths with the `amr` / `acr` each yields. Selecting a path highlights it in the tree and graph.
 7. **Hooks** (own section): list, CodeMirror editor with completions for `ctx` and `cap`, server side test run, capability grants.

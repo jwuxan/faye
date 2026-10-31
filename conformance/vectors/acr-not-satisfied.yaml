@@ -1,7 +1,7 @@
 name: a client asking for faye:2fa is refused by a flow that only proves a password
 ir: flows/password-only.json
 host:
-  hydra: { acr_values: ["faye:2fa"] }
+  params: { acr_values: ["faye:2fa"] }
 handlers:
   identity.resolve: [ok]
   password.verify: [ok]

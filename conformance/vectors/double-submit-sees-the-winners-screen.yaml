@@ -1,0 +1,17 @@
+name: an answer that loses the revision race gets the screen the winning answer led to, not its own result
+ir: flows/password-only.json
+handlers:
+  identity.resolve: [ok]
+  # the losing answer's run, then the winning one's, then the next attempt
+  password.verify: [ok, { fail: invalid_credentials }, ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+    race: { winner: { password: wrong } }
+  - expect_screen: password
+    expect_error: invalid_credentials
+    expect_attempts_left: 2
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

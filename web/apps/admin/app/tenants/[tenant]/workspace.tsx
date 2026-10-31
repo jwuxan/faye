@@ -11,6 +11,7 @@ import { cn } from "@faye/ui/lib/utils";
 import { CircleX, FileCode, ListTree, Redo2, TriangleAlert, Undo2, Workflow, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PathView } from "../../../lib/api";
+import { ENTRIES, SECTIONS } from "../../../lib/entries";
 import { addressKey, block, type FlowDoc, fromBlock, insert, listOf, parseAddress, parseListKey, stepIds } from "../../../lib/flow";
 import { PageHeader } from "../../shell";
 import { dense, denseMono, IconButton, Overline, Prop } from "../../ui";
@@ -255,7 +256,7 @@ function whereAdded(doc: FlowDoc, selected: string | null): string {
   if (selected?.startsWith(LIST)) {
     const list = parseListKey(selected.slice(LIST.length));
     const owner = list.owner.length > 0 ? listOf(doc, { ...list, owner: list.owner.slice(0, -1), kind: list.owner[list.owner.length - 1][0] })?.[list.owner[list.owner.length - 1][1]]?.id : null;
-    return owner ? `Adds to the end of ${owner}'s ${list.kind === "alternative" ? "options" : "steps"}` : `Adds to the end of ${list.section === "login" ? "Sign in" : "Consent"}`;
+    return owner ? `Adds to the end of ${owner}'s ${list.kind === "alternative" ? "options" : "steps"}` : `Adds to the end of ${ENTRIES[list.section].title}`;
   }
   if (selected) {
     const a = parseAddress(selected);
@@ -289,7 +290,7 @@ function FlowProperties({ doc, onEdit, selectedList }: { doc: FlowDoc; onEdit: (
           />
         </Prop>
         <Prop label="Sections">
-          <span className="font-mono text-xs">{doc.consent ? "login · consent" : "login"}</span>
+          <span className="font-mono text-xs">{SECTIONS.filter((s) => doc[s]).join(" · ")}</span>
         </Prop>
         <Prop label="Size">
           <span className="text-xs text-muted-foreground">
