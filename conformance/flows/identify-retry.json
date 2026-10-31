@@ -1,0 +1,10 @@
+["flow", 1, "identify-retry", 1,
+  ["entry", "login", "authenticate",
+    ["seq",
+      ["step", "credential",
+        ["retry", 2,
+          ["seq",
+            ["screen", "identifier"], ["call", "identity.resolve"],
+            ["screen", "password"], ["call", "password.verify"]]]],
+      ["when", {"exists": "user.name"}, ["fail", "stale_attributes"]],
+      ["succeed"]]]]

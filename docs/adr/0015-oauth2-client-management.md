@@ -31,7 +31,7 @@ Facts about Hydra at v2.2.0, the pinned version ([api.json](https://github.com/o
 
 Option 2. Option 1 crosses the charter and was withdrawn by the user: Faye reads clients only, from the authorization server as their external source, and never creates, changes or deletes one. Option 3 would put Hydra specifics and a second admin credential in the web app.
 
-* `ClientDirectory` (`faye-engine`, host boundary) has one method, `clients()`. The engine does not use it.
+* `ClientDirectory` (`faye-engine`, host boundary) has one method, `clients()`. The engine does not use it. Since [ADR 0025](0025-host-neutral-boundaries-for-embedding.md) it lives in its own module, `faye-clients`.
 * `HydraClientDirectory` (`faye-host-hydra`) reads `GET /admin/clients?page_size=500` and follows `Link: rel="next"`, up to 20 pages, through Ory's generated Java client ([ADR 0021](0021-official-hydra-admin-client.md)). It sends GET only.
 * Without Hydra, the in memory host has no registered clients, and the directory is empty.
 

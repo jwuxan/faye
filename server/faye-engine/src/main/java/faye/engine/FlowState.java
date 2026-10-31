@@ -17,6 +17,11 @@ import org.jspecify.annotations.Nullable;
  * @param awaiting the screen the flow is waiting on; null once the flow has finished
  * @param pending writes the entry staged so far, applied only if it succeeds; empty once it ends
  * @param revision bumped on every save, for optimistic concurrency
+ * @param preview the host started the flow for a preview client; absent in states saved before
+ *     the field existed, which read as false
+ * @param proven for a consent, what the login that proved its subject learned about the person,
+ *     taken when the consent started; the host receives exactly this. Empty otherwise, and in states
+ *     saved before the field existed
  */
 public record FlowState(
         String flowId,
@@ -30,7 +35,9 @@ public record FlowState(
         Env env,
         @Nullable Awaiting awaiting,
         List<Effect> pending,
-        long revision) {
+        long revision,
+        boolean preview,
+        Map<String, Object> proven) {
 
     /**
      * @param step innermost enclosing step id, or null
@@ -56,7 +63,10 @@ public record FlowState(
         }
     }
 
-    /** Every component but the nullable ones is required, so a state read with one missing fails to read. */
+    /**
+     * Every component but the nullable ones and those that default ({@code preview}, {@code proven},
+     * absent in older states) is required, so a state read with one missing fails to read.
+     */
     public FlowState {
         Objects.requireNonNull(flowId);
         Objects.requireNonNull(tenantId);
@@ -68,5 +78,7 @@ public record FlowState(
         Objects.requireNonNull(env);
         stack = List.copyOf(stack);
         pending = List.copyOf(pending);
+        // Absent in states saved before the field existed
+        proven = proven == null ? Map.of() : Map.copyOf(proven);
     }
 }

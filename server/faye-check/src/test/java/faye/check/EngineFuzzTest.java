@@ -30,7 +30,7 @@ import faye.engine.HandlerRegistry;
 import faye.engine.HookException;
 import faye.engine.HookRunner;
 import faye.engine.HostKind;
-import faye.engine.HostRequest;
+import faye.engine.HostParams;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.Invocation;
@@ -158,7 +158,7 @@ class EngineFuzzTest {
         reached("flow");
         boolean mfaRequired = data.consumeBoolean();
         TenantPolicy policy = new TenantPolicy(mfaRequired, null, null);
-        Report report = Checker.check(flow, Fixtures.handlers(), policy, hash -> Optional.of(HOOK));
+        Report report = Checker.check(flow, Fixtures.handlers(), Fixtures.screens(), policy, hash -> Optional.of(HOOK));
         if (report.ok()) {
             reached("checked");
             new Run(data, flow, policy, true).drive();
@@ -168,7 +168,7 @@ class EngineFuzzTest {
         // check (L1) lets through tests the engine's guards on their own, as if the checker had a
         // bug: they must still never accept without proof (O3 to O5). Only these may end in an
         // IllegalStateException, the engine's refusal of a shape the checker rules out.
-        if (!faye.engine.Verifier.verify(flow, Fixtures.handlers(), faye.engine.ScreenRegistry.builtIn())
+        if (!faye.engine.Verifier.verify(flow, Fixtures.handlers(), Fixtures.screens())
                 .isEmpty()) {
             return;
         }
@@ -223,18 +223,20 @@ class EngineFuzzTest {
             Map<String, Object> client = new LinkedHashMap<>();
             client.put("client_id", "demo");
             client.put("first_party", data.consumeBoolean());
-            host.register(new HostRequest(HostKind.LOGIN, "c1", client, params));
+            host.register(MockFlowHost.request(HostKind.LOGIN, "c1", client, HostParams.fromMap(params)));
         }
 
         Engine engine() {
-            return new Engine(
-                    versions,
-                    new HandlerRegistry(fakes),
-                    store,
-                    host,
-                    TenantPolicies.of(Map.of(TENANT, policy)),
-                    new FuzzedHooks(this),
-                    Previews.NONE);
+            return Engine.builder()
+                    .versions(versions)
+                    .handlers(new HandlerRegistry(fakes))
+                    .store(store)
+                    .host(host)
+                    .tenants(TenantPolicies.of(Map.of(TENANT, policy)))
+                    .hooks(new FuzzedHooks(this))
+                    .previews(Previews.NONE)
+                    .screens(Fixtures.screens())
+                    .build();
         }
 
         void drive() {
@@ -441,7 +443,8 @@ class EngineFuzzTest {
             consent.put("subject", subject);
             consent.put("context", login.context());
             consent.put("requested_scope", List.of("openid", "email"));
-            host.register(new HostRequest(HostKind.CONSENT, "k1", Map.of("client_id", "demo"), consent));
+            host.register(MockFlowHost.request(
+                    HostKind.CONSENT, "k1", Map.of("client_id", "demo"), HostParams.fromMap(consent)));
             int before = host.consented().size() + host.rejected().size();
             int consentedBefore = host.consented().size();
             EngineResponse r = engine.start(HostKind.CONSENT, "k1", Map.of(), "binder2");
@@ -459,13 +462,13 @@ class EngineFuzzTest {
                 host.consented()
                         .forEach(c -> assertThat(c.outcome().subject())
                                 .as("consent is for the subject the host asked about")
-                                .isEqualTo(c.request().params().get("subject")));
+                                .isEqualTo(c.request().params().subject()));
                 // O16: a consent for someone other than the login's subject never carries the
                 // login's claims, whatever context the host relays
                 // only this consent's outcome: host.consented() holds every earlier one of the run
                 if (!subject.equals(login.subject()) && host.consented().size() > consentedBefore) {
-                    assertThat(host.consented().getLast().outcome().idTokenClaims())
-                            .as("another subject's claims")
+                    assertThat(host.consented().getLast().outcome().user())
+                            .as("another subject's attributes")
                             .doesNotContainKey("email");
                     reached("consent for another subject");
                 }
@@ -966,7 +969,12 @@ class EngineFuzzTest {
             List<Flow> out = new ArrayList<>();
             for (Path f : files.sorted().toList()) {
                 Flow flow = IrCodec.readFlow(Files.readString(f));
-                if (Checker.check(flow, Fixtures.handlers(), TenantPolicy.DEFAULT, h -> Optional.of(HOOK))
+                if (Checker.check(
+                                flow,
+                                Fixtures.handlers(),
+                                Fixtures.screens(),
+                                TenantPolicy.DEFAULT,
+                                h -> Optional.of(HOOK))
                         .ok()) {
                     out.add(flow);
                 }

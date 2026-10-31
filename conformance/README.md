@@ -18,8 +18,11 @@ subject: alice                   # subject bound by fake handlers that bind one 
 tenant: { mfa_required: true }   # optional tenant settings, read by flows as tenant.* (default: none required)
 host:                            # optional HostRequest fields
   kind: login                    # or consent (runs the consent entry; default login)
-  client: { client_id: demo }    # metadata: { preview: true } makes it a preview client
-  params: { login_hint: alice@example.com, acr_values: [faye:2fa] }   # what flows read as host.*
+  client: { client_id: demo }    # what flows read as client.*; the engine decides nothing from it
+  tenant: acme                   # the tenant whose flow runs, as the host decided it (default: the default tenant)
+  preview: true                  # the host marks a preview client's request (default: false)
+  params: { login_hint: alice@example.com, acr_values: [faye:2fa] }   # what flows read as host.*; only the
+                                 # fields of the host contract (ir-spec.md, Host contract), any other key is an error
 handlers:                        # scripted outcomes, consumed in call order
   identity.resolve: [{ ok: { user: { has_totp: true } } }]   # ok, merging fields into user.*
   password.verify: [{ fail: invalid_credentials }, ok]
@@ -27,6 +30,8 @@ handlers:                        # scripted outcomes, consumed in call order
   totp.verify: [{ ok: { subject: bob } }]                    # ok, binding another subject than the vector's
   totp.enroll: [{ ok: { effects: [e1] } }]                   # ok, with an effect committed as totp.enroll:e1
   webauthn.register: [{ ok: { effects: [{ id: e2, fails: invalid_credentials }] } }]   # an effect whose commit fails
+issuers:                         # scripted issues per screen type, consumed in order; unscripted issues succeed
+  otp_enroll: [fail, ok]         # fail: the issuer throws (an upstream that is down), so the step fails with issuer_error
 hooks:                           # scripted runs per hook id, consumed in run order
   risk: [{ returns: { set: { risk: high } } }]               # the raw value the hook returned, judged by the engine
   route: [{ returns: { pick: otp }, expect_options: [password, otp] }]   # also checks ctx.options
@@ -52,8 +57,8 @@ events:
   - expect_accepted: 1           # how many accepts the host has received so far
   - publish: flows/other.json    # publish another version as the tenant's current one; the running flow stays on its own
   - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }
-  # or, for consent: { succeed: true, subject: alice, grant_scope: [openid], id_token: { faye_flow_id: f_1 } }
-  #   (id_token, when given, is the exact set of ID token claims)
+  # or, for consent: { succeed: true, subject: alice, grant_scope: [openid], user: { email: a@example.com } }
+  #   (user, when given, is exactly what the consent hands the host about the person; claims are the host's)
   # or: { succeed: false, reason: invalid_credentials }
 expect_trace:                    # the events a preview flow traced, in order; absent means none
   - start login

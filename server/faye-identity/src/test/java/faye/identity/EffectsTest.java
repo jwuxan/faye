@@ -3,7 +3,6 @@ package faye.identity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import faye.engine.Base32;
 import faye.engine.Engine;
 import faye.engine.EngineResponse;
 import faye.engine.FlowException;
@@ -12,7 +11,7 @@ import faye.engine.FlowStore;
 import faye.engine.FlowVersion;
 import faye.engine.HandlerRegistry;
 import faye.engine.HostKind;
-import faye.engine.HostRequest;
+import faye.engine.HostParams;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.Redirect;
@@ -20,6 +19,7 @@ import faye.engine.ScreenView;
 import faye.engine.Submission;
 import faye.host.mock.MockFlowHost;
 import faye.ir.IrCodec;
+import faye.screens.BuiltinScreen;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -82,11 +82,14 @@ class EffectsTest {
         users.save(new User(
                 "user-bob", "bob@example.com", null, true, Passwords.hash("right"), null, -1, List.of(), false));
         var settings = new WebAuthnSettings("localhost", Set.of("http://localhost:3000"));
-        engine = new Engine(
-                versions,
-                new HandlerRegistry(IdentityHandlers.create(users, settings, Clock.fixed(NOW, ZoneOffset.UTC))),
-                store,
-                host);
+        engine = Engine.builder()
+                .versions(versions)
+                .handlers(
+                        new HandlerRegistry(IdentityHandlers.create(users, settings, Clock.fixed(NOW, ZoneOffset.UTC))))
+                .store(store)
+                .host(host)
+                .screens(BuiltinScreen.registry(IdentityIssuers.create()))
+                .build();
     }
 
     @Test
@@ -158,7 +161,8 @@ class EffectsTest {
 
     ScreenView start() {
         String challenge = "c" + challenges++;
-        host.register(new HostRequest(HostKind.LOGIN, challenge, Map.of("client_id", "demo"), Map.of()));
+        host.register(MockFlowHost.request(
+                HostKind.LOGIN, challenge, Map.of("client_id", "demo"), HostParams.fromMap(Map.of())));
         return screen(engine.start(HostKind.LOGIN, challenge, Map.of(), "binder"));
     }
 

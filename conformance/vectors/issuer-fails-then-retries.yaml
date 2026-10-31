@@ -1,0 +1,18 @@
+name: an issuer that cannot issue fails the step like a handler; the retry issues again and shows the error
+ir: flows/enroll-totp.json
+issuers:
+  otp_enroll: [fail, ok]
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+  totp.enroll: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: otp_enroll
+    expect_error: issuer_error
+    expect_attempts_left: 2
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd, otp], acr: "faye:2fa" }

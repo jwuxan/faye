@@ -8,16 +8,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import faye.engine.Base32;
 import faye.engine.FlowStore;
 import faye.engine.FlowVersions;
 import faye.engine.HookStore;
 import faye.engine.HostKind;
-import faye.engine.HostRequest;
+import faye.engine.HostParams;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.InMemoryHookStore;
+import faye.host.hydra.HydraFlowHost;
 import faye.host.mock.MockFlowHost;
+import faye.identity.Base32;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -247,19 +248,20 @@ class MilestoneSixTest {
 
         // The consent that follows gives the preview client the login's flow id as a claim
         String consent = "consent-" + challenges++;
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.CONSENT,
                 consent,
                 Map.of("client_id", "preview-traced", "metadata", Map.of("tenant", "traced", "preview", true)),
-                Map.of(
+                HostParams.fromMap(Map.of(
                         "subject",
                         "user-alice",
                         "requested_scope",
                         List.of("openid"),
                         "context",
-                        Map.of("flowId", flowId))));
+                        Map.of("flowId", flowId)))));
         mvc.perform(get("/consent").param("consent_challenge", consent)).andExpect(status().isFound());
-        assertThat(host.consented().getLast().outcome().idTokenClaims()).containsEntry("faye_flow_id", flowId);
+        var last = host.consented().getLast();
+        assertThat(HydraFlowHost.idTokenClaims(last.request(), last.outcome())).containsEntry("faye_flow_id", flowId);
 
         // Production flows leave no trace
         JsonNode production = login("traced", false);
@@ -304,11 +306,11 @@ class MilestoneSixTest {
     String start(String tenant, boolean preview) throws Exception {
         String challenge = "c" + challenges++;
         Map<String, Object> metadata = preview ? Map.of("tenant", tenant, "preview", true) : Map.of("tenant", tenant);
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN,
                 challenge,
                 Map.of("client_id", (preview ? "preview-" : "demo-") + tenant, "metadata", metadata),
-                Map.of()));
+                HostParams.fromMap(Map.of())));
         return java.util.Objects.requireNonNull(mvc.perform(get("/login").param("login_challenge", challenge))
                 .andExpect(status().isFound())
                 .andReturn()

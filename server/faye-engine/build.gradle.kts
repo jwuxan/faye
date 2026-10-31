@@ -5,5 +5,6 @@ dependencies {
     // Verifier checks call args against each handler's args schema, as IrCodec checks the IR (ADR 0024)
     implementation(libs.json.schema.validator)
     testImplementation(project(":faye-host-mock"))
+    testImplementation(testFixtures(project(":faye-screens")))
     testImplementation(libs.jackson.yaml)
 }

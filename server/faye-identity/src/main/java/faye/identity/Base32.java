@@ -1,4 +1,4 @@
-package faye.engine;
+package faye.identity;
 
 import java.io.ByteArrayOutputStream;
 import java.util.Locale;

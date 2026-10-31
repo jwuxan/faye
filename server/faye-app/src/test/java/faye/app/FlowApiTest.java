@@ -15,7 +15,7 @@ import faye.engine.FlowStore;
 import faye.engine.FlowVersions;
 import faye.engine.HookStore;
 import faye.engine.HostKind;
-import faye.engine.HostRequest;
+import faye.engine.HostParams;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.InMemoryHookStore;
@@ -80,6 +80,10 @@ class FlowApiTest {
     @Autowired
     MockFlowHost host;
 
+    /** What the app derives from its catalogs for the compiler. */
+    @Autowired
+    FlowCompiler.Options dsl;
+
     final JsonSchema protocol = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
             .getSchema(read(ROOT.resolve("schema/screen.schema.json")));
 
@@ -88,8 +92,8 @@ class FlowApiTest {
     @ValueSource(strings = {"password-only", "passkey-totp", "partner-consent"})
     void tenantFlowsAreConformanceFlows(String name) throws Exception {
         var yaml = new ClassPathResource("flows/" + name + ".yaml");
-        var compiled =
-                FlowCompiler.compile(name + ".yaml", yaml.getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
+        var compiled = FlowCompiler.compile(
+                name + ".yaml", yaml.getContentAsString(java.nio.charset.StandardCharsets.UTF_8), dsl);
         var expected = IrCodec.readFlow(Files.readString(ROOT.resolve("conformance/flows/" + name + ".json")));
         assertThat(IrCodec.hash(compiled)).isEqualTo(IrCodec.hash(expected));
     }
@@ -137,7 +141,7 @@ class FlowApiTest {
         JsonNode done = JSON.readTree(finished.getContentAsString());
         assertThat(done.at("/redirectTo").asText()).contains("challenge=c-api", "result=accepted");
         assertThat(host.accepted()).anySatisfy(a -> {
-            assertThat(a.request().challenge()).isEqualTo("c-api");
+            assertThat(a.request().ref()).isEqualTo("c-api");
             assertThat(a.outcome().subject()).isEqualTo("user-alice");
             assertThat(a.outcome().amr()).containsExactly("pwd");
         });
@@ -178,18 +182,18 @@ class FlowApiTest {
         JsonNode done = submit(flowId, again, Map.of("password", "guess"), status().isOk());
         assertThat(done.at("/redirectTo").asText()).contains("result=access_denied");
         assertThat(host.rejected()).anySatisfy(r -> {
-            assertThat(r.request().challenge()).isEqualTo("c-unknown");
+            assertThat(r.request().ref()).isEqualTo("c-unknown");
             assertThat(r.description()).isEqualTo("invalid_credentials");
         });
     }
 
     @Test
     void consentIsAutoAcceptedWithoutAConsentSection() throws Exception {
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.CONSENT,
                 "k-api",
                 Map.of("client_id", "demo"),
-                Map.of("subject", "user-alice", "requested_scope", List.of("openid"))));
+                HostParams.fromMap(Map.of("subject", "user-alice", "requested_scope", List.of("openid")))));
         String location = mvc.perform(get("/consent").param("consent_challenge", "k-api"))
                 .andExpect(status().isFound())
                 .andReturn()
@@ -197,7 +201,7 @@ class FlowApiTest {
                 .getRedirectedUrl();
         assertThat(location).contains("challenge=k-api", "result=accepted");
         assertThat(host.consented())
-                .anySatisfy(a -> assertThat(a.request().challenge()).isEqualTo("k-api"));
+                .anySatisfy(a -> assertThat(a.request().ref()).isEqualTo("k-api"));
     }
 
     @Test

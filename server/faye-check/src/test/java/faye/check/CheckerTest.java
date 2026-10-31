@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import faye.engine.FlowVersion;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.TenantPolicy;
+import faye.engine.Verifier;
 import faye.ir.Flow;
 import faye.ir.IrCodec;
 import java.util.List;
@@ -25,7 +26,7 @@ class CheckerTest {
     }
 
     static Report check(Flow flow, TenantPolicy policy) {
-        return Checker.check(flow, Fixtures.handlers(), policy);
+        return Checker.check(flow, Fixtures.handlers(), Fixtures.screens(), policy);
     }
 
     static List<String> errors(Report report) {
@@ -306,7 +307,7 @@ class CheckerTest {
         var versions = new InMemoryFlowVersions();
         Flow passwordOnly = Fixtures.tenantFlow("password-only");
         Flow mfa = Fixtures.conformanceFlow("mfa-policy");
-        var open = new Publisher(versions, Fixtures.handlers(), Map.of());
+        var open = new Publisher(versions, Fixtures.handlers(), Fixtures.screens(), Map.of());
         FlowVersion first = open.publish("t", passwordOnly);
         FlowVersion second = open.publish("t", mfa);
         assertThat(versions.history("t")).containsExactly(first.hash(), second.hash());
@@ -317,7 +318,7 @@ class CheckerTest {
         assertThat(versions.current("t")).contains(second);
 
         // Under a policy that now requires MFA, the password only version cannot come back
-        var strict = new Publisher(versions, Fixtures.handlers(), Map.of("t", MFA));
+        var strict = new Publisher(versions, Fixtures.handlers(), Fixtures.screens(), Map.of("t", MFA));
         assertThatThrownBy(() -> strict.rollback("t", first.hash())).isInstanceOf(CheckFailed.class);
         assertThat(open.rollback("t", first.hash())).isEqualTo(first);
         assertThat(versions.current("t")).contains(first);
@@ -369,8 +370,8 @@ class CheckerTest {
                 + "[\"call\",\"consent.record\"]]],[\"succeed\"]]]]");
         assertThat(errors(check(flow)))
                 .containsExactly(
-                        ": the consent screen belongs on the consent challenge, not in the sign in",
-                        ": consent.record belongs on the consent challenge, not in the sign in");
+                        ": screen 'consent' belongs in a consent entry, not in this authenticate entry",
+                        ": consent.record belongs in a consent entry, not in this authenticate entry");
     }
 
     /** Found by EngineFuzzTest: the method picker shown by a step has no options and no answer. */
@@ -401,8 +402,8 @@ class CheckerTest {
                     add: { screen: { type: passkey, register: true }, use: webauthn.assert }
                 """);
         assertThat(errors(check(flow)))
-                .contains("tenant.yaml:6:20: screen 'passkey' registers a passkey, which needs a subject a credential"
-                        + " verified earlier in the flow, but shows first on a path");
+                .contains("tenant.yaml:6:20: screen 'passkey' acts for the signed in subject, which needs a subject a"
+                        + " credential verified earlier in the flow, but shows first on a path");
     }
 
     @Test
@@ -419,7 +420,8 @@ class CheckerTest {
         // Both the registration screen and the handler are refused
         assertThat(errors(check(flow)))
                 .hasSize(2)
-                .anySatisfy(e -> assertThat(e).startsWith("tenant.yaml:6:23: screen 'passkey' registers a passkey"))
+                .anySatisfy(e ->
+                        assertThat(e).startsWith("tenant.yaml:6:23: screen 'passkey' acts for the signed in subject"))
                 .anySatisfy(e -> assertThat(e)
                         .startsWith("tenant.yaml:6:63: webauthn.register needs a subject a credential verified"
                                 + " earlier in the flow, but runs first on the path"));
@@ -455,5 +457,56 @@ class CheckerTest {
         assertThat(errors(check(args)))
                 .singleElement()
                 .satisfies(e -> assertThat(e).startsWith(": args of 'identity.resolve': "));
+    }
+
+    @Test
+    void aHostPathOutsideTheContractIsRefusedAtPublish() {
+        Flow flow = Fixtures.yaml("tenant.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    identify:
+                      if: { or: [host.prompt, { has: [host.acr_values, "faye:2fa"] }, host.context.origin] }
+                      screen: identifier
+                      use: identity.resolve
+                    credential: { screen: password, use: password.verify }
+                """);
+        assertThat(errors(check(flow)).stream().filter(e -> e.contains("host contract")))
+                .singleElement()
+                .satisfies(e ->
+                        assertThat(e).startsWith("tenant.yaml:6:11: 'host.prompt' is not part of the host contract"));
+    }
+
+    @Test
+    void aClientPathOutsideTheContractIsRefusedAtPublish() {
+        Flow flow = Fixtures.yaml("tenant.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    identify:
+                      if: { or: [client.tier, client.first_party, client.metadata.risk] }
+                      screen: identifier
+                      use: identity.resolve
+                    credential: { screen: password, use: password.verify }
+                """);
+        assertThat(errors(check(flow)).stream().filter(e -> e.contains("client contract")))
+                .singleElement()
+                .satisfies(e -> assertThat(e).contains("'client.tier' is not part of the client contract"));
+    }
+
+    @Test
+    void aStoredVersionThatReadsAnUnknownHostPathStillLoads() {
+        Flow stored = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"when\",\"host.prompt\",[\"set\",\"x\",true]],"
+                + "[\"screen\",\"identifier\"],[\"call\",\"identity.resolve\"],"
+                + "[\"screen\",\"password\"],[\"call\",\"password.verify\"],[\"succeed\"]]]]");
+        // L0 and L1 hold it; only a new publish (L2) is held to the closed list
+        assertThat(Verifier.verify(stored, Fixtures.handlers(), Fixtures.screens()))
+                .isEmpty();
+        assertThat(errors(check(stored)))
+                .singleElement()
+                .satisfies(e -> assertThat(e).contains("'host.prompt'"));
     }
 }

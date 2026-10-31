@@ -20,17 +20,13 @@ import com.webauthn4j.data.client.Origin;
 import com.webauthn4j.data.client.challenge.DefaultChallenge;
 import com.webauthn4j.server.ServerProperty;
 import com.webauthn4j.verifier.exception.VerificationException;
-import faye.engine.Base32;
-import faye.engine.BuiltinScreen;
 import faye.engine.Effect;
-import faye.engine.Engine;
 import faye.engine.Env;
 import faye.engine.Handler;
 import faye.engine.HandlerMeta;
 import faye.engine.HandlerMeta.EffectKind;
 import faye.engine.Invocation;
 import faye.engine.Outcome;
-import faye.engine.Previews;
 import faye.engine.Submission;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -69,8 +65,8 @@ public final class IdentityHandlers {
     private static final AttestedCredentialDataConverter CREDENTIAL_DATA =
             new AttestedCredentialDataConverter(CONVERTER);
     private static final WebAuthnManager WEBAUTHN = WebAuthnManager.createNonStrictWebAuthnManager(CONVERTER);
-    /** The algorithms the Login UI offers at registration, from the one list the engine keeps. */
-    private static final List<PublicKeyCredentialParameters> ALGORITHMS = BuiltinScreen.PASSKEY_ALGORITHMS.stream()
+    /** The algorithms the Login UI offers at registration, from the one list the issuer keeps. */
+    private static final List<PublicKeyCredentialParameters> ALGORITHMS = IdentityIssuers.PASSKEY_ALGORITHMS.stream()
             .map(alg -> new PublicKeyCredentialParameters(
                     PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.create(alg)))
             .toList();
@@ -120,14 +116,20 @@ public final class IdentityHandlers {
             Optional<User> user;
             if (input.payload().get("passkey") instanceof Map<?, ?> credential) {
                 out.put("identified_by", "passkey");
-                user = userHandle(credential).flatMap(users::bySubject).filter(u -> visible(u, env));
+                user = userHandle(credential).flatMap(users::bySubject).filter(u -> visible(u, call));
                 user.ifPresent(u -> out.put("identifier", u.identifier()));
             } else {
                 out.put("identified_by", "identifier");
                 String typed = input.string("identifier");
                 String identifier = normalize(typed == null ? "" : typed);
                 out.put("identifier", identifier);
-                user = users.byIdentifier(identifier).filter(u -> visible(u, env));
+                user = users.byIdentifier(identifier).filter(u -> visible(u, call));
+            }
+            // A step up is for the subject the host already knows: identifying anyone else would
+            // put their attributes beside that subject's credentials (and so in its claims)
+            String bound = env.auth().subject();
+            if (bound != null && !user.map(u -> u.subject().equals(bound)).orElse(false)) {
+                return Outcome.fail("wrong_account");
             }
             out.put("exists", user.isPresent());
             out.put("has_password", user.map(u -> u.passwordHash() != null).orElse(true));
@@ -158,7 +160,7 @@ public final class IdentityHandlers {
         public Outcome invoke(Invocation call) {
             Env env = call.env();
             Submission input = call.input();
-            Optional<User> user = account(users, env);
+            Optional<User> user = account(users, call);
             String password = input.string("password");
             boolean match = Passwords.matches(
                     password == null ? "" : password,
@@ -184,7 +186,7 @@ public final class IdentityHandlers {
         public Outcome invoke(Invocation call) {
             Env env = call.env();
             Submission input = call.input();
-            User user = account(users, env).orElse(null);
+            User user = account(users, call).orElse(null);
             String code = input.string("code");
             if (user == null || user.totpSecret() == null || code == null) return Outcome.fail("invalid_code");
             long step = Totp.match(
@@ -215,7 +217,7 @@ public final class IdentityHandlers {
             Submission input = call.input();
             String subject = env.auth().subject();
             if (subject == null
-                    || users.bySubject(subject).filter(u -> visible(u, env)).isEmpty()) {
+                    || users.bySubject(subject).filter(u -> visible(u, call)).isEmpty()) {
                 return Outcome.fail("unauthenticated");
             }
             if (!(input.context().get("secret") instanceof String secret)) {
@@ -258,7 +260,7 @@ public final class IdentityHandlers {
             Submission input = call.input();
             String subject = env.auth().subject();
             if (subject == null
-                    || users.bySubject(subject).filter(u -> visible(u, env)).isEmpty()) {
+                    || users.bySubject(subject).filter(u -> visible(u, call)).isEmpty()) {
                 return Outcome.fail("unauthenticated");
             }
             if (Boolean.TRUE.equals(input.payload().get("skip"))) return Outcome.ok();
@@ -321,7 +323,7 @@ public final class IdentityHandlers {
             Submission input = call.input();
             try {
                 AuthenticationData data = WEBAUTHN.parseAuthenticationResponseJSON(credentialJson(input));
-                Optional<User> account = account(users, env);
+                Optional<User> account = account(users, call);
                 var parsedId = data.getCredentialId();
                 if (account.isEmpty() || parsedId == null) return Outcome.fail("invalid_credentials");
                 // A copy: webauthn4j marks the array type itself nullable, which NullAway cannot narrow
@@ -375,7 +377,15 @@ public final class IdentityHandlers {
 
         @Override
         public HandlerMeta meta() {
-            return declared(Set.of(), false, false, false, EffectKind.NONE);
+            // It records a grant: it belongs in consent entries only (ADR 0026)
+            return new HandlerMeta(
+                    Set.of(),
+                    false,
+                    false,
+                    false,
+                    EffectKind.NONE,
+                    HandlerMeta.NO_ARGS,
+                    Set.of(faye.ir.Entry.Kind.CONSENT));
         }
 
         @Override
@@ -389,26 +399,21 @@ public final class IdentityHandlers {
     // ---- helpers ----
 
     /** The signed in account if a subject is bound, else the one {@code identity.resolve} found. */
-    private static Optional<User> account(UserStore users, Env env) {
+    private static Optional<User> account(UserStore users, Invocation call) {
+        Env env = call.env();
         Optional<User> user = env.auth().subject() != null
                 ? users.bySubject(env.auth().subject())
                 : env.user().get("identifier") instanceof String id ? users.byIdentifier(id) : Optional.empty();
-        return user.filter(u -> visible(u, env));
+        return user.filter(u -> visible(u, call));
     }
 
     /**
-     * A preview test account exists only for preview clients, and an account of one tenant only for
-     * that tenant's clients (a client without {@code metadata.tenant} runs the default tenant).
+     * A preview test account exists only for preview flows, and an account of one tenant only for
+     * that tenant's flows; the host decides both for each request.
      */
-    private static boolean visible(User user, Env env) {
-        return (!user.preview() || Previews.isPreview(env.client()))
-                && (user.tenant() == null || user.tenant().equals(tenantOf(env.client())));
-    }
-
-    private static String tenantOf(Map<String, Object> client) {
-        return client.get("metadata") instanceof Map<?, ?> meta && meta.get("tenant") instanceof String t
-                ? t
-                : Engine.DEFAULT_TENANT;
+    private static boolean visible(User user, Invocation call) {
+        return (!user.preview() || call.preview())
+                && (user.tenant() == null || user.tenant().equals(call.tenant()));
     }
 
     /** The subject a passkey response names; user handles are the subject's UTF-8 bytes. */

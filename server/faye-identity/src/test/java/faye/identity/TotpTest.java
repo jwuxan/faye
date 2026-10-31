@@ -2,7 +2,6 @@ package faye.identity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import faye.engine.Base32;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 

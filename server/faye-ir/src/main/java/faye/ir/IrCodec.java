@@ -213,6 +213,9 @@ public final class IrCodec {
             return readFlow(MAPPER.readTree(json));
         } catch (JsonProcessingException e) {
             throw new IrException("", "not JSON: " + e.getOriginalMessage());
+        } catch (NumberFormatException e) {
+            // A number Jackson will not hold exactly, such as an exponent of 17 digits (fuzz finding)
+            throw new IrException("", "not JSON: a number out of range");
         }
     }
 
@@ -245,6 +248,12 @@ public final class IrCodec {
      * for a valid flow, apart from the duplicate ids {@link #readFlow} refuses while mapping.
      */
     public static List<IrException> errors(JsonNode json) {
+        // A number of absurd magnitude is refused before anything (the schema, a format check)
+        // could expand it into a gigantic integer (fuzz finding: 8e111111836)
+        String huge = tooLarge(json);
+        if (huge != null) {
+            return List.of(new IrException(huge, "a number with more than " + MAX_DIGITS + " digits or exponent"));
+        }
         // A format this reader does not know is refused as such, not as a grammar violation
         JsonNode format = json.path(1);
         if ("flow".equals(json.path(0).textValue())
@@ -259,6 +268,33 @@ public final class IrCodec {
     }
 
     /** The pointer of the first container deeper than {@link #MAX_DEPTH}, or null; without recursion. */
+    /** The most digits, and the largest exponent, a number in a flow may have. */
+    public static final int MAX_DIGITS = 1000;
+
+    /** The pointer of the first number whose digits or exponent exceed {@link #MAX_DIGITS}, or null. */
+    private static @Nullable String tooLarge(JsonNode root) {
+        java.util.ArrayDeque<Object[]> todo = new java.util.ArrayDeque<>();
+        todo.push(new Object[] {root, ""});
+        while (!todo.isEmpty()) {
+            Object[] at = todo.pop();
+            JsonNode node = (JsonNode) at[0];
+            if (node.isBigDecimal()) {
+                java.math.BigDecimal d = node.decimalValue();
+                if (d.precision() > MAX_DIGITS || Math.abs((long) d.scale()) > MAX_DIGITS) return (String) at[1];
+            } else if (node.isBigInteger() && node.bigIntegerValue().bitLength() > MAX_DIGITS * 4) {
+                return (String) at[1];
+            } else if (node.isArray()) {
+                for (int i = 0; i < node.size(); i++) todo.push(new Object[] {node.get(i), at[1] + "/" + i});
+            } else if (node.isObject()) {
+                for (var e : node.properties()) {
+                    String key = e.getKey().replace("~", "~0").replace("/", "~1");
+                    todo.push(new Object[] {e.getValue(), at[1] + "/" + key});
+                }
+            }
+        }
+        return null;
+    }
+
     private static @Nullable String tooDeep(JsonNode root) {
         java.util.ArrayDeque<Object[]> todo = new java.util.ArrayDeque<>();
         todo.push(new Object[] {root, "", 0});

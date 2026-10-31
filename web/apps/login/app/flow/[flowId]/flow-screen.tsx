@@ -3,6 +3,7 @@
 import type {
   Branding,
   ConsentScreen,
+  HandoffResponse,
   IdentifierScreen,
   MethodPickerScreen,
   OtpEnrollScreen,
@@ -29,13 +30,30 @@ import { isNavigable } from "../../../lib/redirect";
 import { autofillAvailable, cancelPasskeyCeremony, createPasskey, getPasskey } from "../../../lib/webauthn";
 
 type Payload = SubmitRequest["payload"];
+
+/**
+ * Gives a host's handoff result to the page that opened this one in a popup, and only at the
+ * configured origin: the result may be a one time code, so it never goes to an unknown origin.
+ * The sign in screens refuse to be framed, so there is no parent to post to.
+ */
+function handOff(result: HandoffResponse["result"], embedOrigin: string | null): boolean {
+  if (!embedOrigin || !window.opener) return false;
+  (window.opener as Window).postMessage({ type: "faye:handoff", result }, embedOrigin);
+  return true;
+}
 type Send = (payload: Payload) => Promise<void>;
 
-/** Renders whichever typed screen the server sent; the UI never sees the flow itself. */
-export function FlowScreen({ initial }: { initial: ScreenResponse }) {
+/**
+ * Renders whichever typed screen the server sent; the UI never sees the flow itself.
+ *
+ * @param embedOrigin the origin of the page that opened this one, for a host that hands off its
+ *   result rather than redirecting; null posts nothing
+ */
+export function FlowScreen({ initial, embedOrigin }: { initial: ScreenResponse; embedOrigin: string | null }) {
   const [current, setCurrent] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [handedOff, setHandedOff] = useState(false);
   const { screen } = current;
 
   async function send(payload: Payload) {
@@ -58,12 +76,36 @@ export function FlowScreen({ initial }: { initial: ScreenResponse }) {
         setPending(false);
         return;
       }
+      if ("result" in body) {
+        // Nowhere to deliver it: the person must start again from the app, not wait on "Done"
+        if (!handOff(body.result, embedOrigin)) {
+          setError("Sign in finished, but the app that started it could not be reached. Start again from the app.");
+          setPending(false);
+          return;
+        }
+        setHandedOff(true);
+        setPending(false);
+        return;
+      }
       if ("error" in body) setError(errorMessage(body.error));
       else setCurrent(body);
     } catch {
       setError("Something went wrong. Try again.");
     }
     setPending(false);
+  }
+
+  if (handedOff) {
+    return (
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>Done</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">You can return to the app.</p>
+        </CardContent>
+      </Card>
+    );
   }
 
   const failure = screen.errors?.[0];

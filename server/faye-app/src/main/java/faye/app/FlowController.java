@@ -6,6 +6,7 @@ import faye.engine.EngineResponse;
 import faye.engine.FlowException;
 import faye.engine.FlowException.Code;
 import faye.engine.FlowStore;
+import faye.engine.Handoff;
 import faye.engine.HostKind;
 import faye.engine.Redirect;
 import faye.engine.ScreenView;
@@ -48,6 +49,9 @@ class FlowController {
 
     record RedirectResponse(String redirectTo) {}
 
+    /** A finished flow whose host hands its result to the page that embeds the Login UI (ADR 0025). */
+    record HandoffResponse(Map<String, Object> result) {}
+
     record ErrorResponse(String error) {}
 
     /** The engine's screen, with the tenant's branding when it has any. */
@@ -82,6 +86,13 @@ class FlowController {
         return start(HostKind.CONSENT, challenge, http);
     }
 
+    /**
+     * The Hydra host's routes: a redirect to the Login UI, or Hydra's redirect if the flow ended at
+     * once. These are browser navigations, so a host that hands off has no business here: its result
+     * (perhaps a one time code) would render as a page. An embedding host starts flows through its
+     * own route or {@link Engine#start}. The refusal comes after the host completed the request
+     * (the request is spent), so wiring such a host behind these routes is a misconfiguration.
+     */
     private ResponseEntity<Void> start(HostKind kind, String challenge, HttpServletRequest http) {
         Map<String, Object> request = new HashMap<>();
         request.put("ip", http.getRemoteAddr());
@@ -96,6 +107,8 @@ class FlowController {
                 yield props.loginUiUrl() + "/flow/" + screen.flowId();
             }
             case Redirect redirect -> checked(redirect.url());
+            case Handoff handoff ->
+                throw new IllegalStateException("a host that hands off cannot complete a redirecting route");
         };
         return response.location(URI.create(location)).build();
     }
@@ -145,6 +158,10 @@ class FlowController {
                 ResponseEntity.ok()
                         .header(HttpHeaders.SET_COOKIE, binderCookie(flowId, "", Duration.ZERO))
                         .body(new RedirectResponse(checked(redirect.url())));
+            case Handoff handoff ->
+                ResponseEntity.ok()
+                        .header(HttpHeaders.SET_COOKIE, binderCookie(flowId, "", Duration.ZERO))
+                        .body(new HandoffResponse(handoff.result()));
         };
     }
 

@@ -8,9 +8,11 @@ import faye.engine.HandlerMeta;
 import faye.engine.HandlerRegistry;
 import faye.engine.Invocation;
 import faye.engine.Outcome;
+import faye.engine.ScreenRegistry;
 import faye.ir.Flow;
 import faye.ir.HookDef;
 import faye.ir.IrCodec;
+import faye.screens.FixedIssuers;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -27,6 +29,11 @@ final class Fixtures {
     static final Path CONFORMANCE = ROOT.resolve("conformance");
 
     private Fixtures() {}
+
+    /** The built in screens, with issuers of fixed material. */
+    static ScreenRegistry screens() {
+        return FixedIssuers.registry();
+    }
 
     /** Handlers that carry the real metadata and are never invoked. */
     static HandlerRegistry handlers() {
@@ -81,8 +88,12 @@ final class Fixtures {
         return IrCodec.readFlow(read(CONFORMANCE.resolve("flows/" + name + ".json")));
     }
 
+    /** What the app tells the compiler about consent steps, as its catalogs say (ADR 0026). */
+    static final FlowCompiler.Options DSL =
+            new FlowCompiler.Options(Map.of(), java.util.Set.of("consent"), java.util.Set.of("consent.record"));
+
     static Flow yaml(String origin, String yaml) {
-        return FlowCompiler.compile(origin, yaml);
+        return FlowCompiler.compile(origin, yaml, DSL);
     }
 
     static String read(Path file) {

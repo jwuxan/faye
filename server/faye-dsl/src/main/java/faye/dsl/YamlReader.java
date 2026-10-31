@@ -75,6 +75,11 @@ final class YamlReader {
             // Limits (nesting, aliases, size) are reported without a mark
             throw new DslException(
                     List.of(new Diagnostic(new SourceRef(origin, 1, 1), String.valueOf(e.getMessage()))));
+        } catch (IllegalArgumentException e) {
+            // SnakeYAML refuses some malformed input outside its own exceptions (a tag such as "!%b"):
+            // still the author's YAML, so a diagnostic, never an unchecked error (fuzz finding)
+            throw new DslException(
+                    List.of(new Diagnostic(new SourceRef(origin, 1, 1), "not valid YAML: " + e.getMessage())));
         }
         if (root == null) {
             throw new DslException(List.of(new Diagnostic(new SourceRef(origin, 1, 1), "empty document")));

@@ -13,7 +13,7 @@ import faye.engine.FlowStore;
 import faye.engine.FlowVersions;
 import faye.engine.HookStore;
 import faye.engine.HostKind;
-import faye.engine.HostRequest;
+import faye.engine.HostParams;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.InMemoryHookStore;
@@ -224,11 +224,11 @@ class MilestoneFourTest {
     }
 
     JsonNode login(String challenge, String tenant, String userAgent) throws Exception {
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN,
                 challenge,
                 Map.of("client_id", "demo", "metadata", Map.of("tenant", tenant)),
-                Map.of()));
+                HostParams.fromMap(Map.of())));
         String location = mvc.perform(
                         get("/login").param("login_challenge", challenge).header("User-Agent", userAgent))
                 .andExpect(status().isFound())
@@ -255,16 +255,16 @@ class MilestoneFourTest {
 
     void rejected(JsonNode response, String challenge, String reason) {
         assertThat(response.has("redirectTo")).isTrue();
-        assertThat(host.accepted()).noneMatch(a -> a.request().challenge().equals(challenge));
+        assertThat(host.accepted()).noneMatch(a -> a.request().ref().equals(challenge));
         assertThat(host.rejected()).anySatisfy(r -> {
-            assertThat(r.request().challenge()).isEqualTo(challenge);
+            assertThat(r.request().ref()).isEqualTo(challenge);
             assertThat(r.description()).isEqualTo(reason);
         });
     }
 
     Authenticated accepted(String challenge) {
         return host.accepted().stream()
-                .filter(a -> a.request().challenge().equals(challenge))
+                .filter(a -> a.request().ref().equals(challenge))
                 .findFirst()
                 .orElseThrow()
                 .outcome();

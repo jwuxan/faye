@@ -244,11 +244,18 @@ export interface RedirectResponse {
   redirectTo: string;
 }
 
+/**
+ * A finished flow whose host does not redirect: result is the host's own (for example a one time code its system exchanges server to server for the outcome), handed to the page that embeds the Login UI.
+ */
+export interface HandoffResponse {
+  result: {};
+}
+
 export interface ErrorResponse {
   error: "flow_not_found" | "flow_finished" | "stale_nonce" | "conflict" | "invalid_submission" | "host_error";
 }
 
 /**
- * Contract between the Faye server and the Login UI. GET /api/flows/{flowId} returns a ScreenResponse; POST /api/flows/{flowId}/submit takes a SubmitRequest and returns a ScreenResponse or a RedirectResponse. Failures return an ErrorResponse. Both calls need the cookie faye_flow_{flowId} that Faye set when the flow started; without its value the flow is answered as unknown (404, flow_not_found). The root schema accepts any response.
+ * Contract between the Faye server and the Login UI. GET /api/flows/{flowId} returns a ScreenResponse; POST /api/flows/{flowId}/submit takes a SubmitRequest and returns a ScreenResponse, a RedirectResponse (the host redirects the browser) or a HandoffResponse (the host hands the result to the page that embeds the Login UI). Failures return an ErrorResponse. Both calls need the cookie faye_flow_{flowId} that Faye set when the flow started; without its value the flow is answered as unknown (404, flow_not_found). The root schema accepts any response.
  */
-export type ScreenProtocolResponse = ScreenResponse | RedirectResponse | ErrorResponse;
+export type ScreenProtocolResponse = ScreenResponse | RedirectResponse | HandoffResponse | ErrorResponse;

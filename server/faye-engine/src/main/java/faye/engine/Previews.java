@@ -6,8 +6,8 @@ import java.util.Optional;
 /**
  * What the engine needs to run a preview client's flow: the version to run in place of the
  * tenant's current one, the scenario's {@code request.*} overrides, and somewhere to send the trace.
- * A client is a preview client when its metadata says {@code preview: true}. Other flows never
- * reach this interface.
+ * The host marks a request as a preview ({@link HostRequest#preview()}); other flows never reach
+ * this interface.
  */
 public interface Previews {
 
@@ -38,9 +38,4 @@ public interface Previews {
 
     /** Called with each event of a preview flow, in order, once the state it led to is saved. */
     void trace(FlowState state, TraceEvent event);
-
-    /** A client registered with {@code metadata.preview: true}. */
-    static boolean isPreview(Map<String, Object> client) {
-        return client.get("metadata") instanceof Map<?, ?> meta && Boolean.TRUE.equals(meta.get("preview"));
-    }
 }

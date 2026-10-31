@@ -77,6 +77,20 @@ class IrCodecTest {
     }
 
     @Test
+    void aNumberJacksonCannotHoldIsRefusedNotThrown() {
+        assertThatThrownBy(() -> IrCodec.readFlow("[\"flow\",8e11111111111111111]"))
+                .isInstanceOf(IrException.class)
+                .hasMessageContaining("out of range");
+    }
+
+    @Test
+    void aNumberOfAbsurdMagnitudeIsRefusedBeforeValidation() {
+        assertThatThrownBy(() -> IrCodec.readFlow("[\"fhow\",0,\"f\",1,[\"x\",21474,8e111111836]]"))
+                .isInstanceOf(IrException.class)
+                .hasMessageContaining("digits or exponent");
+    }
+
+    @Test
     void refusesFormatsItDoesNotRead() {
         for (String format : List.of("0", "2", "99999999999")) {
             assertThatThrownBy(() -> IrCodec.readFlow(

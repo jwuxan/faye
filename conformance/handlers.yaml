@@ -3,14 +3,16 @@
 # from it. Keys:
 #   amr               amr values the handler may prove; empty if it is not a credential
 #   binds_subject     on success it names the subject, which must match any subject already bound
-#   identifies        it fills user.* from what the person typed; credentials run only after one succeeded
+#   identifies        it fills user.* (replacing it) from what the person typed; credentials run only after one
+#                     succeeded; once a subject is bound it must refuse anyone else (O16)
 #   requires_subject  it runs only once a credential verified the subject in this flow
 #   effect            none | guard (atomic check and mark, inline) | write (deferred until the state is saved)
 #   args              JSON Schema of the call's args; absent means no arguments
+#   entries           the kinds of entry it belongs in (authenticate, consent); absent means every kind
 identity.resolve: { amr: [], binds_subject: false, identifies: true, requires_subject: false, effect: none }
 password.verify: { amr: [pwd], binds_subject: true, identifies: false, requires_subject: false, effect: none }
 totp.verify: { amr: [otp], binds_subject: true, identifies: false, requires_subject: false, effect: guard }
 totp.enroll: { amr: [otp], binds_subject: true, identifies: false, requires_subject: true, effect: write }
 webauthn.assert: { amr: [hwk, user], binds_subject: true, identifies: false, requires_subject: false, effect: guard }
 webauthn.register: { amr: [], binds_subject: false, identifies: false, requires_subject: true, effect: write }
-consent.record: { amr: [], binds_subject: false, identifies: false, requires_subject: false, effect: none }
+consent.record: { amr: [], binds_subject: false, identifies: false, requires_subject: false, effect: none, entries: [consent] }

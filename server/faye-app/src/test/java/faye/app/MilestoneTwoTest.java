@@ -11,16 +11,17 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import faye.engine.Authenticated;
-import faye.engine.Base32;
 import faye.engine.FlowStore;
 import faye.engine.FlowVersions;
 import faye.engine.HookStore;
 import faye.engine.HostKind;
-import faye.engine.HostRequest;
+import faye.engine.HostParams;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.InMemoryHookStore;
+import faye.host.hydra.HydraFlowHost;
 import faye.host.mock.MockFlowHost;
+import faye.identity.Base32;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.List;
@@ -106,7 +107,7 @@ class MilestoneTwoTest {
         s = submit(s, Map.of("password", PASSWORD));
         assertThat(s.at("/redirectTo").asText()).contains("result=access_denied");
         assertThat(host.rejected()).anySatisfy(r -> {
-            assertThat(r.request().challenge()).isEqualTo("m2-pwd-2fa");
+            assertThat(r.request().ref()).isEqualTo("m2-pwd-2fa");
             assertThat(r.description()).isEqualTo("acr_not_satisfied");
         });
     }
@@ -161,7 +162,7 @@ class MilestoneTwoTest {
         Authenticated login = accepted("m2-partner");
 
         // Third party: the consent screen, linked to the login through context.flowId.
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.CONSENT,
                 "m2-consent",
                 Map.of(
@@ -173,13 +174,13 @@ class MilestoneTwoTest {
                         false,
                         "metadata",
                         Map.of("tenant", "partner")),
-                Map.of(
+                HostParams.fromMap(Map.of(
                         "subject",
                         "user-alice",
                         "requested_scope",
                         List.of("openid", "email", "profile"),
                         "context",
-                        login.context())));
+                        login.context()))));
         String location = mvc.perform(get("/consent").param("consent_challenge", "m2-consent"))
                 .andExpect(status().isFound())
                 .andReturn()
@@ -190,17 +191,18 @@ class MilestoneTwoTest {
         assertThat(s.at("/screen/client/name").asText()).isEqualTo("Partner");
         submit(s, Map.of("decision", "allow"));
         assertThat(host.consented()).anySatisfy(c -> {
-            assertThat(c.request().challenge()).isEqualTo("m2-consent");
-            assertThat(c.outcome().idTokenClaims())
+            assertThat(c.request().ref()).isEqualTo("m2-consent");
+            assertThat(HydraFlowHost.idTokenClaims(c.request(), c.outcome()))
                     .isEqualTo(Map.of("email", "alice@example.com", "email_verified", true, "name", "Alice"));
         });
 
         // First party: no screen.
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.CONSENT,
                 "m2-consent-1p",
                 Map.of("client_id", "demo", "first_party", true, "metadata", Map.of("tenant", "partner")),
-                Map.of("subject", "user-alice", "requested_scope", List.of("openid"), "context", login.context())));
+                HostParams.fromMap(Map.of(
+                        "subject", "user-alice", "requested_scope", List.of("openid"), "context", login.context()))));
         String direct = mvc.perform(get("/consent").param("consent_challenge", "m2-consent-1p"))
                 .andExpect(status().isFound())
                 .andReturn()
@@ -212,8 +214,11 @@ class MilestoneTwoTest {
     // ---- helpers ----
 
     JsonNode login(String challenge, String tenant, Map<String, Object> hydra) throws Exception {
-        host.register(new HostRequest(
-                HostKind.LOGIN, challenge, Map.of("client_id", "demo", "metadata", Map.of("tenant", tenant)), hydra));
+        host.register(MockFlowHost.request(
+                HostKind.LOGIN,
+                challenge,
+                Map.of("client_id", "demo", "metadata", Map.of("tenant", tenant)),
+                HostParams.fromMap(hydra)));
         String location = mvc.perform(get("/login").param("login_challenge", challenge))
                 .andExpect(status().isFound())
                 .andReturn()
@@ -242,7 +247,7 @@ class MilestoneTwoTest {
 
     Authenticated accepted(String challenge) {
         return host.accepted().stream()
-                .filter(a -> a.request().challenge().equals(challenge))
+                .filter(a -> a.request().ref().equals(challenge))
                 .findFirst()
                 .orElseThrow()
                 .outcome();

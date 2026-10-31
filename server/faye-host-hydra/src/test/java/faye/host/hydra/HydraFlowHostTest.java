@@ -9,7 +9,9 @@ import com.sun.net.httpserver.HttpServer;
 import faye.engine.Authenticated;
 import faye.engine.Consented;
 import faye.engine.HostKind;
+import faye.engine.HostParams;
 import faye.engine.HostRequest;
+import faye.engine.Redirect;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -90,7 +92,7 @@ class HydraFlowHostTest {
         HostRequest req = host.load(HostKind.LOGIN, "c1");
 
         assertThat(req.kind()).isEqualTo(HostKind.LOGIN);
-        assertThat(req.challenge()).isEqualTo("c1");
+        assertThat(req.ref()).isEqualTo("c1");
         assertThat(req.client())
                 .containsEntry("client_id", "demo")
                 .containsEntry("client_name", "Demo")
@@ -115,7 +117,7 @@ class HydraFlowHostTest {
         assertThat(metadata.get("ratio")).isInstanceOf(Double.class);
         Map<?, ?> nested = (Map<?, ?>) java.util.Objects.requireNonNull(metadata.get("nested"));
         assertThat(nested.get("n")).isInstanceOf(Integer.class);
-        assertThat(req.params())
+        assertThat(req.params().toEnv())
                 .containsEntry("skip", false)
                 .containsEntry("requested_scope", List.of("openid", "email"))
                 .containsEntry("acr_values", List.of("faye:2fa"))
@@ -132,7 +134,7 @@ class HydraFlowHostTest {
                 new Authenticated(
                         "user-alice", List.of("pwd"), "faye:1fa", Map.of("flowId", "f_1", "versionHash", "sha256:ab")));
 
-        assertThat(redirect.url()).isEqualTo("http://hydra.test/next/accept");
+        assertThat(((Redirect) redirect).url()).isEqualTo("http://hydra.test/next/accept");
         JsonNode sent = JSON.readTree(received.get("PUT /admin/oauth2/auth/requests/login/accept?login_challenge=c1"));
         assertThat(sent.get("subject").asText()).isEqualTo("user-alice");
         assertThat(sent.get("amr")).containsExactly(JSON.valueToTree("pwd"));
@@ -145,7 +147,7 @@ class HydraFlowHostTest {
     @Test
     void acceptsConsentWithGrantsAndIdTokenClaims() throws Exception {
         HostRequest req = host.load(HostKind.CONSENT, "k1");
-        assertThat(req.params())
+        assertThat(req.params().toEnv())
                 .containsEntry("subject", "user-alice")
                 .containsEntry("context", Map.of("flowId", "f_1", "versionHash", "sha256:ab"));
 
@@ -155,14 +157,33 @@ class HydraFlowHostTest {
                         "user-alice",
                         List.of("openid", "email"),
                         List.of("api"),
-                        Map.of("email", "alice@example.com")));
+                        Map.of("email", "alice@example.com", "name", "Alice", "has_totp", true)));
 
         JsonNode sent =
                 JSON.readTree(received.get("PUT /admin/oauth2/auth/requests/consent/accept?consent_challenge=k1"));
         assertThat(sent.get("grant_scope")).containsExactly(JSON.valueToTree("openid"), JSON.valueToTree("email"));
         assertThat(sent.get("grant_access_token_audience")).containsExactly(JSON.valueToTree("api"));
-        assertThat(sent.at("/session/id_token/email").asText()).isEqualTo("alice@example.com");
+        // Scope email maps email; without scope profile no name, and nothing internal to the flow
+        assertThat(sent.at("/session/id_token")).isEqualTo(JSON.valueToTree(Map.of("email", "alice@example.com")));
         assertThat(sent.get("remember").asBoolean()).isFalse();
+    }
+
+    @Test
+    void theTenantAndPreviewFlagComeFromTheClientsMetadata() {
+        HostRequest req = host.load(HostKind.LOGIN, "c1");
+        assertThat(req.tenant()).isEqualTo("acme");
+        assertThat(req.preview()).isFalse();
+    }
+
+    @Test
+    void onlyAPreviewClientGetsTheFlowIdClaim() {
+        var outcome = new Consented("user-alice", List.of("openid", "profile"), List.of(), Map.of("name", "Alice"));
+        var params = HostParams.fromMap(Map.of("context", Map.of("flowId", "f_1")));
+        var preview = new HostRequest(HostKind.CONSENT, "k1", null, true, Map.of(), params);
+        var production = new HostRequest(HostKind.CONSENT, "k1", null, false, Map.of(), params);
+        assertThat(HydraFlowHost.idTokenClaims(preview, outcome))
+                .isEqualTo(Map.of("name", "Alice", "faye_flow_id", "f_1"));
+        assertThat(HydraFlowHost.idTokenClaims(production, outcome)).isEqualTo(Map.of("name", "Alice"));
     }
 
     @Test
@@ -170,7 +191,7 @@ class HydraFlowHostTest {
         HostRequest req = host.load(HostKind.LOGIN, "c1");
         var redirect = host.reject(req, "access_denied", "invalid_credentials");
 
-        assertThat(redirect.url()).isEqualTo("http://hydra.test/next/reject");
+        assertThat(((Redirect) redirect).url()).isEqualTo("http://hydra.test/next/reject");
         JsonNode sent = JSON.readTree(received.get("PUT /admin/oauth2/auth/requests/login/reject?login_challenge=c1"));
         assertThat(sent.get("error").asText()).isEqualTo("access_denied");
         assertThat(sent.get("error_description").asText()).isEqualTo("invalid_credentials");
@@ -181,7 +202,7 @@ class HydraFlowHostTest {
         HostRequest req = host.load(HostKind.LOGOUT, "l1");
 
         assertThat(req.kind()).isEqualTo(HostKind.LOGOUT);
-        assertThat(req.params()).containsEntry("subject", "user-alice");
+        assertThat(req.params().subject()).isEqualTo("user-alice");
         assertThat(received).containsKey("GET /admin/oauth2/auth/requests/logout?logout_challenge=l1");
     }
 

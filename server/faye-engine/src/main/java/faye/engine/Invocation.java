@@ -9,8 +9,11 @@ import java.util.Map;
  * @param input the answer to the screen the flow was waiting on, with that screen's server data
  * @param args the call's literal arguments, valid against the handler's {@link HandlerMeta#args()}
  * @param flowId the flow making the call; a {@code guard} handler marks what it consumes with it
+ * @param tenant the tenant whose flow runs, as the host decided it
+ * @param preview the flow runs for a preview client, as the host decided it
  */
-public record Invocation(Env env, Submission input, Map<String, Object> args, String flowId) {
+public record Invocation(
+        Env env, Submission input, Map<String, Object> args, String flowId, String tenant, boolean preview) {
 
     public Invocation {
         args = Map.copyOf(args);

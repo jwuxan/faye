@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import faye.host.mock.MockFlowHost;
 import faye.ir.IrCodec;
+import faye.screens.FixedIssuers;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -84,12 +85,23 @@ class StoredStateFuzzTest {
         ObjectNode badPath = (ObjectNode) read(base);
         ((ObjectNode) badPath.get("awaiting"))
                 .set("path", NODES.arrayNode().add(9).add(9));
-        ObjectNode register = (ObjectNode) read(base);
-        ((ObjectNode) register.get("awaiting")).set("data", NODES.objectNode().put("register", true));
+        // A passkey registration for nobody: the passkey screen's spec says it cannot resume
+        String passkey = STATES.stream()
+                .filter(st -> "passkey"
+                        .equals(read(st).path("awaiting").path("screen").asText()))
+                .findFirst()
+                .orElseThrow();
+        ObjectNode register = (ObjectNode) read(passkey);
+        ((ObjectNode) register.get("awaiting"))
+                .set("data", NODES.objectNode().put("register", true).put("challenge", "c"));
+        ((ObjectNode) register.get("env")).set("auth", NODES.objectNode().set("verified", NODES.arrayNode()));
         for (String corrupt : List.of("[]", "{", noKind.toString(), badPath.toString(), register.toString())) {
             World w = new World();
-            w.store.raw.put(flowId, corrupt);
-            org.assertj.core.api.Assertions.assertThatThrownBy(() -> w.engine.view(flowId, "binder"))
+            String id = corrupt.equals(register.toString())
+                    ? FlowStateCodec.read(passkey).orElseThrow().flowId()
+                    : flowId;
+            w.store.raw.put(id, corrupt);
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> w.engine.view(id, "binder"))
                     .as(corrupt)
                     .isInstanceOfSatisfying(
                             FlowException.class,
@@ -226,8 +238,15 @@ class StoredStateFuzzTest {
             versions.publish(
                     Engine.DEFAULT_TENANT,
                     FlowVersion.of(IrCodec.readFlow(readFile(CONFORMANCE.resolve("flows/passkey-totp.json")))));
-            host.register(new HostRequest(HostKind.LOGIN, "c1", Map.of("client_id", "demo"), Map.of()));
-            engine = new Engine(versions, new HandlerRegistry(handlers()), store, host);
+            host.register(MockFlowHost.request(
+                    HostKind.LOGIN, "c1", Map.of("client_id", "demo"), HostParams.fromMap(Map.of())));
+            engine = Engine.builder()
+                    .versions(versions)
+                    .handlers(new HandlerRegistry(handlers()))
+                    .store(store)
+                    .host(host)
+                    .screens(FixedIssuers.registry())
+                    .build();
         }
     }
 
@@ -281,9 +300,18 @@ class StoredStateFuzzTest {
                 FlowVersion.of(IrCodec.readFlow(readFile(CONFORMANCE.resolve("flows/" + name + ".json")))));
         RawStore store = new RawStore();
         MockFlowHost host = new MockFlowHost();
-        host.register(new HostRequest(
-                HostKind.LOGIN, "c1", Map.of("client_id", "demo"), Map.of("acr_values", List.of("faye:2fa"))));
-        Engine engine = new Engine(versions, new HandlerRegistry(handlers()), store, host);
+        host.register(MockFlowHost.request(
+                HostKind.LOGIN,
+                "c1",
+                Map.of("client_id", "demo"),
+                HostParams.fromMap(Map.of("acr_values", List.of("faye:2fa")))));
+        Engine engine = Engine.builder()
+                .versions(versions)
+                .handlers(new HandlerRegistry(handlers()))
+                .store(store)
+                .host(host)
+                .screens(FixedIssuers.registry())
+                .build();
         EngineResponse r = engine.start(HostKind.LOGIN, "c1", Map.of(), "binder");
         for (int i = 0; i < 6 && r instanceof ScreenView view; i++) {
             STATES.add(store.raw.get(view.flowId()));

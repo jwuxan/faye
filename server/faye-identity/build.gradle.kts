@@ -12,4 +12,5 @@ dependencies {
     testCompileOnly(libs.jetbrains.annotations)
     testImplementation(libs.webauthn4j.test)
     testImplementation(project(":faye-host-mock"))
+    testImplementation(project(":faye-screens"))
 }

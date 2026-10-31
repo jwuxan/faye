@@ -106,6 +106,11 @@ public record Env(
         return new Env(request, client, tenant, host, merged, vars, auth);
     }
 
+    /** {@code user.*} becomes exactly {@code fields}: an identifying handler names a new person. */
+    Env withUserReplaced(Map<String, Object> fields) {
+        return new Env(request, client, tenant, host, fields, vars, auth);
+    }
+
     Env withVerified(@Nullable String subject, Verified verified) {
         List<Verified> all = new ArrayList<>(auth.verified());
         all.add(verified);

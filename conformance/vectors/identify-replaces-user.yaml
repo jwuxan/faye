@@ -1,0 +1,16 @@
+name: identifying again names a new person; nothing the earlier attempt learned about someone else stays in user.* (O16)
+ir: flows/identify-retry.json
+handlers:
+  identity.resolve: [{ ok: { user: { name: Bob, exists: true } } }, { ok: { user: { email: alice@example.com } } }]
+  password.verify: [{ fail: invalid_credentials }, ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: bob@example.com }
+  - expect_screen: password
+  - submit: { password: wrong }
+  - expect_screen: identifier
+    expect_error: invalid_credentials
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

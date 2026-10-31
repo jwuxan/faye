@@ -37,6 +37,12 @@ import org.jspecify.annotations.Nullable;
  * {@link FlowState} is persisted and the screen returned; a submission reloads the state and
  * continues. Nothing about a flow lives in this object between requests.
  *
+ * <p>The engine knows no authorization server and renders nothing. It talks to the system it runs
+ * flows for only through {@link FlowHost}, and to everything else through the SPIs it is built with
+ * ({@link #builder()}): {@link FlowVersions}, {@link FlowStore}, {@link HandlerRegistry}, {@link
+ * ScreenRegistry} with its {@link CredentialIssuer}s, {@link TenantPolicies}, {@link HookRunner} and
+ * {@link Previews}. docs/roadmap/engine.md is the embedding contract.
+ *
  * <p>Every flow is bound to the browser that started it: {@link #start} takes a binder, a secret
  * the caller hands the browser in a cookie, and {@link #view} and {@link #submit} refuse a flow
  * whose binder does not match exactly as they refuse one that does not exist.
@@ -53,6 +59,13 @@ public final class Engine {
     /** Why an entry fails when applying one of its writes threw. */
     public static final String WRITE_ERROR = "write_error";
 
+    /**
+     * Why a step fails when a screen's {@link CredentialIssuer} could not issue (an upstream
+     * failure or timeout). It fails like a handler failure: a retry may rerun the step, else the
+     * entry fails.
+     */
+    public static final String ISSUER_ERROR = "issuer_error";
+
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final FlowVersions versions;
@@ -64,98 +77,123 @@ public final class Engine {
     private final Previews previews;
     private final ScreenRegistry screens;
 
-    public Engine(FlowVersions versions, HandlerRegistry handlers, FlowStore store, FlowHost host) {
-        this(versions, handlers, store, host, Map.of());
-    }
-
-    public Engine(
-            FlowVersions versions,
-            HandlerRegistry handlers,
-            FlowStore store,
-            FlowHost host,
-            Map<String, TenantPolicy> tenants) {
-        this(versions, handlers, store, host, tenants, HookRunner.NONE);
+    private Engine(Builder b) {
+        this.versions = required(b.versions, "versions");
+        this.handlers = required(b.handlers, "handlers");
+        this.store = required(b.store, "store");
+        this.host = required(b.host, "host");
+        this.screens = required(b.screens, "screens");
+        this.tenants = b.tenants;
+        this.hooks = b.hooks;
+        this.previews = b.previews;
     }
 
     /**
-     * @param tenants policy per tenant id; a tenant not listed gets {@link TenantPolicy#DEFAULT}
-     * @param hooks runs the hooks flows pin
+     * How an embedder assembles an engine from its SPIs. {@code versions}, {@code handlers}, {@code
+     * screens}, {@code store} and {@code host} are required; tenants default to {@link
+     * TenantPolicy#DEFAULT} for all, hooks to {@link HookRunner#NONE}, previews to {@link
+     * Previews#NONE}. Registration is explicit: the engine runs exactly the handlers, screens and
+     * issuers it is given, and discovers nothing.
      */
-    public Engine(
-            FlowVersions versions,
-            HandlerRegistry handlers,
-            FlowStore store,
-            FlowHost host,
-            Map<String, TenantPolicy> tenants,
-            HookRunner hooks) {
-        this(versions, handlers, store, host, TenantPolicies.of(tenants), hooks);
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    /** See {@link Engine#builder()}. */
+    public static final class Builder {
+        private @Nullable FlowVersions versions;
+        private @Nullable HandlerRegistry handlers;
+        private @Nullable FlowStore store;
+        private @Nullable FlowHost host;
+        private @Nullable ScreenRegistry screens;
+        private TenantPolicies tenants = TenantPolicies.of(Map.of());
+        private HookRunner hooks = HookRunner.NONE;
+        private Previews previews = Previews.NONE;
+
+        private Builder() {}
+
+        /** Where published versions are read. */
+        public Builder versions(FlowVersions versions) {
+            this.versions = versions;
+            return this;
+        }
+
+        /** The handlers flows may call. */
+        public Builder handlers(HandlerRegistry handlers) {
+            this.handlers = handlers;
+            return this;
+        }
+
+        /** Where suspended flows are kept. */
+        public Builder store(FlowStore store) {
+            this.store = store;
+            return this;
+        }
+
+        /** The system flows run for. */
+        public Builder host(FlowHost host) {
+            this.host = host;
+            return this;
+        }
+
+        /** The screens flows may show, with their credential issuers. */
+        public Builder screens(ScreenRegistry screens) {
+            this.screens = screens;
+            return this;
+        }
+
+        /** Looked up when a flow starts. */
+        public Builder tenants(TenantPolicies tenants) {
+            this.tenants = tenants;
+            return this;
+        }
+
+        /** Policy per tenant id; a tenant not listed gets {@link TenantPolicy#DEFAULT}. */
+        public Builder tenants(Map<String, TenantPolicy> tenants) {
+            return tenants(TenantPolicies.of(tenants));
+        }
+
+        /** Runs the hooks flows pin. */
+        public Builder hooks(HookRunner hooks) {
+            this.hooks = hooks;
+            return this;
+        }
+
+        /** What preview clients run, and where their traces go. */
+        public Builder previews(Previews previews) {
+            this.previews = previews;
+            return this;
+        }
+
+        public Engine build() {
+            return new Engine(this);
+        }
+    }
+
+    private static <T> T required(@Nullable T value, String what) {
+        if (value == null) throw new IllegalStateException("an engine needs " + what);
+        return value;
     }
 
     /**
-     * @param tenants looked up when a flow starts
-     * @param hooks runs the hooks flows pin
-     */
-    public Engine(
-            FlowVersions versions,
-            HandlerRegistry handlers,
-            FlowStore store,
-            FlowHost host,
-            TenantPolicies tenants,
-            HookRunner hooks) {
-        this(versions, handlers, store, host, tenants, hooks, Previews.NONE);
-    }
-
-    /**
-     * @param tenants looked up when a flow starts
-     * @param hooks runs the hooks flows pin
-     * @param previews what preview clients run, and where their traces go
-     */
-    public Engine(
-            FlowVersions versions,
-            HandlerRegistry handlers,
-            FlowStore store,
-            FlowHost host,
-            TenantPolicies tenants,
-            HookRunner hooks,
-            Previews previews) {
-        this(versions, handlers, store, host, tenants, hooks, previews, ScreenRegistry.builtIn());
-    }
-
-    /** @param screens the screens flows may show */
-    public Engine(
-            FlowVersions versions,
-            HandlerRegistry handlers,
-            FlowStore store,
-            FlowHost host,
-            TenantPolicies tenants,
-            HookRunner hooks,
-            Previews previews,
-            ScreenRegistry screens) {
-        this.versions = versions;
-        this.handlers = handlers;
-        this.store = store;
-        this.host = host;
-        this.tenants = tenants;
-        this.hooks = hooks;
-        this.previews = previews;
-        this.screens = screens;
-    }
-
-    /**
-     * Begins a flow for a challenge. A login runs the tenant's current version, or for a preview
+     * Begins a flow for a host request. A login runs the tenant's current version, or for a preview
      * client the version {@link Previews} gives. A consent runs the version its login ran, found
      * through the {@code flowId} the login put in the host's context, and sees that login's {@code
      * user} and {@code auth}.
      *
+     * @param ref the host's id for the request, handed to {@link FlowHost#load}
+     * @param request what the caller knows of the request that started the flow, read as {@code
+     *     request.*} (ip, user agent)
      * @param binder the secret the caller gives the browser; every later view and submit must
      *     present it
+     * @return the first screen, or the host's completion if the flow ended at once
      */
-    public EngineResponse start(HostKind kind, String challenge, Map<String, Object> request, String binder) {
-        HostRequest req = host.load(kind, challenge);
-        @Nullable String subject = req.params().get("subject") instanceof String s && !s.isEmpty() ? s : null;
-        boolean skip = Boolean.TRUE.equals(req.params().get("skip"));
-        boolean preview = Previews.isPreview(req.client());
-        String tenant = tenantOf(req);
+    public EngineResponse start(HostKind kind, String ref, Map<String, Object> request, String binder) {
+        HostRequest req = host.load(kind, ref);
+        @Nullable String subject = req.params().subject();
+        boolean skip = req.params().skip();
+        boolean preview = req.preview();
+        String tenant = req.tenantOrDefault();
         FlowVersion version;
         Map<String, Object> user = Map.of();
         Map<String, Object> settings = tenants.get(tenant).env();
@@ -171,7 +209,7 @@ public final class Engine {
                 version = found.get();
                 if (skip && subject != null) {
                     // The host remembers who, not how: a remembered session counts as one factor.
-                    if (Acr.satisfies(Acr.ONE_FACTOR, req.params().get("acr_values"))
+                    if (Acr.satisfies(Acr.ONE_FACTOR, req.params().acrValues())
                             && Acr.satisfies(Acr.ONE_FACTOR, required(settings))) {
                         return host.accept(req, new Authenticated(subject, List.of(), Acr.ONE_FACTOR, Map.of()));
                     }
@@ -209,7 +247,7 @@ public final class Engine {
             default -> throw new IllegalArgumentException(kind.toString());
         }
         // A version that names a handler or screen this engine lacks, or has no entry for the
-        // challenge, never runs here: the checker refuses both at publish, so this only happens when
+        // request, never runs here: the checker refuses both at publish, so this only happens when
         // the catalogs changed since.
         Optional<String> entry = EntrySelector.select(version.flow(), kind);
         if (entry.isEmpty() || !runnable(version)) return host.reject(req, "access_denied", FLOW_UNAVAILABLE);
@@ -218,20 +256,22 @@ public final class Engine {
             overridden.putAll(previews.request(tenant));
             request = overridden;
         }
-        Env env = new Env(request, req.client(), settings, req.params(), user, Map.of(), auth);
+        Env env = new Env(request, req.client(), settings, req.params().toEnv(), user, Map.of(), auth);
         FlowState initial = new FlowState(
                 randomId("f_"),
                 tenant,
                 version.hash(),
                 kind,
                 entry.get(),
-                challenge,
+                ref,
                 hash(binder),
                 List.of(new Frame.Eval(List.of())),
                 env,
                 null,
                 List.of(),
-                0);
+                0,
+                preview,
+                kind == HostKind.CONSENT ? user : Map.of());
 
         List<TraceEvent> trace = new ArrayList<>();
         trace.add(TraceEvent.of("start", version.hash(), entry.get()));
@@ -451,25 +491,23 @@ public final class Engine {
                                             && answered.screen().equals(type.type())
                                     ? answered.data()
                                     : Map.of();
+                            @Nullable Map<String, Object> data = prepare(type, env, node.opts(), previous);
+                            if (data == null) {
+                                failed = ISSUER_ERROR;
+                                trace.add(TraceEvent.of("screen", type.type(), ISSUER_ERROR));
+                                break;
+                            }
                             trace.add(TraceEvent.of("screen", type.type(), null));
                             return suspend(
-                                    state,
-                                    stack,
-                                    env,
-                                    effects,
-                                    revision,
-                                    path,
-                                    type.type(),
-                                    type.prepare(env, node.opts(), previous),
-                                    error,
-                                    attemptsLeft);
+                                    state, stack, env, effects, revision, path, type.type(), data, error, attemptsLeft);
                         }
                         case Call call -> {
                             Handler handler = handlers.find(call.handler())
                                     .orElseThrow(() -> new IllegalStateException(
                                             call.source() + ": unknown handler " + call.handler()));
                             HandlerMeta meta = handler.meta();
-                            switch (handler.invoke(new Invocation(env, input, call.args(), state.flowId()))) {
+                            switch (handler.invoke(new Invocation(
+                                    env, input, call.args(), state.flowId(), state.tenantId(), state.preview()))) {
                                 case Outcome.Fail f -> {
                                     failed = f.error();
                                     trace.add(TraceEvent.of("call", handler.name(), failed));
@@ -483,7 +521,13 @@ public final class Engine {
                                             "call", handler.name(), mismatch == null ? "ok" : mismatch, amr, null));
                                     if (mismatch != null) return end(state, env, effects, revision, mismatch);
                                     effects.addAll(staged);
-                                    if (!ok.user().isEmpty()) env = env.withUser(ok.user());
+                                    // An identifying handler names the person afresh: nothing an
+                                    // earlier attempt learned about someone else may stay (O16)
+                                    if (meta.identifies()) {
+                                        env = env.withUserReplaced(ok.user());
+                                    } else if (!ok.user().isEmpty()) {
+                                        env = env.withUser(ok.user());
+                                    }
                                     if (amr != null) {
                                         @Nullable
                                         String subject = meta.bindsSubject()
@@ -608,7 +652,10 @@ public final class Engine {
         // What counts is an amr proved, not a verification recorded: one with none proves nothing
         if (env.auth().subject() == null || env.auth().acr() == null) return "unauthenticated";
         if (!Acr.satisfies(env.auth().acr(), required(env.tenant()))) return "mfa_required";
-        return Acr.satisfies(env.auth().acr(), env.host().get("acr_values")) ? null : "acr_not_satisfied";
+        // toEnv() always writes a list; anything else is a corrupt state, which asks for the most
+        Object requested = env.host().get(HostParams.ACR_VALUES);
+        if (requested != null && !(requested instanceof List<?>)) return "acr_not_satisfied";
+        return Acr.satisfies(env.auth().acr(), requested) ? null : "acr_not_satisfied";
     }
 
     /** The acr a tenant's settings require of every login, as {@code acr_values}. */
@@ -731,7 +778,9 @@ public final class Engine {
                 env,
                 awaiting,
                 pending,
-                revision);
+                revision,
+                s.preview(),
+                s.proven());
     }
 
     // ---- edges ----
@@ -797,9 +846,21 @@ public final class Engine {
             return "awaiting";
         }
         if (picker && !(awaiting.data().get("options") instanceof List<?>)) return "picker options";
-        if (Boolean.TRUE.equals(awaiting.data().get("register"))
-                && state.env().auth().subject() == null) {
-            return "registration without a subject";
+        if (!picker && screens.find(awaiting.screen()).isEmpty()) return "screen " + awaiting.screen();
+        // A screen that acts for the signed in subject cannot wait without one, whatever its issuer.
+        // Whether a credential verified it first is the checker's rule at publish: the engine itself
+        // writes such a state for a step up, whose subject the host bound with nothing verified yet
+        if (waiting instanceof Screen s
+                && state.env().auth().subject() == null
+                && screens.find(s.type())
+                        .map(spec -> spec.requiresSubject(s.opts()))
+                        .orElse(false)) {
+            return "screen " + awaiting.screen() + " without a subject";
+        }
+        if (screens.issuer(awaiting.screen())
+                .map(i -> !i.resumable(state.env(), awaiting.data()))
+                .orElse(false)) {
+            return "issued material of " + awaiting.screen();
         }
         if (ScreenRegistry.METHOD_PICKER.equals(awaiting.screen())
                 != state.stack().stream()
@@ -833,6 +894,32 @@ public final class Engine {
         return Verifier.verify(version.flow(), handlers, screens).isEmpty();
     }
 
+    /**
+     * The data a new instance of a screen waits with: the spec's own, plus what the screen's issuer
+     * issues; null when the issuer failed, which fails the step closed.
+     */
+    private @Nullable Map<String, Object> prepare(
+            ScreenSpec spec, Env env, Map<String, Object> opts, Map<String, Object> previous) {
+        Map<String, Object> data = new LinkedHashMap<>(spec.prepare(env, opts, previous));
+        Optional<CredentialIssuer> issuer = screens.issuer(spec.type());
+        if (issuer.isEmpty()) return data;
+        Map<String, Object> issued;
+        try {
+            issued = issuer.get().issue(env, opts, previous);
+        } catch (RuntimeException e) {
+            return null;
+        }
+        merge(data, issued, "issuer of " + spec.type());
+        return data;
+    }
+
+    /** Adds {@code more} to {@code into}; a key both hold is a bug in the spec or its issuer. */
+    private static void merge(Map<String, Object> into, Map<String, Object> more, String who) {
+        more.forEach((k, v) -> {
+            if (into.putIfAbsent(k, v) != null) throw new IllegalStateException(who + " wrote '" + k + "' twice");
+        });
+    }
+
     private ScreenSpec screen(String type) {
         return screens.find(type).orElseThrow(() -> new IllegalStateException("unknown screen " + type));
     }
@@ -842,21 +929,37 @@ public final class Engine {
         if (awaiting == null) throw new FlowException(Code.FLOW_FINISHED);
         Map<String, Object> screen =
                 new LinkedHashMap<>(screen(awaiting.screen()).render(state.env(), awaiting.data()));
+        Optional<CredentialIssuer> issuer = screens.issuer(awaiting.screen());
+        if (issuer.isPresent()) {
+            Map<String, Object> shown;
+            try {
+                shown = issuer.get().present(state.env(), awaiting.data());
+            } catch (RuntimeException e) {
+                // The material the flow waits with cannot be shown: this view is refused as an unknown
+                // flow, and the flow stays unusable until it expires
+                LOG.log(
+                        System.Logger.Level.WARNING,
+                        "issuer of {0} cannot present; the flow is refused until it expires",
+                        awaiting.screen());
+                throw new FlowException(Code.FLOW_NOT_FOUND);
+            }
+            merge(screen, shown, "issuer of " + awaiting.screen());
+        }
         if (awaiting.error() != null) screen.put("errors", List.of(Map.of("code", awaiting.error())));
         if (awaiting.attemptsLeft() != null) screen.put("attemptsLeft", awaiting.attemptsLeft());
         return new ScreenView(state.flowId(), awaiting.nonce(), awaiting.step(), screen);
     }
 
-    private Redirect finish(HostRequest req, Ended ended) {
+    private Completion finish(HostRequest req, Ended ended) {
         FlowState s = ended.state();
         String failure = ended.failure();
         if (failure != null) {
-            Redirect rejected = reported(s, () -> host.reject(req, "access_denied", failure));
+            Completion rejected = reported(s, () -> host.reject(req, "access_denied", failure));
             emit(s, List.of(TraceEvent.of("end", null, failure)));
             return rejected;
         }
         Env.Auth auth = s.env().auth();
-        Redirect accepted = reported(s, () -> switch (s.kind()) {
+        Completion accepted = reported(s, () -> switch (s.kind()) {
             // succeeds() refused any login without a subject and a verified credential
             case LOGIN ->
                 host.accept(
@@ -866,7 +969,18 @@ public final class Engine {
                                 auth.amr(),
                                 Objects.requireNonNull(auth.acr()),
                                 Map.of("flowId", s.flowId(), "versionHash", s.versionHash())));
-            case CONSENT -> host.accept(req, consented(req, s.env().user(), Objects.requireNonNull(auth.subject())));
+            // Only what the login that proved this subject learned, as the consent started: user.*
+            // filled inside the consent entry may describe someone else (O16), and the login row
+            // may have expired since
+            case CONSENT -> {
+                String subject = Objects.requireNonNull(auth.subject());
+                // A consent saved before FlowState.proven existed has none; its login, if still
+                // stored and proven for this subject, stands in (only for one flow TTL after deploy)
+                Map<String, Object> proven = s.proven().isEmpty()
+                        ? linkedLogin(req, subject).map(l -> l.env().user()).orElse(Map.of())
+                        : s.proven();
+                yield host.accept(req, consented(req, proven, subject));
+            }
             case LOGOUT -> throw new IllegalStateException("logout runs no flow entry");
         });
         emit(
@@ -879,7 +993,7 @@ public final class Engine {
     }
 
     /** Calls the host; if it throws, a preview's trace ends with {@code host_error} before the error propagates. */
-    private Redirect reported(FlowState state, Supplier<Redirect> call) {
+    private Completion reported(FlowState state, Supplier<Completion> call) {
         try {
             return call.get();
         } catch (RuntimeException e) {
@@ -890,58 +1004,32 @@ public final class Engine {
 
     /** Hands a preview flow's events to {@link Previews}; other flows are not traced. */
     private void emit(FlowState state, List<TraceEvent> events) {
-        if (!Previews.isPreview(state.env().client())) return;
+        if (!state.preview()) return;
         events.forEach(e -> previews.trace(state, e));
     }
 
     /** The finished login whose flow id the host hands back in the consent request's context, if this subject's. */
     private Optional<FlowState> linkedLogin(HostRequest req, String subject) {
-        if (!(req.params().get("context") instanceof Map<?, ?> context
-                && context.get("flowId") instanceof String flowId)) {
-            return Optional.empty();
-        }
+        if (!(req.params().context().get("flowId") instanceof String flowId)) return Optional.empty();
         return store.load(flowId)
+                // Same tenant and same preview flag as this request: the host decides both, and a
+                // relayed context must not carry a consent into another tenant's or a draft's login
                 .filter(s -> s.kind() == HostKind.LOGIN
                         && s.awaiting() == null
+                        && s.tenantId().equals(req.tenantOrDefault())
+                        && s.preview() == req.preview()
                         && s.env().auth().subject() != null
                         && s.env().auth().subject().equals(subject));
     }
 
     /**
-     * Grants every requested scope and audience. ID token claims come from {@code user.*}, which
-     * {@code identity.resolve} filled during login: {@code email} and {@code email_verified} with
-     * scope email, {@code name} with scope profile. A preview client also gets {@code
-     * faye_flow_id}, the login's flow id, so it can find the run's trace.
+     * Grants every requested scope and audience, with what the login that proved {@code subject}
+     * learned about the person (empty when the host links no such login); the host decides which of
+     * it becomes claims.
      */
     private static Consented consented(HostRequest req, Map<String, Object> user, String subject) {
-        List<String> scopes = strings(req.params().get("requested_scope"));
-        Map<String, Object> claims = new LinkedHashMap<>();
-        if (scopes.contains("email")) {
-            if (user.get("email") != null) claims.put("email", user.get("email"));
-            if (user.get("email_verified") != null) claims.put("email_verified", user.get("email_verified"));
-        }
-        if (scopes.contains("profile") && user.get("name") != null) claims.put("name", user.get("name"));
-        if (Previews.isPreview(req.client())
-                && req.params().get("context") instanceof Map<?, ?> context
-                && context.get("flowId") instanceof String flowId) {
-            claims.put("faye_flow_id", flowId);
-        }
-        return new Consented(subject, scopes, strings(req.params().get("requested_access_token_audience")), claims);
-    }
-
-    private static List<String> strings(@Nullable Object list) {
-        return list instanceof List<?> l
-                ? l.stream()
-                        .filter(String.class::isInstance)
-                        .map(String.class::cast)
-                        .toList()
-                : List.of();
-    }
-
-    private static String tenantOf(HostRequest req) {
-        return req.client().get("metadata") instanceof Map<?, ?> meta && meta.get("tenant") instanceof String t
-                ? t
-                : DEFAULT_TENANT;
+        return new Consented(
+                subject, req.params().requestedScope(), req.params().requestedAccessTokenAudience(), user);
     }
 
     /** The binder as the flow state keeps it: hex SHA-256, so a stolen database does not hold binders. */

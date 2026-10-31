@@ -1,6 +1,6 @@
 # Engine
 
-How the reference engine (`server/faye-engine`) implements the Core IR. What it must do is [ir-spec.md](ir-spec.md); this document is how. The engine depends only on contracts: the IR (`faye-ir`), the handler catalog (`HandlerRegistry`), the screen catalog (`ScreenRegistry`) and `FlowHost` ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md)).
+How the reference engine (`server/faye-engine`) implements the Core IR. What it must do is [ir-spec.md](ir-spec.md); this document is how. The engine depends only on contracts: the IR (`faye-ir`), the handler catalog (`HandlerRegistry`), the screen catalog (`ScreenRegistry` with its `CredentialIssuer`s) and `FlowHost` ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md), [ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)). It names no authorization server and renders nothing; `BoundaryTest` fails the build if `faye-ir`, `faye-dsl`, `faye-engine` or `faye-check` mention Hydra, a screen's protocol fields, or depend on a module around them.
 
 ## Model
 
@@ -37,11 +37,11 @@ FlowState {
 
 A request:
 
-1. `start` asks the host for the challenge, picks the version (the tenant's current one, a preview's draft, or for a consent the login's), checks it is runnable here (L1, `Verifier`), selects the entry, and runs.
+1. `start` asks the host for the request (`FlowHost.load`), picks the version (the tenant's current one, a preview's draft, or for a consent the login's), checks it is runnable here (L1, `Verifier`), selects the entry, and runs.
 2. `view` and `submit` load the state, refuse a binder that does not match as an unknown flow and a version that can no longer run here, then check the nonce and the answer.
 3. A run pops frames and evaluates one step at a time. `call` and `hook` run synchronously. A `screen` (or a `choose` that needs the person) yields: the state is saved and the screen returned.
 4. The run's state is saved with a compare and set on the revision. If the entry succeeded, its staged writes are applied, then the host is told. A submit that loses the compare and set applies nothing and is answered with the screen the winner led to, or `flow_finished`.
-5. `succeed` and `fail` end the entry and hand the outcome to the `FlowHost`.
+5. `succeed` and `fail` end the entry and hand the outcome to the `FlowHost`, whose `Completion` (`Redirect` or `Handoff`) is the answer.
 
 ## Handlers
 
@@ -58,7 +58,42 @@ interface Handler {
 
 ## Screens
 
-`ScreenSpec` gives a screen type its options, the server data it issues (`prepare`), its payload (`render`), the answers it accepts, and any later screen an answer to it also answers (`hosted`, `answeredBy`). `ScreenRegistry.builtIn()` holds the screens of `schema/screen.schema.json` (`ScreenRegistryTest`); the engine waits on `method_picker` for a `choose`.
+`ScreenSpec` gives a screen type its options, its own server data (`prepare`), its payload (`render`), the answers it accepts, and any later screen an answer to it also answers (`hosted`, `answeredBy`). A spec that shows credential material declares it (`issued()`), and the `CredentialIssuer` registered for it, from the module whose handlers verify the answer, issues the material (`issue`) and its public half (`present`). The engine merges the spec's and the issuer's parts; issued material is kept only as the waiting screen's data and reaches handlers only as `Submission.context()`, never `Env`, hooks or traces. An issuer that throws fails the step with `issuer_error`.
+
+The engine knows no screen but `method_picker`, which a `choose` waits on. The screens of `schema/screen.schema.json` live in `faye-screens` (`BuiltinScreen.registry(issuers)`, `BuiltinScreenTest`); `faye-identity` supplies their issuers (`IdentityIssuers`). `ScreenRegistry` refuses at construction a declaring screen without an issuer and an issuer for a screen that declares none.
+
+## Embedding
+
+The engine is a library. An embedder assembles it from its SPIs and calls three methods; `EmbeddingTest` does exactly this with no module but `faye-engine`.
+
+```java
+Engine engine = Engine.builder()
+        .versions(versions)            // FlowVersions: published versions (Publisher writes them)
+        .handlers(handlers)            // HandlerRegistry: the only code that verifies, binds or writes
+        .screens(screens)              // ScreenRegistry: the screens the embedder's UI renders, with issuers
+        .store(store)                  // FlowStore: suspended flows, compare and set on the revision
+        .host(host)                    // FlowHost: the system flows run for
+        .tenants(tenants)              // optional: TenantPolicies, default none
+        .hooks(hooks)                  // optional: HookRunner, default none
+        .previews(previews)            // optional: Previews, default off
+        .build();
+```
+
+Registration is explicit: nothing is discovered from the classpath, so the trusted set of handlers, screens and issuers is the list the embedder writes, validated when each registry is built.
+
+| Call | Returns | Notes |
+|---|---|---|
+| `start(kind, ref, request, binder)` | `ScreenView`, or the host's `Completion` if the flow ended at once (a remembered session, a rejection) | `ref` is the host's id for the request, handed to `FlowHost.load`. `request` is read as `request.*`. `binder` is a secret the caller creates (`Engine.newBinder()`), gives the browser out of reach of the page's scripts (an HttpOnly cookie), and presents on every later call; the state keeps only its hash. |
+| `view(flowId, binder)` | `ScreenView` | The screen the flow waits on. |
+| `submit(flowId, binder, nonce, submission)` | `ScreenView`, or the host's `Completion` | `nonce` is the `ScreenView`'s; a submission is the person's answer only (`Submission(payload)`), the engine adds the issued context. |
+
+`FlowException` codes: `flow_not_found` (unknown flow, wrong binder, expired, or a version that can no longer run here: start again), `flow_finished` (the flow already ended), `stale_nonce` (an answer to a screen no longer shown: reload the view), `conflict` (a concurrent answer is being saved: reload), `invalid_submission` (malformed answer: the person's input). The first two are fatal for the flow; the others leave it unchanged. Any other exception (a host or store that throws) is a server error; nothing the losing request did lasts.
+
+A host completes a request one of two ways. A redirecting host (Hydra) returns `Redirect(url)`; the app answers the Login UI `{redirectTo}`. A host that started the flow by API returns `Handoff(result)`, for example a one time code its system exchanges server to server for the `Authenticated` outcome; the app answers `{result}`, and the Login UI, opened by the embedding page in a popup, posts it to that page's origin (`FAYE_EMBED_ORIGIN`, exactly one origin; unset, nothing is posted). The sign in screens refuse to be framed.
+
+The host also decides, per request, the tenant whose flow runs and whether the client is a preview client (`HostRequest.tenant`, `preview`); the engine never reads either from `client.*`. A consent's outcome carries what the login learned about the person (`Consented.user`); turning it into claims or tokens is the host's job, outside the engine. `accept` and `reject` are called only by the request whose saved state finished the flow, after its writes are applied.
+
+`HostParams` is the host contract: the closed set of fields flows read as `host.*` (ir-spec.md, Environment). A host maps its protocol into it and cannot add a key.
 
 ## Versioning and pinning
 
@@ -70,7 +105,7 @@ interface Handler {
 
 ## Flow state store
 
-SQLite ([ADR 0017](../adr/0017-one-sqlite-database.md)), table `faye_flow`, with an expiry set at creation equal to the challenge lifetime, and a revision counter for the compare and set. An in memory store implements the same interface for tests.
+SQLite ([ADR 0017](../adr/0017-one-sqlite-database.md)), table `faye_flow`, with an expiry set at creation equal to the host request's lifetime, and a revision counter for the compare and set. An in memory store implements the same interface for tests.
 
 ## Conformance suite
 

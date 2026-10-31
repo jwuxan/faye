@@ -21,7 +21,7 @@ class FlowCompilerFuzzTest {
         long lines = yaml.lines().count() + 1;
         Flow flow;
         try {
-            flow = FlowCompiler.compile("f.yaml", yaml);
+            flow = FlowCompiler.compile("f.yaml", yaml, FlowCompilerTest.DSL);
         } catch (DslException refused) {
             assertThat(refused.diagnostics()).as("a refusal says why").isNotEmpty();
             for (Diagnostic d : refused.diagnostics()) {
@@ -34,7 +34,7 @@ class FlowCompilerFuzzTest {
         }
         String canonical = IrCodec.canonicalJson(flow);
         assertThat(IrCodec.canonicalJson(IrCodec.readFlow(canonical))).isEqualTo(canonical);
-        assertThat(IrCodec.canonicalJson(FlowCompiler.compile("f.yaml", yaml)))
+        assertThat(IrCodec.canonicalJson(FlowCompiler.compile("f.yaml", yaml, FlowCompilerTest.DSL)))
                 .as("deterministic")
                 .isEqualTo(canonical);
     }

@@ -20,7 +20,6 @@ import com.webauthn4j.data.client.challenge.DefaultChallenge;
 import com.webauthn4j.test.EmulatorUtil;
 import com.webauthn4j.test.authenticator.webauthn.WebAuthnAuthenticatorAdaptor;
 import com.webauthn4j.test.client.ClientPlatform;
-import faye.engine.Base32;
 import faye.engine.Engine;
 import faye.engine.EngineResponse;
 import faye.engine.FlowState;
@@ -29,7 +28,7 @@ import faye.engine.FlowVersions;
 import faye.engine.HandlerRegistry;
 import faye.engine.HookRunner;
 import faye.engine.HostKind;
-import faye.engine.HostRequest;
+import faye.engine.HostParams;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.Invocation;
@@ -41,6 +40,7 @@ import faye.engine.TenantPolicies;
 import faye.engine.TraceEvent;
 import faye.host.mock.MockFlowHost;
 import faye.ir.IrCodec;
+import faye.screens.BuiltinScreen;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -97,11 +97,13 @@ class IdentityFlowTest {
                         IrCodec.readFlow(Files.readString(ROOT.resolve("conformance/flows/passkey-totp.json")))));
         var settings = new WebAuthnSettings("localhost", Set.of(ORIGIN));
         var clock = Clock.fixed(NOW, ZoneOffset.UTC);
-        engine = new Engine(
-                versions,
-                new HandlerRegistry(IdentityHandlers.create(users, settings, clock)),
-                new InMemoryFlowStore(),
-                host);
+        engine = Engine.builder()
+                .versions(versions)
+                .handlers(new HandlerRegistry(IdentityHandlers.create(users, settings, clock)))
+                .store(new InMemoryFlowStore())
+                .host(host)
+                .screens(BuiltinScreen.registry(IdentityIssuers.create()))
+                .build();
     }
 
     @Test
@@ -170,7 +172,7 @@ class IdentityFlowTest {
         assertThat(s.screen()).containsEntry("type", "otp_enroll");
         String secret = text(s.screen(), "secret");
         assertThat((String) s.screen().get("uri"))
-                .startsWith("otpauth://totp/Faye%3Abob%40example.com?secret=" + secret);
+                .startsWith("otpauth://totp/Sign%20in%3Abob%40example.com?secret=" + secret);
 
         // A wrong code keeps the same secret on the retried screen.
         s = screen(submit(s, Map.of("code", "000000")));
@@ -208,13 +210,43 @@ class IdentityFlowTest {
                 .orElseThrow();
         var env = new faye.engine.Env(
                 Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), faye.engine.Env.Auth.NONE);
-        var unknown = (faye.engine.Outcome.Ok) resolve.invoke(
-                new Invocation(env, new Submission(Map.of("identifier", "nobody@example.com")), Map.of(), "f_test"));
-        var bob = (faye.engine.Outcome.Ok) resolve.invoke(
-                new Invocation(env, new Submission(Map.of("identifier", "bob@example.com")), Map.of(), "f_test"));
+        var unknown = (faye.engine.Outcome.Ok) resolve.invoke(new Invocation(
+                env, new Submission(Map.of("identifier", "nobody@example.com")), Map.of(), "f_test", "default", false));
+        var bob = (faye.engine.Outcome.Ok) resolve.invoke(new Invocation(
+                env, new Submission(Map.of("identifier", "bob@example.com")), Map.of(), "f_test", "default", false));
         for (String key : List.of("has_password", "has_totp", "has_passkey", "mfa_required", "identified_by")) {
             assertThat(unknown.user().get(key)).as(key).isEqualTo(bob.user().get(key));
         }
+    }
+
+    @Test
+    void aStepUpIdentifiesOnlyTheSubjectTheHostKnows() {
+        var resolve = new HandlerRegistry(
+                        IdentityHandlers.create(users, new WebAuthnSettings("localhost", Set.of()), Clock.systemUTC()))
+                .find("identity.resolve")
+                .orElseThrow();
+        // bob holds a session and steps up; typing alice's identifier must not bring her attributes
+        var bob = new faye.engine.Env(
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                new faye.engine.Env.Auth("user-bob", List.of()));
+        assertThat(resolve.invoke(new Invocation(
+                        bob,
+                        new Submission(Map.of("identifier", "alice@example.com")),
+                        Map.of(),
+                        "f",
+                        "default",
+                        false)))
+                .isEqualTo(new faye.engine.Outcome.Fail("wrong_account"));
+        assertThat(resolve.invoke(new Invocation(
+                        bob, new Submission(Map.of("identifier", "bob@example.com")), Map.of(), "f", "default", false)))
+                .isInstanceOfSatisfying(
+                        faye.engine.Outcome.Ok.class,
+                        ok -> assertThat(ok.user()).containsEntry("email", "bob@example.com"));
     }
 
     @Test
@@ -242,7 +274,8 @@ class IdentityFlowTest {
                     : Map.of("client_id", "app", "metadata", Map.of("tenant", c.getKey()));
             var env = new faye.engine.Env(
                     Map.of(), client, Map.of(), Map.of(), Map.of(), Map.of(), faye.engine.Env.Auth.NONE);
-            var resolved = (faye.engine.Outcome.Ok) resolve.invoke(new Invocation(env, input, Map.of(), "f_test"));
+            var resolved = (faye.engine.Outcome.Ok) resolve.invoke(new Invocation(
+                    env, input, Map.of(), "f_test", c.getKey().isEmpty() ? "default" : c.getKey(), false));
             assertThat(resolved.user().get("exists")).as(c.getKey()).isEqualTo(c.getValue());
         }
 
@@ -289,20 +322,22 @@ class IdentityFlowTest {
             @Override
             public void trace(FlowState state, TraceEvent event) {}
         };
-        engine = new Engine(
-                versions,
-                new HandlerRegistry(IdentityHandlers.create(
-                        users, new WebAuthnSettings("localhost", Set.of(ORIGIN)), Clock.fixed(NOW, ZoneOffset.UTC))),
-                new InMemoryFlowStore(),
-                host,
-                TenantPolicies.of(Map.of()),
-                HookRunner.NONE,
-                previews);
-        host.register(new HostRequest(
+        engine = Engine.builder()
+                .versions(versions)
+                .handlers(new HandlerRegistry(IdentityHandlers.create(
+                        users, new WebAuthnSettings("localhost", Set.of(ORIGIN)), Clock.fixed(NOW, ZoneOffset.UTC))))
+                .store(new InMemoryFlowStore())
+                .host(host)
+                .tenants(TenantPolicies.of(Map.of()))
+                .hooks(HookRunner.NONE)
+                .previews(previews)
+                .screens(BuiltinScreen.registry(IdentityIssuers.create()))
+                .build();
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN,
                 "preview",
                 Map.of("client_id", "preview-default", "metadata", Map.of("preview", true)),
-                Map.of()));
+                HostParams.fromMap(Map.of())));
         s = screen(engine.start(HostKind.LOGIN, "preview", Map.of(), "binder"));
         s = screen(submit(s, Map.of("identifier", "tester@preview.faye.test")));
         assertThat(submit(s, Map.of("password", "right"))).isInstanceOf(Redirect.class);
@@ -321,7 +356,8 @@ class IdentityFlowTest {
 
     ScreenView start(Map<String, Object> hydra) {
         String challenge = "c" + challenges++;
-        host.register(new HostRequest(HostKind.LOGIN, challenge, Map.of("client_id", "demo"), hydra));
+        host.register(MockFlowHost.request(
+                HostKind.LOGIN, challenge, Map.of("client_id", "demo"), HostParams.fromMap(hydra)));
         return screen(engine.start(HostKind.LOGIN, challenge, Map.of(), "binder"));
     }
 

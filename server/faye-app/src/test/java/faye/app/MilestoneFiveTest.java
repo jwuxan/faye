@@ -15,7 +15,7 @@ import faye.engine.FlowStore;
 import faye.engine.FlowVersions;
 import faye.engine.HookStore;
 import faye.engine.HostKind;
-import faye.engine.HostRequest;
+import faye.engine.HostParams;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.InMemoryHookStore;
@@ -327,7 +327,7 @@ class MilestoneFiveTest {
         // The flow that started first finishes with one factor, under the settings it started with
         submit(before, Map.of("password", MilestoneThreeTest.PASSWORD));
         assertThat(host.accepted().stream()
-                        .filter(a -> a.request().challenge().equals("m5-policy-1"))
+                        .filter(a -> a.request().ref().equals("m5-policy-1"))
                         .findFirst()
                         .orElseThrow()
                         .outcome()
@@ -345,11 +345,11 @@ class MilestoneFiveTest {
     }
 
     JsonNode login(String challenge, String tenant) throws Exception {
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN,
                 challenge,
                 Map.of("client_id", "demo", "metadata", Map.of("tenant", tenant)),
-                Map.of()));
+                HostParams.fromMap(Map.of())));
         String location = mvc.perform(get("/login").param("login_challenge", challenge))
                 .andExpect(status().isFound())
                 .andReturn()

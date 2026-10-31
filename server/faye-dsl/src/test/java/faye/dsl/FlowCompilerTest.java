@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import faye.ir.Call;
 import faye.ir.Choose;
+import faye.ir.Flow;
 import faye.ir.IrCodec;
 import faye.ir.Predicate;
 import faye.ir.Screen;
@@ -17,14 +18,24 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 class FlowCompilerTest {
+
+    /** What the app tells the compiler about consent steps, as its catalogs say (ADR 0026). */
+    static final FlowCompiler.Options DSL =
+            new FlowCompiler.Options(Map.of(), Set.of("consent"), Set.of("consent.record"));
+
+    static Flow compile(String origin, String yaml) {
+        return FlowCompiler.compile(origin, yaml, DSL);
+    }
 
     static final Path ROOT = Path.of(System.getProperty("faye.repoRoot"));
     static final Path TENANT_FLOWS = ROOT.resolve("server/faye-app/src/main/resources/flows");
@@ -47,13 +58,13 @@ class FlowCompilerTest {
     @Test
     void compilesToTheConformanceIr() throws Exception {
         var expected = IrCodec.readFlow(Files.readString(ROOT.resolve("conformance/flows/default-login.json")));
-        assertThat(IrCodec.canonicalJson(FlowCompiler.compile("default-login.yaml", DEFAULT_LOGIN)))
+        assertThat(IrCodec.canonicalJson(compile("default-login.yaml", DEFAULT_LOGIN)))
                 .isEqualTo(IrCodec.canonicalJson(expected));
     }
 
     @Test
     void recordsSourcePositions() {
-        var flow = FlowCompiler.compile("default-login.yaml", DEFAULT_LOGIN);
+        var flow = compile("default-login.yaml", DEFAULT_LOGIN);
         var login = (Seq) Objects.requireNonNull(flow.entries().get("login")).body();
         var credential = (Step) login.children().get(1);
         var body = (Seq) credential.body();
@@ -67,7 +78,7 @@ class FlowCompilerTest {
     /** ADR 0026: the step that records consent, and every step after it, is the consent entry. */
     @Test
     void stepsFromConsentOnLowerToTheConsentEntry() {
-        var flow = FlowCompiler.compile("f.yaml", """
+        var flow = compile("f.yaml", """
                 flow: f
                 version: 1
                 login:
@@ -94,7 +105,7 @@ class FlowCompilerTest {
     /** The consent screen alone starts consent too; a literal that only says consent.record does not. */
     @Test
     void theConsentScreenStartsConsentAndLiteralsDoNot() {
-        var flow = FlowCompiler.compile("f.yaml", """
+        var flow = compile("f.yaml", """
                 flow: f
                 version: 1
                 login:
@@ -110,13 +121,13 @@ class FlowCompilerTest {
     /** A flow whose steps never record consent has no consent entry. */
     @Test
     void noConsentStepNoConsentEntry() {
-        var flow = FlowCompiler.compile("f.yaml", DEFAULT_LOGIN);
+        var flow = compile("f.yaml", DEFAULT_LOGIN);
         assertThat(flow.entries()).containsOnlyKeys("login");
     }
 
     @Test
     void singleKeyStepCompilesWithoutSeq() {
-        var flow = FlowCompiler.compile("f.yaml", """
+        var flow = compile("f.yaml", """
                 flow: f
                 version: 2
                 login:
@@ -130,7 +141,7 @@ class FlowCompilerTest {
 
     @Test
     void anOptionsIfIsItsGuardAndAStepsIfIsAWhen() {
-        var flow = FlowCompiler.compile("f.yaml", """
+        var flow = compile("f.yaml", """
                 flow: f
                 version: 1
                 login:
@@ -153,8 +164,10 @@ class FlowCompilerTest {
     }
 
     @Test
-    void hydraPathsLowerToHostPaths() {
-        var flow = FlowCompiler.compile("f.yaml", """
+    void aliasedNamespacesLowerToTheirNamespace() {
+        var flow = FlowCompiler.compileWithHooks(
+                        "f.yaml",
+                        """
                 flow: f
                 version: 1
                 login:
@@ -163,15 +176,31 @@ class FlowCompilerTest {
                       if: { or: [hydra.skip, { has: [hydra.acr_values, faye:2fa] }, { exists: hydra.login_hint },
                                  { eq: [user.note, hydra.literal] }] }
                       use: identity.resolve
-                """);
+                """,
+                        name -> Optional.empty(),
+                        new FlowCompiler.Options(Map.of("hydra", "host"), Set.of(), Set.of()))
+                .flow();
         assertThat(IrCodec.canonicalJson(flow))
                 .contains("{\"or\":[\"host.skip\",{\"has\":[\"host.acr_values\",\"faye:2fa\"]},"
                         + "{\"exists\":\"host.login_hint\"},{\"eq\":[\"user.note\",\"hydra.literal\"]}]}");
     }
 
     @Test
+    void theCompilerKnowsNoHostSpelling() {
+        assertThatThrownBy(() -> compile("f.yaml", """
+                        flow: f
+                        version: 1
+                        login:
+                          steps:
+                            a:
+                              if: hydra.skip
+                              use: identity.resolve
+                        """)).isInstanceOf(DslException.class);
+    }
+
+    @Test
     void reportsYamlSyntaxErrors() {
-        assertThatThrownBy(() -> FlowCompiler.compile("broken.yaml", "flow: [unclosed\n"))
+        assertThatThrownBy(() -> compile("broken.yaml", "flow: [unclosed\n"))
                 .isInstanceOfSatisfying(
                         DslException.class,
                         e -> assertThat(e.diagnostics().get(0).source().origin())
@@ -181,7 +210,7 @@ class FlowCompilerTest {
     @Test
     void refusesYamlPastItsLimitsAsADiagnostic() {
         String deep = "a: ".repeat(200) + "b\n";
-        assertThatThrownBy(() -> FlowCompiler.compile("deep.yaml", deep)).isInstanceOf(DslException.class);
+        assertThatThrownBy(() -> compile("deep.yaml", deep)).isInstanceOf(DslException.class);
     }
 
     // ---- goldens: each shipped tenant flow lowers to the IR checked in beside this test ----
@@ -200,13 +229,17 @@ class FlowCompilerTest {
     @MethodSource("tenantFlows")
     void tenantFlowLowersToItsGolden(Path yaml) throws IOException {
         String name = yaml.getFileName().toString().replace(".yaml", "");
-        var compiled = FlowCompiler.compileWithHooks(yaml.getFileName().toString(), Files.readString(yaml), file -> {
-            try {
-                return Optional.of(Files.readString(TENANT_FLOWS.resolve(file)));
-            } catch (IOException e) {
-                return Optional.empty();
-            }
-        });
+        var compiled = FlowCompiler.compileWithHooks(
+                yaml.getFileName().toString(),
+                Files.readString(yaml),
+                file -> {
+                    try {
+                        return Optional.of(Files.readString(TENANT_FLOWS.resolve(file)));
+                    } catch (IOException e) {
+                        return Optional.empty();
+                    }
+                },
+                DSL);
         String actual = IrCodec.display(compiled.flow()) + "\n";
         Path golden = RESOURCES.resolve("golden/" + name + ".ir");
         if ("1".equals(System.getenv("FAYE_REGENERATE"))) {
@@ -239,7 +272,7 @@ class FlowCompilerTest {
                 .filter(l -> l.startsWith("# expect: "))
                 .forEach(l -> expected.add(l.substring("# expect: ".length())));
         String origin = file.getFileName().toString();
-        assertThatThrownBy(() -> FlowCompiler.compile(origin, yaml))
+        assertThatThrownBy(() -> compile(origin, yaml))
                 .isInstanceOfSatisfying(
                         DslException.class,
                         e -> assertThat(e.diagnostics())

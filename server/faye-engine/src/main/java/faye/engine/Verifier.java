@@ -61,7 +61,16 @@ public final class Verifier {
             case Step s -> walk(s.body(), handlers, screens, out);
             case When w -> walk(w.body(), handlers, screens, out);
             case Retry r -> walk(r.body(), handlers, screens, out);
-            case Choose c -> c.options().forEach(o -> walk(o.body(), handlers, screens, out));
+            case Choose c -> {
+                if (c.options().size() > 1
+                        && screens.find(ScreenRegistry.METHOD_PICKER).isEmpty()) {
+                    out.add(new Problem(
+                            c.source(),
+                            "a choose waits on screen '" + ScreenRegistry.METHOD_PICKER
+                                    + "', which is not registered"));
+                }
+                c.options().forEach(o -> walk(o.body(), handlers, screens, out));
+            }
             case Screen s -> {
                 var spec = screens.find(s.type());
                 if (spec.isEmpty()) {

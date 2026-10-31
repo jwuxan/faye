@@ -66,14 +66,35 @@ A flow reads its environment through predicate paths `namespace.key...`. A missi
 | Namespace | Holds | Written by |
 |---|---|---|
 | `request` | IP, user agent, locale of the request that started the flow | the engine, at start (a preview scenario may override it) |
-| `client` | the client's id and metadata (`first_party`, `tenant`, `preview`) | the host, at start |
-| `host` | the authorization request as the host relays it: `subject`, `skip`, `acr_values`, `requested_scope`, `login_hint`, `context` | the host, at start |
-| `tenant` | the tenant's settings when the flow started: `mfa_required` | the engine, at start |
+| `client` | display data of the client: `client_id`, `client_name`, `first_party`, `metadata`; the engine decides nothing from it (the host decides the tenant and the preview flag) | the host, at start |
+| `host` | the request as the host relays it, exactly the fields of the host contract below | the host, at start |
+| `tenant` | the tenant's settings when the flow started: `mfa_required`, and `name`, its display name, when it has one | the engine, at start |
 | `user` | what handlers learned about the person | handlers, by merging fields on success |
 | `vars` | the flow's own values | `set`, and hooks in steps |
 | `auth` | `subject`, `amr`, `acr` | the engine only, from credentials that verified |
 
-`user` merges shallowly and keeps its fields across retry attempts. Pinned by `login-hint`, `tenant-mfa-predicate`, `picker`, `hook-set-cannot-write-auth`.
+`user` merges shallowly and keeps its fields across retry attempts, except that a handler that identifies the person (`identifies`) replaces it: it names a new person, and nothing learned about an earlier one may stay (O16, `identify-replaces-user`). Pinned by `login-hint`, `tenant-mfa-predicate`, `picker`, `hook-set-cannot-write-auth`.
+
+### Host contract
+
+`host.*` is closed ([ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)): a host maps its protocol into these fields (`HostParams`) and cannot add one, so a flow runs unchanged on any host. The checker refuses a predicate path `host.<x>` for any other `<x>`, and any path below a field other than `context`, at publish and preview; a stored version that reads one still loads, and reads null.
+
+| Field | Type | Means | Supplied by |
+|---|---|---|---|
+| `subject` | string, absent when none | who the host already knows: a remembered session (login with `skip`), a step up, the subject of a consent | redirecting authorization servers; an embedding host for a step up |
+| `skip` | boolean | the host remembers this subject (login) or this grant (consent) | redirecting authorization servers; false otherwise |
+| `acr_values` | list of strings | assurance the client asked for, most preferred first | any host that relays OIDC `acr_values`, else empty |
+| `requested_scope` | list of strings | scopes the client asks for; the consent screen lists them | OAuth2 hosts, else empty |
+| `requested_access_token_audience` | list of strings | audiences the client asks for | OAuth2 hosts, else empty |
+| `login_hint` | string, absent when none | who the client expects to sign in; prefills the identifier | any host |
+| `ui_locales` | list of strings | the person's preferred languages | any host, else empty |
+| `context` | object | the host's own data carried from one request to the next (a consent receives what the login's accept returned), readable as `host.context.<key>` | any host, else empty |
+
+Lists, `skip` and `context` are always present; an empty list is falsy, like null. Every list element is split on whitespace (OIDC encodes these lists as space separated strings), so no value of the contract contains a space.
+
+### Client contract
+
+`client.*` is closed the same way: `client_id`, `client_name`, `first_party`, and the operator's own `metadata` about the client, readable below it as `client.metadata.<key>`. The checker refuses any other `client.<x>` at publish. The host fills these; the engine decides nothing from them (the host decides the tenant and the preview flag, `HostRequest.tenant` and `preview`).
 
 ## Evaluation
 
@@ -97,7 +118,7 @@ A flow runs from its entry's body as a small step machine over an explicit conti
 
 ### screen
 
-`(screen type options?)` makes the flow wait on a screen of that type from the screen catalog, prepared with the options; the answer is the input of the run that resumes it. If the run's input also answers this screen (a hosted answer, see Screen catalog), the flow does not wait and the screen completes at once. A screen reached again at the same path, by a retry, keeps the server data it issued before (an enrollment secret). Pinned by `password-retry`, `passkey-autofill`, `step-up-enroll`.
+`(screen type options?)` makes the flow wait on a screen of that type from the screen catalog, prepared with the options; the answer is the input of the run that resumes it. If the run's input also answers this screen (a hosted answer, see Screen catalog), the flow does not wait and the screen completes at once. A screen reached again at the same path, by a retry, keeps the server data it issued before (an enrollment secret). A screen whose credential issuer cannot issue does not wait: it fails with `issuer_error` like a failing call, so an enclosing `retry` reruns it and otherwise the entry fails. Pinned by `password-retry`, `passkey-autofill`, `step-up-enroll`, `issuer-fails-then-retries`, `issuer-fails-closed`.
 
 ### call
 
@@ -155,6 +176,8 @@ A failure is retryable or terminal.
 | a handler's code (`invalid_credentials`, `invalid_code`, ...) | `call` | retryable |
 | a hook's reason, or `hook_error` | `hook`, a choose's pick | retryable |
 | `no_method` | `choose` | retryable |
+| `issuer_error` | `screen`, when its credential issuer cannot issue | retryable |
+| `wrong_account` | `identity.resolve`, when a subject is bound (a step up) and the person names another account | retryable |
 | `subject_mismatch` | `call` | terminal |
 | a `fail` form's reason | `fail` | terminal |
 | a staged write's commit code, or `write_error` | after a successful end (Effects) | terminal |
@@ -188,10 +211,11 @@ A handler is built in and reviewed (charter principle 2). It declares (`HandlerM
 |---|---|
 | `amr` | what it may prove; nonempty makes it a credential |
 | `binds_subject` | on success it names the subject |
-| `identifies` | it fills `user` from what the person typed; credentials run only after one succeeded |
+| `identifies` | it fills `user` from what the person typed, replacing what `user` held; credentials run only after one succeeded. Once a subject is bound (a step up, or a credential earlier in the flow), it must refuse to identify anyone else (`identity.resolve`: `wrong_account`), so `user` only ever describes the subject (O16) |
 | `requires_subject` | it runs only once a credential verified the subject in this flow |
 | `effect` | `none`, `guard` or `write` (absent: `write`) |
 | `args` | the JSON Schema of the call's args (absent: none) |
+| `entries` | the kinds of entry it belongs in (absent: every kind); the checker refuses it in any other (`consent.record`: consent only) |
 
 A handler that binds a subject is a credential and must name a subject on success. It may prove part of its declared amr, never more.
 
@@ -203,7 +227,7 @@ A handler that binds a subject is a credential and must name a subject on succes
 
 ## Screen catalog
 
-A screen spec gives a screen type its options, the server data it issues, how it renders, which answers it accepts, and which later screen an answer to it also answers (a hosted answer: a passkey chosen from autofill on `identifier` also answers the next `passkey` screen that uses, not registers, a passkey, once). The engine uses the `method_picker` screen for `choose`. The types are those of `schema/screen.schema.json`. Pinned by `passkey-autofill`, `EngineTest.hostedPasskeyAnswersOnlyOneScreen`.
+A screen spec gives a screen type its options, the kinds of entry it belongs in, whether an instance acts for the signed in subject (the checker refuses it before a credential verified one), the server data it issues (credential material through the issuer registered for it, never readable by predicates or hooks), how it renders, which answers it accepts, and which later screen an answer to it also answers (a hosted answer: a passkey chosen from autofill on `identifier` also answers the next `passkey` screen that uses, not registers, a passkey, once). The engine uses the `method_picker` screen for `choose`; the verifier refuses a `choose` of several options when the catalog has none. The built in types are those of `schema/screen.schema.json`. A screen whose issuer fails fails the step with `issuer_error`. Pinned by `passkey-autofill`, `EngineTest.hostedPasskeyAnswersOnlyOneScreen`.
 
 ## Checks
 

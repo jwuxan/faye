@@ -29,13 +29,12 @@ public final class Publisher {
 
     /** @param tenants policy per tenant id; a tenant not listed gets {@link TenantPolicy#DEFAULT} */
     public Publisher(
-            FlowVersions versions, HookStore hooks, HandlerRegistry handlers, Map<String, TenantPolicy> tenants) {
-        this(versions, hooks, handlers, TenantPolicies.of(tenants));
-    }
-
-    /** @param tenants looked up on every check, so a version is checked under the current settings */
-    public Publisher(FlowVersions versions, HookStore hooks, HandlerRegistry handlers, TenantPolicies tenants) {
-        this(versions, hooks, handlers, ScreenRegistry.builtIn(), tenants);
+            FlowVersions versions,
+            HookStore hooks,
+            HandlerRegistry handlers,
+            ScreenRegistry screens,
+            Map<String, TenantPolicy> tenants) {
+        this(versions, hooks, handlers, screens, TenantPolicies.of(tenants));
     }
 
     /**
@@ -56,8 +55,12 @@ public final class Publisher {
     }
 
     /** For flows without hooks. */
-    public Publisher(FlowVersions versions, HandlerRegistry handlers, Map<String, TenantPolicy> tenants) {
-        this(versions, new InMemoryHookStore(), handlers, tenants);
+    public Publisher(
+            FlowVersions versions,
+            HandlerRegistry handlers,
+            ScreenRegistry screens,
+            Map<String, TenantPolicy> tenants) {
+        this(versions, new InMemoryHookStore(), handlers, screens, tenants);
     }
 
     public Report check(String tenantId, Flow flow) {

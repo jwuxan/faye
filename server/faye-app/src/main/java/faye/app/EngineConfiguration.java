@@ -3,17 +3,19 @@ package faye.app;
 import faye.check.CheckFailed;
 import faye.check.Publisher;
 import faye.check.Report;
+import faye.clients.ClientDirectory;
 import faye.dsl.FlowCompiler;
-import faye.engine.ClientDirectory;
 import faye.engine.Engine;
 import faye.engine.FlowHost;
 import faye.engine.FlowStore;
 import faye.engine.FlowVersion;
 import faye.engine.FlowVersions;
+import faye.engine.Handler;
 import faye.engine.HandlerRegistry;
 import faye.engine.HookRunner;
 import faye.engine.HookStore;
 import faye.engine.ScreenRegistry;
+import faye.engine.ScreenSpec;
 import faye.hooks.HttpEgress;
 import faye.hooks.QuickJsRuntime;
 import faye.hooks.SandboxedHooks;
@@ -21,11 +23,14 @@ import faye.host.hydra.HydraClientDirectory;
 import faye.host.hydra.HydraFlowHost;
 import faye.host.mock.MockFlowHost;
 import faye.identity.IdentityHandlers;
+import faye.identity.IdentityIssuers;
 import faye.identity.Passwords;
 import faye.identity.User;
 import faye.identity.UserStore;
 import faye.identity.WebAuthnSettings;
+import faye.ir.Entry;
 import faye.ir.Flow;
+import faye.screens.BuiltinScreen;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.URI;
@@ -36,6 +41,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -91,10 +98,11 @@ class EngineConfiguration {
             ScreenRegistry screens,
             FayeProperties props,
             Tenants tenants,
-            TenantConfigStore store) {
+            TenantConfigStore store,
+            FlowCompiler.Options dsl) {
         Publisher publisher = new Publisher(versions, hooks, handlers, screens, tenants);
         props.tenants().forEach((id, tenant) -> {
-            FlowCompiler.Compiled compiled = compile(tenant.flow(), id);
+            FlowCompiler.Compiled compiled = compile(tenant.flow(), id, dsl);
             Flow flow = compiled.flow();
             String hash = FlowVersion.of(flow).hash();
             if (!versions.history(id).contains(hash)) {
@@ -123,17 +131,40 @@ class EngineConfiguration {
         }
     }
 
+    /**
+     * What the compiler takes from this app, since it knows no host and no catalog: the namespace
+     * spelling tenant YAML may still use (this app's flows were written for Hydra, and say {@code
+     * hydra.} for {@code host.}; the alias comes from the host module), and the screens and handlers
+     * that belong in consent entries only, which start a flow's consent steps (ADR 0026).
+     */
+    @Bean
+    FlowCompiler.Options dslOptions(HandlerRegistry handlers, ScreenRegistry screens) {
+        Set<Entry.Kind> consentOnly = Set.of(Entry.Kind.CONSENT);
+        return new FlowCompiler.Options(
+                HydraFlowHost.DSL_PATH_ALIASES,
+                screens.all().stream()
+                        .filter(s -> s.entries().equals(consentOnly))
+                        .map(ScreenSpec::type)
+                        .collect(Collectors.toSet()),
+                handlers.all().stream()
+                        .filter(h -> h.meta().entries().equals(consentOnly))
+                        .map(Handler::name)
+                        .collect(Collectors.toSet()));
+    }
+
     /** Compiles a configured flow; a hook's {@code file:} is read from next to it. */
-    static FlowCompiler.Compiled compile(Resource resource, String tenant) {
+    static FlowCompiler.Compiled compile(Resource resource, String tenant, FlowCompiler.Options dsl) {
         return FlowCompiler.compileWithHooks(
                 Objects.requireNonNullElse(resource.getFilename(), tenant),
                 read(resource),
-                name -> sibling(resource, name));
+                name -> sibling(resource, name),
+                dsl);
     }
 
     /** Compiles a flow sent through the admin API; a hook's {@code file:} is read from next to the configured one. */
-    static FlowCompiler.Compiled compileDraft(Resource configured, String tenant, String yaml) {
-        return FlowCompiler.compileWithHooks(tenant + ".yaml", yaml, name -> sibling(configured, name));
+    static FlowCompiler.Compiled compileDraft(
+            Resource configured, String tenant, String yaml, FlowCompiler.Options dsl) {
+        return FlowCompiler.compileWithHooks(tenant + ".yaml", yaml, name -> sibling(configured, name), dsl);
     }
 
     /** A hook file next to a configured flow. */
@@ -194,8 +225,9 @@ class EngineConfiguration {
             HookStore hooks,
             Publisher publisher,
             Tenants tenants,
-            TraceStore traces) {
-        return new DraftPreviews(props, store, versions, hooks, publisher, tenants, traces);
+            TraceStore traces,
+            FlowCompiler.Options dsl) {
+        return new DraftPreviews(props, store, versions, hooks, publisher, tenants, traces, dsl);
     }
 
     @Bean
@@ -230,10 +262,13 @@ class EngineConfiguration {
         return new MockFlowHost("http://localhost/mock-callback", tenant);
     }
 
-    /** The screens of the screen protocol, which the Login UI renders. */
+    /**
+     * The screens of the screen protocol, which the Login UI renders, with the credential issuers of
+     * the identity module whose handlers verify what they issue.
+     */
     @Bean
     ScreenRegistry screens() {
-        return ScreenRegistry.builtIn();
+        return BuiltinScreen.registry(IdentityIssuers.create());
     }
 
     /** Starts once the publisher has published and checked every tenant's flow. */
@@ -248,6 +283,15 @@ class EngineConfiguration {
             HookRunner hooks,
             Tenants tenants,
             DraftPreviews previews) {
-        return new Engine(versions, handlers, store, host, tenants, hooks, previews, screens);
+        return Engine.builder()
+                .versions(versions)
+                .handlers(handlers)
+                .store(store)
+                .host(host)
+                .tenants(tenants)
+                .hooks(hooks)
+                .previews(previews)
+                .screens(screens)
+                .build();
     }
 }

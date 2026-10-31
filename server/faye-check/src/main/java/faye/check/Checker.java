@@ -14,6 +14,8 @@ import faye.engine.Env;
 import faye.engine.Handler;
 import faye.engine.HandlerMeta;
 import faye.engine.HandlerRegistry;
+import faye.engine.HostParams;
+import faye.engine.HostRequest;
 import faye.engine.Predicates;
 import faye.engine.ScreenRegistry;
 import faye.engine.TenantPolicy;
@@ -74,6 +76,14 @@ public final class Checker {
 
     private static final int MAX_EVENTS = 10_000;
 
+    private static final String HOST = "host.";
+    private static final String CLIENT = "client.";
+
+    private static String kinds(java.util.Collection<Entry.Kind> kinds) {
+        return String.join(
+                " or ", kinds.stream().map(Entry.Kind::wireName).sorted().toList());
+    }
+
     /** The events all paths being enumerated may hold between them. */
     private static final long MAX_LIVE_EVENTS = 1_000_000;
 
@@ -104,14 +114,8 @@ public final class Checker {
     }
 
     /** For flows without hooks: a flow with one fails the "hook pinned" check. */
-    public static Report check(Flow flow, HandlerRegistry handlers, TenantPolicy policy) {
-        return check(flow, handlers, policy, hash -> Optional.empty());
-    }
-
-    /** @param hooks the stored hook definition for a hash, if there is one */
-    public static Report check(
-            Flow flow, HandlerRegistry handlers, TenantPolicy policy, Function<String, Optional<HookDef>> hooks) {
-        return check(flow, handlers, ScreenRegistry.builtIn(), policy, hooks);
+    public static Report check(Flow flow, HandlerRegistry handlers, ScreenRegistry screens, TenantPolicy policy) {
+        return check(flow, handlers, screens, policy, hash -> Optional.empty());
     }
 
     /**
@@ -215,14 +219,16 @@ public final class Checker {
                         && !policy.screens().contains(screen.type())) {
                     error(screen.source(), "screen", "screen '" + screen.type() + "' is not enabled for this tenant");
                 }
-                // Consent shown during the sign in would ask before anyone is signed in, and leave the
-                // version without a consent entry, which grants consent with no screen (ADR 0026)
-                if (kind == Entry.Kind.AUTHENTICATE && "consent".equals(screen.type())) {
-                    error(
-                            screen.source(),
-                            "consent-screen",
-                            "the consent screen belongs on the consent challenge, not in the sign in");
-                }
+                // A screen in an entry it does not belong in: consent shown during the sign in would
+                // ask before anyone is signed in, and leave the version without a consent entry,
+                // which grants consent with no screen (ADR 0026). The catalog says which belong where.
+                screens.find(screen.type())
+                        .filter(spec -> !spec.entries().contains(kind))
+                        .ifPresent(spec -> error(
+                                screen.source(),
+                                "entry-screen",
+                                "screen '" + screen.type() + "' belongs in a " + kinds(spec.entries())
+                                        + " entry, not in this " + kind.wireName() + " entry"));
             }
             case Call call -> {
                 Optional<Handler> handler = handlers.find(call.handler());
@@ -231,11 +237,12 @@ public final class Checker {
                     error(call.source(), "handler", "handler '" + call.handler() + "' is not enabled for this tenant");
                 }
                 HandlerMeta meta = handler.get().meta();
-                if (kind == Entry.Kind.AUTHENTICATE && "consent.record".equals(call.handler())) {
+                if (!meta.belongsIn(kind)) {
                     error(
                             call.source(),
-                            "consent-call",
-                            "consent.record belongs on the consent challenge, not in the sign in");
+                            "entry-call",
+                            call.handler() + " belongs in a " + kinds(meta.entries()) + " entry, not in this "
+                                    + kind.wireName() + " entry");
                 }
                 if (kind == Entry.Kind.CONSENT && (meta.credential() || meta.bindsSubject())) {
                     error(
@@ -251,9 +258,15 @@ public final class Checker {
                 if (choose.options().size() == 1) {
                     warn(choose.source(), "a choose has a single option; use its body directly");
                 }
-                choose.options().forEach(o -> structure(o.body(), kind, stepIds));
+                for (Choose.Opt o : choose.options()) {
+                    if (o.guard() != null) hostPaths(o.guard(), o.guardSource());
+                    structure(o.body(), kind, stepIds);
+                }
             }
-            case When when -> structure(when.body(), kind, stepIds);
+            case When when -> {
+                hostPaths(when.test(), when.source());
+                structure(when.body(), kind, stepIds);
+            }
             case Retry retry -> {
                 if (!hasScreen(retry.body())) {
                     warn(retry.source(), "retry without a screen asks nothing new on each attempt");
@@ -263,6 +276,45 @@ public final class Checker {
             case SetVar set -> {}
             case Succeed succeed -> {}
             case Fail fail -> {}
+        }
+    }
+
+    /**
+     * Every {@code host.<x>} a predicate reads is a field of the host contract ({@link
+     * HostParams}): a flow cannot come to depend on a key only one host provides (ADR 0025). Held
+     * at publish and preview only; a stored version that reads another still loads, and reads null.
+     */
+    private void hostPaths(Predicate p, SourceRef source) {
+        switch (p) {
+            case Predicate.And a -> a.all().forEach(q -> hostPaths(q, source));
+            case Predicate.Or o -> o.any().forEach(q -> hostPaths(q, source));
+            case Predicate.Not n -> hostPaths(n.operand(), source);
+            case Predicate.Path a -> hostPath(a.path(), source);
+            case Predicate.Exists a -> hostPath(a.path(), source);
+            case Predicate.Compare a -> hostPath(a.path(), source);
+        }
+    }
+
+    private void hostPath(String path, SourceRef source) {
+        if (path.startsWith(CLIENT) && !HostRequest.clientReadable(path.substring(CLIENT.length()))) {
+            error(
+                    source,
+                    "client",
+                    "'" + path + "' is not part of the client contract; a flow reads only "
+                            + new java.util.TreeSet<>(HostRequest.CLIENT_FIELDS)
+                                    .stream().map(f -> CLIENT + f).toList()
+                            + ", and below " + CLIENT + HostRequest.CLIENT_FREE_FORM);
+            return;
+        }
+        if (!path.startsWith(HOST)) return;
+        if (!HostParams.readable(path.substring(HOST.length()))) {
+            error(
+                    source,
+                    "host",
+                    "'" + path + "' is not part of the host contract; a flow reads only "
+                            + new java.util.TreeSet<>(HostParams.FIELDS)
+                                    .stream().map(f -> HOST + f).toList()
+                            + ", and below " + HOST + HostParams.FREE_FORM);
         }
     }
 
@@ -416,13 +468,15 @@ public final class Checker {
                 // Registering a passkey is a credential write, as webauthn.register is: its screen
                 // needs the subject a credential verified, or the engine has no one to register
                 // for (found by EngineFuzzTest, ADR 0007, O12)
-                if (Boolean.TRUE.equals(screen.opts().get("register"))
+                if (screens.find(screen.type())
+                                .map(spec -> spec.requiresSubject(screen.opts()))
+                                .orElse(false)
                         && run.events().stream().noneMatch(e -> e instanceof Called c && c.verifiedSubject())) {
                     error(
                             screen.source(),
                             "subject",
-                            "screen '" + screen.type() + "' registers a passkey, which needs a subject a credential"
-                                    + " verified earlier in the flow, but shows first on a path");
+                            "screen '" + screen.type() + "' acts for the signed in subject, which needs a subject a"
+                                    + " credential verified earlier in the flow, but shows first on a path");
                 }
                 yield List.of(run);
             }

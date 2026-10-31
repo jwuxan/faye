@@ -6,6 +6,8 @@ dependencies {
     implementation(project(":faye-dsl"))
     implementation(project(":faye-check"))
     implementation(project(":faye-engine"))
+    implementation(project(":faye-screens"))
+    implementation(project(":faye-clients"))
     implementation(project(":faye-hooks"))
     implementation(project(":faye-identity"))
     implementation(project(":faye-host-hydra"))

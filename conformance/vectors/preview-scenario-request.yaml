@@ -1,7 +1,8 @@
 name: a preview flow sees the scenario's request overrides; a hook in a step is traced with its outcome
 ir: flows/password-only.json
 host:
-  client: { client_id: preview-risk, metadata: { preview: true } }
+  client: { client_id: preview-risk }
+  preview: true
 preview:
   draft: flows/risk-hook.json
   request: { ip: 203.0.113.7 }
