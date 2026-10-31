@@ -847,7 +847,9 @@ public final class Engine {
         }
         if (picker && !(awaiting.data().get("options") instanceof List<?>)) return "picker options";
         if (!picker && screens.find(awaiting.screen()).isEmpty()) return "screen " + awaiting.screen();
-        // A screen that acts for the signed in subject cannot wait without one, whatever its issuer
+        // A screen that acts for the signed in subject cannot wait without one, whatever its issuer.
+        // Whether a credential verified it first is the checker's rule at publish: the engine itself
+        // writes such a state for a step up, whose subject the host bound with nothing verified yet
         if (waiting instanceof Screen s
                 && state.env().auth().subject() == null
                 && screens.find(s.type())
@@ -970,7 +972,15 @@ public final class Engine {
             // Only what the login that proved this subject learned, as the consent started: user.*
             // filled inside the consent entry may describe someone else (O16), and the login row
             // may have expired since
-            case CONSENT -> host.accept(req, consented(req, s.proven(), Objects.requireNonNull(auth.subject())));
+            case CONSENT -> {
+                String subject = Objects.requireNonNull(auth.subject());
+                // A consent saved before FlowState.proven existed has none; its login, if still
+                // stored and proven for this subject, stands in (only for one flow TTL after deploy)
+                Map<String, Object> proven = s.proven().isEmpty()
+                        ? linkedLogin(req, subject).map(l -> l.env().user()).orElse(Map.of())
+                        : s.proven();
+                yield host.accept(req, consented(req, proven, subject));
+            }
             case LOGOUT -> throw new IllegalStateException("logout runs no flow entry");
         });
         emit(

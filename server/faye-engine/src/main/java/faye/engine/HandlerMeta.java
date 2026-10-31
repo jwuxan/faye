@@ -3,6 +3,7 @@ package faye.engine;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import faye.ir.Entry;
+import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Set;
 import java.util.TreeSet;
@@ -69,7 +70,7 @@ public record HandlerMeta(
         amr = Set.copyOf(amr);
         args = args.deepCopy();
         // Empty means every kind, normalized so equal declarations are equal records
-        entries = Set.copyOf(entries.isEmpty() ? java.util.EnumSet.allOf(Entry.Kind.class) : entries);
+        entries = Set.copyOf(entries.isEmpty() ? EnumSet.allOf(Entry.Kind.class) : entries);
     }
 
     /** Whether it may run in an entry of this kind. */

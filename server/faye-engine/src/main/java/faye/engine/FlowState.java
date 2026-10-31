@@ -63,7 +63,10 @@ public record FlowState(
         }
     }
 
-    /** Every component but the nullable ones is required, so a state read with one missing fails to read. */
+    /**
+     * Every component but the nullable ones and those that default ({@code preview}, {@code proven},
+     * absent in older states) is required, so a state read with one missing fails to read.
+     */
     public FlowState {
         Objects.requireNonNull(flowId);
         Objects.requireNonNull(tenantId);

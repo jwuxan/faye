@@ -173,6 +173,7 @@ A failure is retryable or terminal.
 | a hook's reason, or `hook_error` | `hook`, a choose's pick | retryable |
 | `no_method` | `choose` | retryable |
 | `issuer_error` | `screen`, when its credential issuer cannot issue | retryable |
+| `wrong_account` | `identity.resolve`, when a subject is bound (a step up) and the person names another account | retryable |
 | `subject_mismatch` | `call` | terminal |
 | a `fail` form's reason | `fail` | terminal |
 | a staged write's commit code, or `write_error` | after a successful end (Effects) | terminal |
@@ -206,7 +207,7 @@ A handler is built in and reviewed (charter principle 2). It declares (`HandlerM
 |---|---|
 | `amr` | what it may prove; nonempty makes it a credential |
 | `binds_subject` | on success it names the subject |
-| `identifies` | it fills `user` from what the person typed, replacing what `user` held; credentials run only after one succeeded |
+| `identifies` | it fills `user` from what the person typed, replacing what `user` held; credentials run only after one succeeded. Once a subject is bound (a step up, or a credential earlier in the flow), it must refuse to identify anyone else (`identity.resolve`: `wrong_account`), so `user` only ever describes the subject (O16) |
 | `requires_subject` | it runs only once a credential verified the subject in this flow |
 | `effect` | `none`, `guard` or `write` (absent: `write`) |
 | `args` | the JSON Schema of the call's args (absent: none) |

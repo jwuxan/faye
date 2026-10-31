@@ -3,7 +3,8 @@
 # from it. Keys:
 #   amr               amr values the handler may prove; empty if it is not a credential
 #   binds_subject     on success it names the subject, which must match any subject already bound
-#   identifies        it fills user.* from what the person typed; credentials run only after one succeeded
+#   identifies        it fills user.* (replacing it) from what the person typed; credentials run only after one
+#                     succeeded; once a subject is bound it must refuse anyone else (O16)
 #   requires_subject  it runs only once a credential verified the subject in this flow
 #   effect            none | guard (atomic check and mark, inline) | write (deferred until the state is saved)
 #   args              JSON Schema of the call's args; absent means no arguments

@@ -20,6 +20,7 @@ export function screenErrorMessage(code: string, attemptsLeft?: number): string 
   const base: Record<string, string> = {
     invalid_credentials: "That didn't work. Check what you entered and try again.",
     invalid_code: "That code didn't work. Enter the current code from your authenticator app.",
+    wrong_account: "That isn't the account you're signed in with. Enter your own email address.",
   };
   const message = base[code] ?? "Something went wrong. Try again.";
   return attemptsLeft === undefined ? message : `${message} ${attemptsLeft} ${attemptsLeft === 1 ? "attempt" : "attempts"} left.`;
