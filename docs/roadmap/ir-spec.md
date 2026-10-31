@@ -47,9 +47,9 @@ Every node is `[head, required positional arguments..., options?]`. A form's pos
 
 The engine runs the flow's only entry of the kind a challenge maps to (`EntrySelector`: login to `authenticate`, consent to `consent`). The checker refuses a flow with no `authenticate` entry or with two entries of one kind.
 
-**Starting an authenticate entry.** If the host remembers a session (`host.skip` with `host.subject`) and one factor satisfies both the client's `host.acr_values` and the tenant's policy, the login is accepted at once with an empty `amr` and `acr` `faye:1fa`, and no entry runs. If it remembers one that does not, the entry runs as a step up with that subject bound. A request that names a subject without `host.skip` (a forced re-authentication) runs the entry with no subject bound. Pinned by `tenant-mfa-remembered-session`, `subject-mismatch-on-first-attempt`; `EngineTest.rememberedSession*`.
+**Starting an authenticate entry.** A client whose tenant has no published flow is rejected (`flow_unavailable`, `unknown-tenant`). If the host remembers a session (`host.skip` with `host.subject`) and one factor satisfies both the client's `host.acr_values` and the tenant's policy, the login is accepted at once with an empty `amr` and `acr` `faye:1fa`, and no entry runs. If it remembers one that does not, the entry runs as a step up with that subject bound. A request that names a subject without `host.skip` (a forced re-authentication) runs the entry with no subject bound. Pinned by `tenant-mfa-remembered-session`, `subject-mismatch-on-first-attempt`; `EngineTest.rememberedSession*`.
 
-**Starting a consent entry.** If the host relays the flow id of a finished login for the same subject (`host.context.flowId`), the consent runs on that login's version and sees its `user` and `auth`; otherwise it runs on the tenant's current version with only the subject. A remembered consent (`host.skip`), or a version with no consent entry, is granted without running anything; a version whose consent entry cannot be selected, or a linked login's version that can no longer be read, is not run (`flow_unavailable`). Pinned by `consent-third-party`, `consent-first-party`, `consent-denied`, `preview-consent-flow-id`.
+**Starting a consent entry.** If the host relays the flow id of a finished login for the same subject (`host.context.flowId`), the consent runs on that login's version and sees its `user` and `auth`; otherwise it runs on the tenant's current version with only the subject. A consent request that names no subject is rejected (`no_subject`). A remembered consent (`host.skip`), or a version with no consent entry, is granted without running anything; a version whose consent entry cannot be selected, or a linked login's version that can no longer be read, is not run (`flow_unavailable`). Pinned by `consent-third-party`, `consent-first-party`, `consent-denied`, `preview-consent-flow-id`.
 
 **Succeeding an authenticate entry.** Reaching `succeed` ends the entry successfully only if, in this order:
 
@@ -211,8 +211,8 @@ Checks run in three layers. Every finding points at the source the frontend reco
 
 | Layer | What | When |
 |---|---|---|
-| L0, the schema | shape, arity, patterns, the format | every read of IR |
-| L1, the verifier | unique entry and option ids (at every read); every handler and screen is in the catalogs, screen options are ones the screen takes, call args match the handler's `args` | the checker, and the engine whenever it runs a version: a new flow on one that fails is rejected (`flow_unavailable`, `catalog-unknown-handler`), and a flow pinned to one reads as absent |
+| L0, the schema | shape, arity, patterns, the format; a document nested deeper than 128 levels is refused before validation (`IrCodec.MAX_DEPTH`), as is JSON with a repeated key | every read of IR |
+| L1, the verifier | unique entry and option ids (at every read); every handler and screen is in the catalogs, screen options are ones the screen takes, no step shows `method_picker` (only a `choose` does), call args match the handler's `args` | the checker, and the engine whenever it runs a version: a new flow on one that fails is rejected (`flow_unavailable`, `catalog-unknown-handler`), and a flow pinned to one reads as absent |
 | L2, the checker | path enumeration, then the rules below | publish, rollback, preview, startup |
 
 The checker enumerates every path through each entry once. The language has no loops but bounded `retry` and no recursion, so paths are finite; more than 10,000 paths in an entry is an error. A predicate is decided when it reads only what is known before the flow runs, else both ways are paths. A call succeeds proving any nonempty part of its amr, fails, or (subject binding handlers) proves another subject; a retry's attempts may fail before one succeeds; a hook fails or sets unknown `vars`; a pick hook fails or picks any option that may be enabled. The checker over-approximates: a rule that holds on every enumerated path holds on every run. The generated vectors check the engine against every enumerated path the generator can realize.
@@ -223,6 +223,8 @@ The checker enumerates every path through each entry once. The language has no l
 | Step ids are unique | flow | error | `CheckerTest` |
 | Handlers and screens are enabled for the tenant; hooks are stored; hook egress is granted | every entry | error | `CheckerTest.tenantAllowlists`, `HookCheckTest` |
 | A `requires_subject` handler runs only after a credential verified the subject on the path | every entry | error | `CheckerTest.aCredentialWriteNeedsAVerifiedSubjectFirst` |
+| A passkey registration screen (`passkey` with `register`) shows only after a credential verified the subject on the path | every entry | error | `CheckerTest.aPasskeyRegistrationScreenNeedsAVerifiedSubjectFirst` |
+| The checker accepts no flow the engine then fails to run, and none whose success path the engine refuses as `unauthenticated` | every entry | build failure | `EngineFuzzTest` (ADR 0007) |
 | On a success path, a credential runs only after an `identifies` handler succeeded | `authenticate` | error | `CheckerTest.credentialBeforeIdentityIsAnError` |
 | On a success path, a credential that binds the subject verified | `authenticate` | error | `CheckerTest.branchWithoutCredentialPointsAtItsLine` |
 | If the tenant requires MFA, every success path reaches `faye:2fa` | `authenticate` | error | `CheckerTest.mfaPolicyNeedsTwoFactorsOnEveryPath` |
@@ -238,7 +240,7 @@ The canonical form of a flow is its JSON: UTF-8, no insignificant whitespace, ob
 ## Versioning
 
 * **IR format.** A change to what a form means, a new form, a new predicate operator or options key, needs a format bump and an ADR. A reader upgrades older formats in memory to the current one when it reads a stored version, keeping its hash; an upgrade must keep every node at the same child index path, or the state format must be bumped too.
-* **State format.** What continuation frames mean. A new optional field, read as absent from older states, needs no bump; a changed meaning does. The engine reads the current and the previous state format for one release; a flow saved in any other reads as absent, so it fails closed and the person starts again.
+* **State format.** What continuation frames mean. A new optional field, read as absent from older states, needs no bump; a changed meaning does. The engine reads the current and the previous state format for one release; a flow saved in any other reads as absent, so it fails closed and the person starts again. So does a state that cannot be read, or that does not fit the version it pinned (its entry, every frame's node, the screen it waits on and that screen's data): the engine checks before it resumes one (ADR 0007, F7).
 * **Handler semantics.** A handler that changes what it proves or binds gets a new name.
 
 Fixtures of every supported format are frozen under `conformance/compat/`, and a test reads them.

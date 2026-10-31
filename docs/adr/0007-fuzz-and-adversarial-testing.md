@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: in progress
 date: 2026-10-31
 decision-makers: Josh Wu
 ---
@@ -33,7 +33,7 @@ Fuzzing is aimed at trust boundaries. Each row says who controls the input and w
 | B1 | Browser to screen API (`GET /api/flows/{id}`, `POST .../submit`, via the Login UI proxy) | Anyone on the internet, before authentication | `flowId`, `nonce`, `action`, `payload` of any JSON shape, headers, content type, body size | Declared status only (200, 400, 404, 405, 409, 410, 413, 415), all with the `ErrorResponse` body; state unchanged on refusal; no accept without a verified credential. The `flowId` alone is a bearer capability: it reads the screen, its nonce and any secret the screen carries |
 | B2 | Browser to entry points (`/login`, `/consent`) | Anyone; relying parties | `login_challenge`, `consent_challenge`, `User-Agent` | Challenge reaches Hydra only as an encoded query value; no 5xx |
 | B3 | Hydra admin API responses | Partly attacker: `login_hint`, `acr_values`, `ui_locales` come from the authorize URL; `client_name` and `metadata` come from client registration (whether Hydra lets dynamic registration set `metadata` is unverified; check Hydra's source before relying on either answer) | Every field, any JSON type, status codes, `redirect_to`, `context` | Wrong types are ignored or refused; tenant, `first_party` and `context.flowId` cannot be used to cross tenants or subjects; `redirect_to` is never followed if malformed |
-| B4 | Redis flow state | Faye, but across deploys and on a shared Redis | `FlowState` JSON, revision, TTL | Unreadable or inconsistent state fails closed; a state from an older deploy either resumes correctly or ends the flow |
+| B4 | Stored flow state (the `faye_flow` table of the one SQLite database, [ADR 0017](0017-one-sqlite-database.md)) | Faye, but across deploys, and anyone who can write the database file | `FlowState` JSON, revision, TTL | Unreadable or inconsistent state fails closed; a state from an older deploy either resumes correctly or ends the flow |
 | B5 | Tenant flow source (YAML DSL, IR JSON) | Tenant authors, untrusted relative to the platform | Any YAML or JSON document | Compiler and codec refuse with a pointer; anything that publishes keeps the charter guarantees |
 | B6 | Credential material | The person signing in, or an attacker replaying or forging | WebAuthn JSON, base64url, CBOR, COSE keys, `authenticatorData`, `clientDataJSON`, TOTP codes, passwords, base32 secrets | Only a valid proof for the stored credential yields `Outcome.Ok`; parsers never throw undeclared exceptions |
 | B7 | Hooks (M4) | Tenant JavaScript | Return values, exceptions, timing, memory | Only `set`, `fail`, `pick`; deadline and memory limits hold; no host access |
@@ -103,25 +103,24 @@ A harness fails on any of these. Each is checked inside the harness, not by eyeb
 
 Every harness is a Jazzer `@FuzzTest` in the module that owns the code (or a fast-check test in the web package), runs in regression mode in `./gradlew build`, and is listed here. Adding a parser, handler, screen type, IR form, host or store without a harness, or without extending an existing one, is not done.
 
-| # | Harness | Target | Input | Oracles | Lands |
+| # | Harness | Target | Input | Oracles | Status |
 |---|---|---|---|---|---|
-| F1 | `IrCodecFuzzTest` | `IrCodec.readFlow` | UTF-8 bytes as JSON | O1, O2, O9, O10 (schema) | Now |
-| F2 | `FlowCompilerFuzzTest` | `FlowCompiler.compile` | UTF-8 bytes as YAML; dictionary of DSL keys, screen and handler names | O1 (only `DslException`, every diagnostic inside the source), O2, O9 | Now |
-| F3 | `PredicatesFuzzTest` | `Predicates.test`, `Env.lookup` | Generated predicate tree and an `Env` with every JSON type, big and fractional numbers, deep maps | O1, O2, and agreement with a reference evaluator written from [dsl-and-ir.md](../roadmap/dsl-and-ir.md) | Now |
-| F4 | `AcrFuzzTest` | `Acr.of`, `Acr.satisfies` | Generated `amr` lists and `acr_values` of any JSON type | O1; monotonicity (adding an `amr` never lowers `acr`; a stronger `acr` satisfies whatever a weaker one does) | Now |
-| F5 | `ScreenSubmissionFuzzTest` | `ScreenType.accepts`, `prepare`, `render`, then every handler | Screen type and payload of any JSON shape, with nulls, wrong types and boundary lengths | O1, O8, O14 | Now |
-| F6 | `EngineStateMachineFuzzTest` | `Engine` with `InMemoryFlowStore`, a recording `MockFlowHost`, and fake handlers that script a subject per outcome (a conformance format change: today a vector binds one `subject`) | A flow (conformance IR or generated), scripted handler outcomes, and a sequence of actions: start the same challenge again, view, submit valid, submit invalid, submit with a stale or foreign nonce, two interleaved submits, reload through `FlowStateCodec`, new `Engine` instance (restart), host failure, expire | O1 to O8, O13, O14 | Now |
-| F6b | `IdentityFlowFuzzTest` | `Engine` with the real `IdentityHandlers`, `InMemoryUserStore` and the shipped flows | Known and unknown identifiers, wrong and right credentials, step up with a Hydra subject, concurrent submits | O6 (`UserStore` included), O11, O16, O17 | Now |
-| F7 | `FlowStateCodecFuzzTest` | `FlowStateCodec.read`, then `Engine.view` and `submit` on the result | Mutated serialized states: unknown frame tags, paths outside the IR, missing `awaiting` fields, foreign `versionHash`, revision edits | O1 (only "unreadable flow state" or `FlowException`), O3, O9 | Now |
-| F8 | `TotpBase32FuzzTest` | `Base32`, `Totp.match`, `totp.verify`, `totp.enroll` | Secrets, codes, epoch seconds across step boundaries and extremes | O1, O10 (RFC 6238), replay refused for any step at or below the last accepted | Now |
-| F9 | `WebAuthnFuzzTest` | `webauthn.assert`, `webauthn.register`, `identity.resolve` with a passkey | Valid ceremonies from the `webauthn4j-test` emulator, then structure aware mutation of every field (decoded, mutated, re-encoded) | O1, O3: no `Ok` unless the signature verifies for the stored key, the challenge is the screen's, the origin and RP id match, and the user handle names the account | Now |
-| F10 | `HydraFlowHostFuzzTest` | `HydraFlowHost` against a JDK `com.sun.net.httpserver` fake | Status, headers, body (any JSON, non JSON, huge, slow), `redirect_to`, `context`, `client.metadata` | O1 (only the new host failure exception), O2, Jazzer's SSRF detector: the challenge never changes the admin URL's host or path | Now |
-| F11 | `FlowApiFuzzTest` | `FlowController` through `MockMvc`, Hydra faked | Method, path, content type, body bytes (also JSON with duplicate keys and deep nesting), challenge, `flowId`, `nonce` | O1 (declared statuses only, no stack trace or internal message in any body), O6, O14 | Now |
-| F12 | `RedisFlowStoreConcurrencyTest` | `RedisFlowStore` | Random interleavings of `create`, `replace`, `load` from several threads | O6, O7: the history is linearizable against a model store | Now, CI Redis |
-| F13 | `CheckerSoundnessFuzzTest` | `faye-check` (the module exists) | Generated well formed IR, every handler outcome script up to a bound | O10, O12 | Now |
-| F14 | `HookContainmentFuzzTest` | `HookRuntime` | Generated JavaScript return values (getters, proxies, cycles, `__proto__` keys, huge strings, promises that never settle, throwing `toString`) and a curated sandbox escape corpus | O1, O2, O15 | M4 |
-| F15 | `screen.fuzz.test.ts` | Login UI screen components and the submit proxy route | fast-check arbitraries for every screen in the generated contract, with hostile strings | Rendering never throws; no markup or `javascript:` URL from data, including the `redirectTo` the client navigates to; the proxy only ever calls `/api/flows/{encoded id}/submit` and does not widen what the server accepts (content type, size) | Now |
-| F16 | Admin API and editor harnesses | Admin API, IR edits, publish and rollback | As F1, F11 and F13, plus authorization across tenants | O1, O6, tenant isolation | M5 |
+| F1 | `faye-ir` `IrCodecFuzzTest.readFlow` | `IrCodec.readFlow` | UTF-8 bytes as JSON; seeds are the conformance flows and hostile shapes (deep nesting, duplicate keys, lone surrogates, 2^64 literals) | O1, O2, O9, O10 (the reader agrees with the schema on what it wrote) | Done |
+| F2 | `faye-dsl` `FlowCompilerFuzzTest.compile` | `FlowCompiler.compile` | UTF-8 bytes as YAML; seeds are the shipped flows, the diagnostic cases, aliases, YAML 1.1 scalars, tags, multiple documents, deep steps | O1 (only `DslException`, every diagnostic inside the source), O2, O9, determinism | Done |
+| F3 | `faye-engine` `PredicatesFuzzTest.predicates` | `Predicates.test`, `Env.lookup` | Generated predicate trees; an `Env` with every JSON type, `BigInteger`, `BigDecimal`, NaN, `-0.0`, short | O1, and agreement with a reference evaluator written from [ir-spec.md, Predicates](../roadmap/ir-spec.md#predicates) | Done |
+| F4 | `faye-engine` `PredicatesFuzzTest.acr` | `Acr.of`, `Acr.satisfies` | Generated `amr` lists and `acr_values` of any JSON type, nulls inside lists | O1; monotonicity (adding an `amr` never lowers `acr`; a stronger `acr` satisfies whatever a weaker one does); `faye:2fa` is never met by one factor, as a list or as OIDC's string | Done |
+| F5 | `ScreenSubmissionFuzzTest` | `ScreenSpec.accepts`, `prepare`, `render`, then every real handler | Screen type and payload of any JSON shape, with nulls, wrong types and boundary lengths | O1, O8, O14 | Open. The engine side is covered by F6 (random payloads against every screen) and F11 (over HTTP); the real handlers are not |
+| F6 and F13 | `faye-check` `EngineFuzzTest.loginStateMachine` and `.sweep` | `Engine` with an in memory store, the mock host, fake handlers whose outcomes, subjects and amr the fuzzer picks, and fuzzed hooks | A flow (a conformance flow, or IR generated from the grammar), the tenant's MFA policy and the authorization request, then up to 40 actions: valid answers, random payloads, a stale nonce, another browser's binder, a reload through `FlowStateCodec`, an engine restart, a lost revision race, a newer version published mid flow, a second flow for the challenge, and a consent after the login for the same or another subject. Flows the checker accepts are checked against every oracle; flows it refuses but the engine's catalog check lets through test the engine's own guards | O1, O3 to O9, O12 (checker soundness), O14 | Done. Not yet: interleaved threads, host failure, expiry |
+| F6b | `IdentityFlowFuzzTest` | `Engine` with the real `IdentityHandlers`, `InMemoryUserStore` and the shipped flows | Known and unknown identifiers, wrong and right credentials, step up with a Hydra subject, concurrent submits | O6 (`UserStore` included), O11, O16, O17 | Open |
+| F7 | `faye-engine` `StoredStateFuzzTest.storedState` | `FlowStateCodec.read`, then `Engine.view` and `submit` | Real states of five conformance flows at each screen, mutated: values of the wrong type, missing and extra fields, paths outside the IR, unknown frame tags, another version's hash, huge numbers; and raw bytes | O1 (a screen, a redirect or `FlowException` only) | Done |
+| F8 | `faye-identity` `TotpFuzzTest.base32`, `.totp` | `Base32`, `Totp.code`, `Totp.match` | Bytes, strings, secrets, epoch seconds from 1970 to the far future, steps around the window | O1, O9, O10 (an RFC 4226 reference and the RFC 6238 vectors); a code matches only within one step | Done. Replay refusal is pinned by the `totp.verify` guard tests (ADR 0024), not fuzzed |
+| F9 | `WebAuthnFuzzTest` | `webauthn.assert`, `webauthn.register`, `identity.resolve` with a passkey | Valid ceremonies from the `webauthn4j-test` emulator, then structure aware mutation of every field (decoded, mutated, re-encoded) | O1, O3: no `Ok` unless the signature verifies for the stored key, the challenge is the screen's, the origin and RP id match, and the user handle names the account | Open |
+| F10 | `HydraFlowHostFuzzTest` | `HydraFlowHost` against a JDK `com.sun.net.httpserver` fake | Status, headers, body (any JSON, non JSON, huge, slow), `redirect_to`, `context`, `client.metadata` | O1, O2, Jazzer's SSRF detector: the challenge never changes the admin URL's host or path | Open. A 400, 404 or 410 on load is now `flow_not_found` (`HydraFlowHostTest.hydraErrorsSurface`) |
+| F11 | `faye-app` `FlowApiFuzzTest.screenApi` | `FlowController` through `MockMvc`, the mock host | Method, path, content type, cookie, body bytes (also JSON with duplicate keys, nulls and oversized bodies), challenge, `flowId`, `nonce` | O1 (declared statuses only, `ErrorResponse` or no body, no exception text), O14 (screens and redirects validate against the protocol), redirects absolute http(s) | Done |
+| F12 | `SqliteFlowStoreConcurrencyTest` | `SqliteFlowStore` | Random interleavings of `create`, `replace`, `load` from several threads on one database file | O6, O7: the history is linearizable against a model store | Open |
+| F14 | `HookContainmentFuzzTest` | `HookRuntime` | Generated JavaScript return values (getters, proxies, cycles, `__proto__` keys, huge strings, promises that never settle, throwing `toString`) and a curated sandbox escape corpus | O1, O2, O15 | Open. F6 fuzzes what the engine does with any hook output, including output that tries to write `auth`; the sandbox itself is not fuzzed |
+| F15 | `web/apps/login` `lib/redirect.test.ts` | `isNavigable`, which the Login UI runs before `window.location.assign` | fast-check strings, web URLs and hostile prefixes, 5000 runs from a fixed seed | Only an absolute http(s) URL with a host is navigated to, and it matches the protocol's `redirectTo` pattern | Done for redirects. Rendering every screen with hostile strings is open |
+| F16 | Admin API and editor harnesses | Admin API, IR edits, publish and rollback | As F1, F11 and F13, plus authorization across tenants | O1, O6, tenant isolation | Open |
 
 The enumeration oracle O11 is functional. Timing is a separate, statistical test (a dudect style comparison of `password.verify` for known and unknown accounts, many samples, nightly), because a fuzzer cannot measure timing reliably.
 
@@ -237,7 +236,7 @@ Each fixed finding records the harness, the minimized input as a regression, the
 1. PR fuzzing runs from forks without secrets and with a read only token. Nightly and release runs use trusted runners and the corpus store; PRs read the corpus but cannot write to it.
 2. Harnesses use only demo accounts and freshly generated keys; no real credentials or tenant data enter a corpus.
 3. Fuzz tools are pinned by version in `libs.versions.toml` (Jazzer) and `pnpm-lock.yaml` (fast-check); CI actions are pinned by commit SHA; any native tool is downloaded into a git ignored directory with a checksum.
-4. Harnesses never talk to a real Hydra, Redis or network except F12 against CI's Redis service.
+4. Harnesses never talk to a real Hydra or network; F12 uses a database file under `build/`.
 5. No fuzzing only code paths in production code: no build flag that skips signature, MAC or nonce checks. Harnesses produce valid proofs instead.
 
 ### Plan
@@ -250,6 +249,59 @@ Each fixed finding records the harness, the minimized input as a regression, the
 6. Nightly, once the compose stack is stable: the OpenID Foundation conformance suite against Hydra with Faye, as an end to end complement to fuzzing.
 7. F13 shares the path enumerator with the generated conformance vectors. M4: F14 before any hook runs outside tests. M5: F16.
 
+### Where the plan stands (2026-10-31)
+
+Steps 1 to 5 are done for the harnesses marked Done above; the rest are the open gaps listed at the end of this section.
+
+**Setup, as built.** Jazzer `jazzer-junit` 0.30.0 is a `testImplementation` of every server module (`server/build.gradle.kts`, `libs.versions.toml`). Regression mode needs nothing; the `Test` task passes `JAZZER_FUZZ` and `JAZZER_MAX_DURATION` to the forked test JVM explicitly, since a Gradle daemon's environment need not be the caller's (with it, fuzzing starts as asked; whether it would without it was not tested). Error Prone, NullAway and Checkstyle accept the harness code as written. Jazzer fuzzes one test per JVM, so `deploy/fuzz.sh [duration] [filter]` runs one Gradle invocation per harness; `.github/workflows/fuzz.yml` runs it for 2 minutes per harness on pull requests that touch the server (T1, reading the cached corpus) and 30 minutes per harness nightly (T2, writing it). The corpus is the git ignored `.cifuzz-corpus/` of each module; `crash-*` files are git ignored too. fast-check 4.10.2 is a dev dependency of `web/apps/login`, whose new `pnpm test` runs F15.
+
+**Stored inputs are text.** Byte harnesses (F1, F2) keep readable seeds in `src/test/resources/<package>/<Class>Inputs/<method>/`. A `FuzzedDataProvider` input is not readable, so the structured harnesses keep their regressions as named `@Test` cases instead, and `EngineFuzzTest.sweep` runs 3000 inputs from a fixed seed through the same harness in every build. Jazzer's provider can only be built inside its agent, so the harness draws its choices through a small `Source` interface with a provider backed adapter and a byte array one.
+
+**A harness must keep reaching the code.** `EngineFuzzTest.sweep` fails if the generator stops producing work: at 3000 inputs it measured 689 flows the checker accepted, 1870 it refused that still ran, 740 accepts, 2997 rejects (813 by the engine's own credential check), and 281 consents; the floors are well below that.
+
+**Budgets, measured.** T0: the harness suites add 41 s of test time to `./gradlew build`, spread over modules that run in parallel (from the JUnit reports on this machine; the build's wall clock grew less). One fuzzing run of 60 to 240 s per harness, single core: F1 1.16 M inputs in 120 s, F2 0.91 M in 120 s, F3 5.5 M in 60 s, F4 10.1 M in 60 s, F7 127 k in 180 s, F8 7.1 M and 3.9 M in 60 s, F11 19 k in 240 s (Spring's MockMvc dominates), F6 about 2 k per second.
+
+**The harness catches planted bugs** (Confirmation 3). Each was planted in `Engine.java` or `BuiltinScreen.java` alone and `EngineFuzzTest` run in regression mode with the sweep:
+
+| Planted bug | Caught by |
+|---|---|
+| O5: `checkSubject` never reports `subject_mismatch` | O3/O4: the accepted `amr` was proved for another subject |
+| O4: a handler's narrowed `amr` widened to its declared set | O4: `amr` is what credentials proved |
+| O4: `acr_values` ignored | O4: meets `acr_values` |
+| O4: the tenant's MFA policy ignored | O4: `faye:2fa` when the tenant requires MFA |
+| O6: a stale nonce accepted | O6: must have been refused |
+| O6: a submit that lost the revision race applied anyway | O6: must have been refused |
+| O14: the consent screen without `scopes` | O14: screen protocol |
+
+Removing "at least one credential verified" from the success check is not caught, and cannot be: a subject is bound only by a credential or by a step up, and a step up only runs when one factor does not meet the request, so the `acr` checks after it refuse the same runs. It is kept as defense in depth.
+
+**What the harnesses found, and what changed.** Each finding has the regression named; none had reached a release.
+
+| Harness | Oracle | Finding | Fix | Regression |
+|---|---|---|---|---|
+| F1 | O1, O2 | An IR document nested a few hundred levels deep overflowed the stack in schema validation | `IrCodec` refuses nesting past 128 levels before validating, and reads JSON with explicit limits (1 MiB, 64 digit numbers) and duplicate keys refused | seeds `deep-seq.json`, `seq-at-limit.json` |
+| F2 | O1, O2 | A recursive YAML alias (`a: &a [*a]`) overflowed the stack | The surface refuses anchors and aliases | `diagnostics/aliases.yaml`, seed `recursive-alias.yaml` |
+| F6 | O14, O13 | A step showing `method_picker` rendered `options: null`, and no answer fits it | The verifier refuses it; only an `alternative` shows the picker | `CheckerTest.aStepCannotShowTheMethodPicker` |
+| F6 | O9 | `FlowStateCodec` wrote map keys in an unspecified order | Keys are sorted | `EngineFuzzTest` checks every stored state |
+| F6 (10 min) | O12 | The checker let a passkey registration screen show before any credential verified a subject; the engine then failed | The checker requires a verified subject before the screen, as for `webauthn.register` | `CheckerTest.aPasskeyRegistrationScreenNeedsAVerifiedSubjectFirst` |
+| F4 | O1 | `acr_values` with a `null` element threw | Only known strings count; OIDC's space separated string is read instead of meaning no requirement | `PredicatesFuzzTest.acrValuesOfAnyShapeAreRead` |
+| F7 | O1 | An unreadable stored state was a 5xx | It reads as absent (the flow ends as not found) and is logged | `StoredStateFuzzTest.corruptStatesAreNotFound` |
+| F7 | O1 | State records accepted the nulls Jackson fills in for missing fields | Their constructors refuse them | same |
+| F7 | O1 | A state that does not fit its pinned version (entry, frames, awaited screen and its data) failed mid run | `Engine` checks a loaded state against its version before resuming | same |
+| F7 | O1, O3 | Success required a recorded verification rather than a proved `amr`; one with none reached the host's accept with a null `acr` | Success requires an `acr` | F7 corpus only |
+| F11 | O1 | `/consent` for a request without a subject was a 5xx | Rejected with `no_subject` | vector `consent-without-subject` |
+| F11 | O1 | A malformed host redirect was a 5xx (seed finding 3) | See seed finding 3 | `FlowApiFuzzTest.onlySafeRedirectsReachTheBrowser` |
+
+The research for this record also found that Spring Boot 3.5.16 manages jackson-core 2.21.4, which three High advisories of 2026 affect (GHSA-649p-m576-vr99, GHSA-p6pp-m3f8-5c89, GHSA-7hhh-6rmp-j9qf, fixed in 2.21.7); the build now imports `jackson-bom` 2.21.8.
+
+**Open gaps.** Until these close the record stays in progress:
+
+1. Harnesses F5, F6b, F9, F10, F12, F14 and F16, and in F6 interleaved threads, host failures and expiry. F6b is where O11, O16 and O17 get tested at all.
+2. Seed findings 5 (Unicode whitespace in identifiers), 8 (step up mixing accounts in `user.*`), 9 (the enrollment policy) and 12 (wrong typed Hydra strings, unverified since the official client of ADR 0021).
+3. Security standard 2 is met by the reader's own duplicate key report and the alias refusal, with limits set explicitly; standard 4 checks the scheme and host of every redirect, not yet that the host is Hydra's public origin.
+4. The coverage ratchet (no `jacoco` report yet), the dudect style timing test, T3, the private triage process for findings, CI actions pinned by commit SHA (the workflows use tags, as `ci.yml` does), and the OpenID Foundation suite.
+5. Dictionaries per harness: none yet; the seeds carry the tokens.
+
 ### Consequences
 
 * Good, because charter success criterion 3 gets continuous evidence, not only examples.
@@ -261,10 +313,11 @@ Each fixed finding records the harness, the minimized input as a regression, the
 
 ### Confirmation
 
-1. `cd server && ./gradlew build` runs every `@FuzzTest` in regression mode and passes (`-Xlint:all -Werror`, NullAway, Checkstyle).
-2. `cd web && pnpm test` (new script, `node --test`) runs F15 and passes.
-3. The T1 job fails on a planted bug: remove the `checkSubject` call in `Engine` on a throwaway branch and F6, with per outcome subjects, must report O5 within the PR budget. Repeat for one planted bug per oracle O3 to O8 before declaring the setup done.
-4. Each seed finding below has a regression test that fails before its fix and passes after.
+1. `cd server && ./gradlew build` runs every `@FuzzTest` in regression mode, `EngineFuzzTest.sweep` and the named regressions, and passes (`-Xlint:all -Werror`, NullAway, Checkstyle). Passes.
+2. `cd web && pnpm test` runs F15 (`web/apps/login`, fast-check) and passes. Passes.
+3. A planted bug fails the build: one per oracle O3 to O8 and O14, in "Where the plan stands" above. Done for O4, O5, O6 and O14 (O3's only mutant is equivalent, see there); O7 and O8 have no planted bug yet.
+4. `deploy/fuzz.sh 4m` runs every harness for four minutes and reports no findings (the pull request job runs it at 2m).
+5. Each finding above and each fixed seed finding has a regression that fails before its fix and passes after.
 
 ## Pros and Cons of the Options
 
@@ -345,30 +398,30 @@ Each fixed finding records the harness, the minimized input as a regression, the
 
 Reading the code for this ADR, and an independent review of the draft, found these candidates. The Java behavior behind 1, 2, 4 and 5 was confirmed with a scratch program on JDK 25; the rest come from code reading. None is confirmed end to end; the named harness is how to confirm each, and each becomes a regression test before its fix.
 
-1. **`null` in a submission gives a 5xx (B1, F11).** `Submission` copies the payload with `Map.copyOf`, which throws `NullPointerException` on a `null` value, so `"payload":{"x":null}` should reach it.
-2. **Predicates compare numbers through `longValue()` (B3, F3).** `BigInteger("18446744073709551621").longValue() == 5`, and `1.9` is not greater than `1`. IR literals are integers only, so the trigger is an env value: `client.metadata` (through `HydraFlowHost.plain`) and, later, tenant settings.
-3. **Hydra's `redirect_to` is not checked (B3, F10, F11, F15).** On `/login` and `/consent`, `URI.create` throws on a malformed value (5xx). On submit, the value goes back as JSON `redirectTo` unchecked and `flow-screen.tsx` passes it to `window.location.assign`, so a `javascript:` value would run in the Login UI's origin. Severity depends on how far Hydra is trusted; the check belongs in Faye regardless (Security standard 4).
-4. **An unknown `metadata.tenant` gives a 5xx (B3, F11).** `Engine.current` throws `IllegalStateException` for a tenant with no published flow.
+1. **`null` in a submission gives a 5xx (B1, F11).** Fixed: `Submission` refuses a null field as `invalid_submission` (`FlowApiFuzzTest.nullInAPayloadIsRefused`). `Submission` copies the payload with `Map.copyOf`, which throws `NullPointerException` on a `null` value, so `"payload":{"x":null}` should reach it.
+2. **Predicates compare numbers through `longValue()` (B3, F3).** Fixed: integers compare exactly and only integers order, as ir-spec.md always said (`PredicatesFuzzTest.numbersCompareExactlyAndOnlyIntegersOrder`). `BigInteger("18446744073709551621").longValue() == 5`, and `1.9` is not greater than `1`. IR literals are integers only, so the trigger is an env value: `client.metadata` (through `HydraFlowHost.plain`) and, later, tenant settings.
+3. **Hydra's `redirect_to` is not checked (B3, F10, F11, F15).** Fixed: `FlowController.checked` passes only an absolute http(s) URL with a host and no whitespace or control characters, and answers 502 `host_error` otherwise; the protocol's `redirectTo` has that pattern; the Login UI checks again (`isNavigable`) before `window.location.assign`. On `/login` and `/consent`, `URI.create` throws on a malformed value (5xx). On submit, the value goes back as JSON `redirectTo` unchecked and `flow-screen.tsx` passes it to `window.location.assign`, so a `javascript:` value would run in the Login UI's origin. Severity depends on how far Hydra is trusted; the check belongs in Faye regardless (Security standard 4).
+4. **An unknown `metadata.tenant` gives a 5xx (B3, F11).** Fixed: rejected as `flow_unavailable` (vector `unknown-tenant`). `Engine.current` throws `IllegalStateException` for a tenant with no published flow.
 5. **Unicode whitespace survives normalization (B1, F5).** `trim()` leaves `U+00A0` and `isBlank()` is false for it, so `"\u00A0alice@example.com"` is a distinct identifier. It matters for sign up and account linking.
-6. **The Login UI proxy widens what the server accepts (B1, F15).** `app/api/flows/[flowId]/submit/route.ts` forwards any body of any size and always sends `content-type: application/json`, so a cross site `text/plain` POST arrives at Spring as JSON.
+6. **The Login UI proxy widens what the server accepts (B1, F15).** Fixed: the proxy forwards only `application/json` of at most 64 KiB, the server's `BodyLimit` caps the screen API at the same size, and Spring refuses repeated JSON keys (`FlowApiFuzzTest.repeatedKeysAndHugeBodiesAreRefused`). `app/api/flows/[flowId]/submit/route.ts` forwards any body of any size and always sends `content-type: application/json`, so a cross site `text/plain` POST arrives at Spring as JSON.
 7. **A losing submit keeps its credential side effects (B1, F6b, F12).** Addressed by [ADR 0024](0024-core-ir-as-a-narrow-waist.md): writes are effects applied after the compare and set, replay marks are guards owned by the flow (`EffectsTest`, `effect-lost-race`). Handlers run inside `Engine.run` before `store.replace`; `totp.verify`, `totp.enroll`, `webauthn.register` and `webauthn.assert` write the `UserStore` even when the submit then gets `409`.
 8. **Step up can mix accounts in `user.*` (B1, F6b).** On step up the subject comes from Hydra, but `identity.resolve` resolves whatever identifier is typed and `Env.withUser` merges it. Consent then takes `email`, `email_verified` and `name` from `user.*`, so the ID token could describe another account. The same applies to a `retry` around identify.
 9. **Enrollment and the `flowId` (B1, F6b).** The bearer part is addressed by [ADR 0024](0024-core-ir-as-a-narrow-waist.md): a flow is bound to the browser's cookie (`binder-mismatch`, `FlowApiTest`); the enrollment policy question remains. `GET /api/flows/{id}` needs only the id and returns the nonce and, on `otp_enroll`, the TOTP secret. In `passkey-totp.yaml`'s enroll branch, someone holding only the password enrolls a second factor of their own and reaches `faye:2fa`. That may be the intended policy; O17 makes it an explicit decision rather than an accident.
 10. **`IrCodec` truncates `retry` attempts (B5, F1).** Addressed: the schema bounds attempts to 1 to 10 and `IrCodecTest` refuses `4294967297`. It reads `intValue()` without `canConvertToInt()`, so `["retry", 4294967297, …]` is accepted as 1.
 11. **YAML limit errors escape the compiler (B5, F2).** Addressed by [ADR 0024](0024-core-ir-as-a-narrow-waist.md): `YamlReader` sets its limits and reports a plain `YAMLException` as a diagnostic. `FlowCompiler` catches only `MarkedYAMLException`; SnakeYAML's alias, nesting and code point limits throw a plain `YAMLException`, which is not a `DslException`.
-12. **Wrong typed Hydra strings give a `NullPointerException` (B3, F10).** A numeric `subject`, `client_name` or `login_hint` passes the `asText()` non empty check, `textValue()` returns `null`, and `HostRequest`'s copy throws.
+12. **Wrong typed Hydra strings give a `NullPointerException` (B3, F10).** Unverified since ADR 0021 replaced the hand written client with Ory's generated one; F10 is how to check. A numeric `subject`, `client_name` or `login_hint` passes the `asText()` non empty check, `textValue()` returns `null`, and `HostRequest`'s copy throws.
 
 ### Unverified claims
 
 * The research behind the tool choice is summarized in [Tool research](#tool-research); version and license facts there were checked on 2026-10-31 and must be rechecked when the dependency is added.
-* The T0 and T1 budgets are targets, not measurements. Measure after plan step 2 and record the numbers here.
+* The T0 budget is measured (41 s of test time, "Where the plan stands"); the T1 and T2 budgets (2 and 30 minutes per harness) are still targets to tune from the first CI runs.
 * The flow link handoff case (an attacker sends a victim the `/flow/{id}` link of a flow the attacker started) is expected to be stopped by Hydra's login CSRF cookie, because the victim's browser cannot complete the attacker's challenge and the attacker never sees the verifier. This needs an end to end test against real Hydra (`deploy/smoke.sh` style), not a fuzz harness.
 
 ### Tool research
 
 Checked on 2026-10-31 against Maven Central, npm and the projects' repositories. Recheck when adding the dependency.
 
-* **Jazzer.** `com.code-intelligence:jazzer-junit` 0.30.0 (2026-02-24), Apache 2.0. In 2024 Code Intelligence stopped maintaining it as open source and relicensed it (2024-08), then returned it to Apache 2.0 on 2024-12-03; releases resumed with 0.23.0. The license history is a risk: if it changes again, pin the last Apache release, since harnesses are plain JUnit and `FuzzedDataProvider` code. Regression mode is the default; `JAZZER_FUZZ=1` fuzzes; `JAZZER_MAX_DURATION` bounds a run. Inputs live in `src/test/resources/<package>/<Class>Inputs/<method>`, and the generated corpus in `.cifuzz-corpus/`, which must be git ignored. Bug detectors include SSRF, deserialization, path traversal, regex, reflection, LDAP, JNDI, OS command, SQL, script engine, template and expression language injection. The Gradle section of its README covers the dependency; fuzzing mode runs one test per invocation (`--tests`). Unverified: whether `JAZZER_FUZZ` reaches Gradle's forked test JVM without `environment(...)` in the `Test` task, and whether Error Prone and NullAway accept harness code. Plan step 1 checks both. Sources: [repository](https://github.com/CodeIntelligenceTesting/jazzer), [return to open source](https://code-intelligence.com/blog/jazzer-back-to-open-source).
+* **Jazzer.** `com.code-intelligence:jazzer-junit` 0.30.0 (2026-02-24), Apache 2.0. In 2024 Code Intelligence stopped maintaining it as open source and relicensed it (2024-08), then returned it to Apache 2.0 on 2024-12-03; releases resumed with 0.23.0. The license history is a risk: if it changes again, pin the last Apache release, since harnesses are plain JUnit and `FuzzedDataProvider` code. Regression mode is the default; `JAZZER_FUZZ=1` fuzzes; `JAZZER_MAX_DURATION` bounds a run. Inputs live in `src/test/resources/<package>/<Class>Inputs/<method>`, and the generated corpus in `.cifuzz-corpus/`, which must be git ignored. Bug detectors include SSRF, deserialization, path traversal, regex, reflection, LDAP, JNDI, OS command, SQL, script engine, template and expression language injection. The Gradle section of its README covers the dependency; fuzzing mode runs one test per invocation (`--tests`). Checked in plan step 1: with `environment(...)` in the `Test` task, `JAZZER_FUZZ` reaches the forked test JVM (without it is untested), and Error Prone and NullAway accept the harness code. Sources: [repository](https://github.com/CodeIntelligenceTesting/jazzer), [return to open source](https://code-intelligence.com/blog/jazzer-back-to-open-source).
 * **jqwik.** 1.10.2, EPL 2.0. In maintenance mode since 2025-07, and since 1.10 every run prints an "anti AI usage" notice telling AI agents to ignore its results. That conflicts with a repo where agents run the tests, and supports rejecting option B. [Repository](https://github.com/jqwik-team/jqwik).
 * **JQF.** 3.0 (2026-07), BSD 2, active; Maven first, Gradle support unverified. [Repository](https://github.com/rohanpadhye/JQF).
 * **ClusterFuzzLite.** Supports JVM projects through Jazzer, GitHub Actions, PR (`code-change`), `batch`, `prune` and `coverage` modes; needs a Docker build and a corpus store (a separate repo with a token, or artifacts). Repository activity is low. [Docs](https://google.github.io/clusterfuzzlite/).

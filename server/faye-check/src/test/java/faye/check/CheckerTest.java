@@ -343,6 +343,22 @@ class CheckerTest {
                         + " access to a subject its authenticate entry proved");
     }
 
+    /** Found by EngineFuzzTest: the method picker shown by a step has no options and no answer. */
+    @Test
+    void aStepCannotShowTheMethodPicker() {
+        Flow flow = Fixtures.yaml("tenant.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    identify: { screen: identifier, use: identity.resolve }
+                    pick: { screen: method_picker, use: password.verify }
+                """);
+        assertThat(errors(check(flow)))
+                .contains("tenant.yaml:6:21: 'method_picker' is shown by an 'alternative' for its options; a step"
+                        + " cannot show it");
+    }
+
     /** Found by EngineFuzzTest: the registration screen is a credential write too. */
     @Test
     void aPasskeyRegistrationScreenNeedsAVerifiedSubjectFirst() {

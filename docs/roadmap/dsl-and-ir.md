@@ -59,7 +59,7 @@ Consent is a step like any other ([ADR 0025](../adr/0025-consent-as-a-step.md)).
 
 ## Lowering
 
-The compiler (`faye-dsl`) reads YAML into a positioned document (`YamlReader`, the only class that knows SnakeYAML), lowers it to IR JSON while recording which YAML produced each JSON node, and hands the JSON to `IrCodec`, which checks it against the schema. Every grammar error is reported at the YAML that produced the offending node; the compiler keeps no copy of the grammar, only the rules of the surface itself (its keys, hook declarations and files).
+The compiler (`faye-dsl`) reads YAML into a positioned document (`YamlReader`, the only class that knows SnakeYAML; it refuses duplicate keys, anchors and aliases, and YAML 1.1 scalars that read as another type), lowers it to IR JSON while recording which YAML produced each JSON node, and hands the JSON to `IrCodec`, which checks it against the schema. Every grammar error is reported at the YAML that produced the offending node; the compiler keeps no copy of the grammar, only the rules of the surface itself (its keys, hook declarations and files).
 
 | YAML | IR |
 |---|---|
