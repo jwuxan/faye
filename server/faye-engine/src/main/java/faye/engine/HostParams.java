@@ -1,5 +1,6 @@
 package faye.engine;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,6 +46,9 @@ public record HostParams(
             "ui_locales",
             "context");
 
+    /** The wire name of {@link #acrValues()}, which the engine enforces when an entry succeeds. */
+    public static final String ACR_VALUES = "acr_values";
+
     /** The field whose own keys a flow may read below it, as {@code host.context.<key>}. */
     public static final String FREE_FORM = "context";
 
@@ -54,12 +58,21 @@ public record HostParams(
     public HostParams {
         subject = subject == null || subject.isEmpty() ? null : subject;
         loginHint = loginHint == null || loginHint.isEmpty() ? null : loginHint;
-        acrValues = List.copyOf(acrValues);
-        requestedScope = List.copyOf(requestedScope);
-        requestedAccessTokenAudience = List.copyOf(requestedAccessTokenAudience);
-        uiLocales = List.copyOf(uiLocales);
+        // OIDC encodes these lists as space separated strings; a host that relays one as a single
+        // element must not drop a requirement (ADR 0007, F4), so every element is split here
+        acrValues = tokens(acrValues);
+        requestedScope = tokens(requestedScope);
+        requestedAccessTokenAudience = tokens(requestedAccessTokenAudience);
+        uiLocales = tokens(uiLocales);
         // JSON null is a value the host may relay; Map.copyOf would refuse it
         context = Collections.unmodifiableMap(new LinkedHashMap<>(context));
+    }
+
+    private static List<String> tokens(List<String> values) {
+        return values.stream()
+                .flatMap(v -> Arrays.stream(v.trim().split("\\s+")))
+                .filter(t -> !t.isEmpty())
+                .toList();
     }
 
     /** Whether {@code host.<rest>} names a field of this contract. */

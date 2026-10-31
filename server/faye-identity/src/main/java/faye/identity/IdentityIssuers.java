@@ -69,6 +69,14 @@ public final class IdentityIssuers {
             return Map.of("challenge", random(32));
         }
 
+        /** A challenge, and a registration only for the signed in subject. */
+        @Override
+        public boolean resumable(Env env, Map<String, Object> issued) {
+            return issued.get("challenge") instanceof String
+                    && (!Boolean.TRUE.equals(issued.get("register"))
+                            || env.auth().subject() != null);
+        }
+
         @Override
         public Map<String, Object> present(Env env, Map<String, Object> issued) {
             Map<String, Object> out = new LinkedHashMap<>();
@@ -107,6 +115,11 @@ public final class IdentityIssuers {
             byte[] secret = new byte[20];
             RANDOM.nextBytes(secret);
             return Map.of("secret", Base32.encode(secret));
+        }
+
+        @Override
+        public boolean resumable(Env env, Map<String, Object> issued) {
+            return issued.get("secret") instanceof String;
         }
 
         @Override

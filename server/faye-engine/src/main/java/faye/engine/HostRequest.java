@@ -27,6 +27,7 @@ public record HostRequest(
         HostParams params) {
 
     public HostRequest {
+        tenant = tenant == null || tenant.isEmpty() ? null : tenant;
         client = Map.copyOf(client);
     }
 

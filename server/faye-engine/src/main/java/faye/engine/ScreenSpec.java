@@ -45,15 +45,6 @@ public interface ScreenSpec {
      */
     Map<String, Object> render(Env env, Map<String, Object> data);
 
-    /**
-     * Whether a stored flow waiting on this screen with {@code data} can be shown and answered: the
-     * engine fails a flow closed whose state does not fit (a corrupt or hand edited row) rather than
-     * failing mid run. Every state the engine itself wrote must be resumable.
-     */
-    default boolean resumable(Env env, Map<String, Object> data) {
-        return true;
-    }
-
     /** Whether a submission is a well formed answer to this instance of the screen. */
     boolean accepts(Submission input, Map<String, Object> data);
 

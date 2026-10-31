@@ -72,7 +72,7 @@ class BoundaryTest {
             for (String line :
                     read(SERVER.resolve(module).resolve("build.gradle.kts")).split("\n")) {
                 String trimmed = line.trim();
-                if (!trimmed.startsWith("api(") && !trimmed.startsWith("implementation(")) continue;
+                if (!trimmed.matches("(api|implementation|compileOnly|runtimeOnly)\\(.*")) continue;
                 OUTSIDE.stream()
                         .filter(m -> trimmed.contains("\"" + m + "\""))
                         .forEach(m -> found.add(module + " depends on " + m));

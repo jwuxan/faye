@@ -90,7 +90,8 @@ class FlowController {
      * The Hydra host's routes: a redirect to the Login UI, or Hydra's redirect if the flow ended at
      * once. These are browser navigations, so a host that hands off has no business here: its result
      * (perhaps a one time code) would render as a page. An embedding host starts flows through its
-     * own route or {@link Engine#start}.
+     * own route or {@link Engine#start}. The refusal comes after the host completed the request
+     * (the request is spent), so wiring such a host behind these routes is a misconfiguration.
      */
     private ResponseEntity<Void> start(HostKind kind, String challenge, HttpServletRequest http) {
         Map<String, Object> request = new HashMap<>();

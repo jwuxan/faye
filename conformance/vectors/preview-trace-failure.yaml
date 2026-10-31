@@ -1,7 +1,8 @@
 name: a preview that fails ends its trace with the reason
 ir: flows/password-only.json
 host:
-  client: { client_id: preview-default, metadata: { preview: true } }
+  client: { client_id: preview-default }
+  preview: true
 preview:
   draft: flows/two-credentials.json
 handlers:

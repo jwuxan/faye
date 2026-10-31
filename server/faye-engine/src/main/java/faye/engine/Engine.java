@@ -645,7 +645,10 @@ public final class Engine {
         // What counts is an amr proved, not a verification recorded: one with none proves nothing
         if (env.auth().subject() == null || env.auth().acr() == null) return "unauthenticated";
         if (!Acr.satisfies(env.auth().acr(), required(env.tenant()))) return "mfa_required";
-        return Acr.satisfies(env.auth().acr(), env.host().get("acr_values")) ? null : "acr_not_satisfied";
+        // toEnv() always writes a list; anything else is a corrupt state, which asks for the most
+        Object requested = env.host().get(HostParams.ACR_VALUES);
+        if (requested != null && !(requested instanceof List<?>)) return "acr_not_satisfied";
+        return Acr.satisfies(env.auth().acr(), requested) ? null : "acr_not_satisfied";
     }
 
     /** The acr a tenant's settings require of every login, as {@code acr_values}. */
@@ -835,11 +838,11 @@ public final class Engine {
             return "awaiting";
         }
         if (picker && !(awaiting.data().get("options") instanceof List<?>)) return "picker options";
-        if (!picker
-                && screens.find(awaiting.screen())
-                        .map(spec -> !spec.resumable(state.env(), awaiting.data()))
-                        .orElse(true)) {
-            return "screen " + awaiting.screen();
+        if (!picker && screens.find(awaiting.screen()).isEmpty()) return "screen " + awaiting.screen();
+        if (screens.issuer(awaiting.screen())
+                .map(i -> !i.resumable(state.env(), awaiting.data()))
+                .orElse(false)) {
+            return "issued material of " + awaiting.screen();
         }
         if (ScreenRegistry.METHOD_PICKER.equals(awaiting.screen())
                 != state.stack().stream()
@@ -908,9 +911,18 @@ public final class Engine {
         if (awaiting == null) throw new FlowException(Code.FLOW_FINISHED);
         Map<String, Object> screen =
                 new LinkedHashMap<>(screen(awaiting.screen()).render(state.env(), awaiting.data()));
-        screens.issuer(awaiting.screen())
-                .ifPresent(
-                        i -> merge(screen, i.present(state.env(), awaiting.data()), "issuer of " + awaiting.screen()));
+        Optional<CredentialIssuer> issuer = screens.issuer(awaiting.screen());
+        if (issuer.isPresent()) {
+            Map<String, Object> shown;
+            try {
+                shown = issuer.get().present(state.env(), awaiting.data());
+            } catch (RuntimeException e) {
+                // The material the flow waits with cannot be shown: the flow fails closed
+                LOG.log(System.Logger.Level.WARNING, "issuer of {0} cannot present; its flow ends", awaiting.screen());
+                throw new FlowException(Code.FLOW_NOT_FOUND);
+            }
+            merge(screen, shown, "issuer of " + awaiting.screen());
+        }
         if (awaiting.error() != null) screen.put("errors", List.of(Map.of("code", awaiting.error())));
         if (awaiting.attemptsLeft() != null) screen.put("attemptsLeft", awaiting.attemptsLeft());
         return new ScreenView(state.flowId(), awaiting.nonce(), awaiting.step(), screen);

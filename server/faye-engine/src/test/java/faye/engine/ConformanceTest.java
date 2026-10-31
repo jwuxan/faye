@@ -82,9 +82,14 @@ class ConformanceTest {
         var host = new MockFlowHost();
         HostKind kind =
                 HostKind.valueOf(v.path("host").path("kind").asText("login").toUpperCase(java.util.Locale.ROOT));
-        host.register(MockFlowHost.request(
+        // The host decides the tenant and the preview flag; the vector says what it decided
+        host.register(new HostRequest(
                 kind,
                 "challenge-1",
+                v.path("host").path("tenant").isTextual()
+                        ? v.path("host").path("tenant").asText()
+                        : null,
+                v.path("host").path("preview").asBoolean(false),
                 map(v.path("host").path("client")),
                 HostParams.fromMap(map(v.path("host").path("params")))));
         var tenant = v.path("tenant");

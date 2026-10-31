@@ -18,8 +18,9 @@ subject: alice                   # subject bound by fake handlers that bind one 
 tenant: { mfa_required: true }   # optional tenant settings, read by flows as tenant.* (default: none required)
 host:                            # optional HostRequest fields
   kind: login                    # or consent (runs the consent entry; default login)
-  client: { client_id: demo }    # the mock host, like Hydra's, reads metadata.tenant and metadata.preview: true
-                                 # into the request's tenant and preview flag; the engine never reads client.*
+  client: { client_id: demo }    # what flows read as client.*; the engine decides nothing from it
+  tenant: acme                   # the tenant whose flow runs, as the host decided it (default: the default tenant)
+  preview: true                  # the host marks a preview client's request (default: false)
   params: { login_hint: alice@example.com, acr_values: [faye:2fa] }   # what flows read as host.*; only the
                                  # fields of the host contract (ir-spec.md, Host contract), any other key is an error
 handlers:                        # scripted outcomes, consumed in call order

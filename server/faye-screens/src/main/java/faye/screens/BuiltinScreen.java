@@ -120,14 +120,6 @@ public enum BuiltinScreen implements ScreenSpec {
         };
     }
 
-    /** A passkey registration is for the signed in subject; a state that has none cannot resume. */
-    @Override
-    public boolean resumable(Env env, Map<String, Object> data) {
-        return this != PASSKEY
-                || !Boolean.TRUE.equals(data.get("register"))
-                || env.auth().subject() != null;
-    }
-
     /** A passkey chosen from autofill on the identifier screen also answers the passkey screen. */
     @Override
     public Optional<String> hosted(Submission input) {

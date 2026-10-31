@@ -2,7 +2,8 @@ name: a preview client's consent runs the draft and is traced; the host, not the
 ir: flows/password-only.json
 host:
   kind: consent
-  client: { client_id: preview-partner, first_party: false, metadata: { preview: true } }
+  client: { client_id: preview-partner, first_party: false }
+  preview: true
   params: { subject: alice, requested_scope: [openid], context: { flowId: f_login } }
 preview:
   draft: flows/partner-consent.json

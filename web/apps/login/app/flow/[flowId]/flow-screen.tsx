@@ -36,9 +36,10 @@ type Payload = SubmitRequest["payload"];
  * configured origin: the result may be a one time code, so it never goes to an unknown origin.
  * The sign in screens refuse to be framed, so there is no parent to post to.
  */
-function handOff(result: HandoffResponse["result"], embedOrigin: string | null) {
-  if (!embedOrigin || !window.opener) return;
+function handOff(result: HandoffResponse["result"], embedOrigin: string | null): boolean {
+  if (!embedOrigin || !window.opener) return false;
   (window.opener as Window).postMessage({ type: "faye:handoff", result }, embedOrigin);
+  return true;
 }
 type Send = (payload: Payload) => Promise<void>;
 
@@ -76,7 +77,12 @@ export function FlowScreen({ initial, embedOrigin }: { initial: ScreenResponse; 
         return;
       }
       if ("result" in body) {
-        handOff(body.result, embedOrigin);
+        // Nowhere to deliver it: the person must start again from the app, not wait on "Done"
+        if (!handOff(body.result, embedOrigin)) {
+          setError("Sign in finished, but the app that started it could not be reached. Start again from the app.");
+          setPending(false);
+          return;
+        }
         setHandedOff(true);
         setPending(false);
         return;

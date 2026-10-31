@@ -49,6 +49,18 @@ public final class FixedIssuers {
             }
 
             @Override
+            public boolean resumable(Env env, Map<String, Object> issued) {
+                return switch (screen) {
+                    case "passkey" ->
+                        issued.get("challenge") instanceof String
+                                && (!Boolean.TRUE.equals(issued.get("register"))
+                                        || env.auth().subject() != null);
+                    case "otp_enroll" -> issued.get("secret") instanceof String;
+                    default -> true;
+                };
+            }
+
+            @Override
             public Map<String, Object> present(Env env, Map<String, Object> issued) {
                 Map<String, Object> out = new LinkedHashMap<>();
                 switch (screen) {
