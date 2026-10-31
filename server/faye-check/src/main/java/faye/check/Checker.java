@@ -212,6 +212,14 @@ public final class Checker {
                         && !policy.screens().contains(screen.type())) {
                     error(screen.source(), "screen", "screen '" + screen.type() + "' is not enabled for this tenant");
                 }
+                // Consent shown during the sign in would ask before anyone is signed in, and leave the
+                // version without a consent entry, which grants consent with no screen (ADR 0025)
+                if (kind == Entry.Kind.AUTHENTICATE && "consent".equals(screen.type())) {
+                    error(
+                            screen.source(),
+                            "consent-screen",
+                            "the consent screen belongs on the consent challenge, not in the sign in");
+                }
             }
             case Call call -> {
                 Optional<Handler> handler = handlers.find(call.handler());
@@ -220,6 +228,12 @@ public final class Checker {
                     error(call.source(), "handler", "handler '" + call.handler() + "' is not enabled for this tenant");
                 }
                 HandlerMeta meta = handler.get().meta();
+                if (kind == Entry.Kind.AUTHENTICATE && "consent.record".equals(call.handler())) {
+                    error(
+                            call.source(),
+                            "consent-call",
+                            "consent.record belongs on the consent challenge, not in the sign in");
+                }
                 if (kind == Entry.Kind.CONSENT && (meta.credential() || meta.bindsSubject())) {
                     error(
                             call.source(),

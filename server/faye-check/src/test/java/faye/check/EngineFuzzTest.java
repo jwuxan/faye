@@ -132,6 +132,9 @@ class EngineFuzzTest {
         assertThat(REACHED.getOrDefault("accepted", 0)).as(reached).isGreaterThan(SWEEP / 30);
         assertThat(REACHED.getOrDefault("rejected", 0)).as(reached).isGreaterThan(SWEEP / 15);
         assertThat(REACHED.getOrDefault("consent ended", 0)).as(reached).isGreaterThan(SWEEP / 100);
+        assertThat(REACHED.getOrDefault("consent for another subject", 0))
+                .as(reached)
+                .isPositive();
         assertThat(REACHED.getOrDefault("engine refused unauthenticated", 0))
                 .as(reached)
                 .isGreaterThan(SWEEP / 15);
@@ -440,6 +443,7 @@ class EngineFuzzTest {
             consent.put("requested_scope", List.of("openid", "email"));
             host.register(new HostRequest(HostKind.CONSENT, "k1", Map.of("client_id", "demo"), consent));
             int before = host.consented().size() + host.rejected().size();
+            int consentedBefore = host.consented().size();
             EngineResponse r = engine.start(HostKind.CONSENT, "k1", Map.of(), "binder2");
             for (int i = 0; i < 4 && r instanceof ScreenView s; i++) {
                 screen(s);
@@ -456,6 +460,15 @@ class EngineFuzzTest {
                         .forEach(c -> assertThat(c.outcome().subject())
                                 .as("consent is for the subject the host asked about")
                                 .isEqualTo(c.request().params().get("subject")));
+                // O16: a consent for someone other than the login's subject never carries the
+                // login's claims, whatever context the host relays
+                // only this consent's outcome: host.consented() holds every earlier one of the run
+                if (!subject.equals(login.subject()) && host.consented().size() > consentedBefore) {
+                    assertThat(host.consented().getLast().outcome().idTokenClaims())
+                            .as("another subject's claims")
+                            .doesNotContainKey("email");
+                    reached("consent for another subject");
+                }
             }
         }
 
@@ -598,6 +611,7 @@ class EngineFuzzTest {
             Map<String, Object> user = new LinkedHashMap<>();
             if (meta.identifies()) {
                 user.put("identifier", "alice@example.com");
+                user.put("email", "alice@example.com");
                 user.put("exists", data.consumeBoolean());
                 user.put("has_totp", data.consumeBoolean());
                 user.put("has_passkey", data.consumeBoolean());

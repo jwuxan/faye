@@ -71,7 +71,6 @@ class PredicatesFuzzTest {
         // Asking for faye:2fa, as a list or as OIDC's string, is never met by one factor
         assertThat(Acr.satisfies(Acr.ONE_FACTOR, List.of(Acr.TWO_FACTOR))).isFalse();
         assertThat(Acr.satisfies(Acr.ONE_FACTOR, "x " + Acr.TWO_FACTOR)).isFalse();
-        assertThat(Acr.satisfies(acr, requested)).isIn(true, false);
     }
 
     /** The cases seed finding 2 named, as a readable regression. */

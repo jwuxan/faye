@@ -294,13 +294,18 @@ Removing "at least one credential verified" from the success check is not caught
 
 The research for this record also found that Spring Boot 3.5.16 manages jackson-core 2.21.4, which three High advisories of 2026 affect (GHSA-649p-m576-vr99, GHSA-p6pp-m3f8-5c89, GHSA-7hhh-6rmp-j9qf, fixed in 2.21.7); the build now imports `jackson-bom` 2.21.8.
 
+**Review.** An independent review of the change found: the consent split of ADR 0025 keyed only on `consent.record`, so a consent screen without it fell into the sign in and consent was then granted without a screen (fixed there, and the checker now refuses consent in an `authenticate` entry); engine behavior changes without conformance vectors (added: `acr-values-as-a-string`, `numbers-wider-than-64-bits`, `numbers-fractional`, `catalog-method-picker-step`, beside `consent-without-subject` and `unknown-tenant`; the stored state check is unreachable from a vector and is pinned by `StoredStateFuzzTest`); and oracles that could not fail (`realStatesResume` now requires every real state to resume; the consent after a login is checked to carry no claims of the login when it is for another subject, O16). It also confirmed that the stored state check accepts every state the engine writes, and that the stricter success and `acr_values` rules loosen nothing.
+
+**Consequences for existing data.** The new verifier rule (`method_picker` in a step) and checker rules (a registration screen before a verified subject, consent in the sign in) refuse versions that were valid before. A stored version that breaks one no longer passes the checker at startup and its pinned flows end as not found. No tenant has been released, so nothing is migrated.
+
 **Open gaps.** Until these close the record stays in progress:
 
 1. Harnesses F5, F6b, F9, F10, F12, F14 and F16, and in F6 interleaved threads, host failures and expiry. F6b is where O11, O16 and O17 get tested at all.
 2. Seed findings 5 (Unicode whitespace in identifiers), 8 (step up mixing accounts in `user.*`), 9 (the enrollment policy) and 12 (wrong typed Hydra strings, unverified since the official client of ADR 0021).
 3. Security standard 2 is met by the reader's own duplicate key report and the alias refusal, with limits set explicitly; standard 4 checks the scheme and host of every redirect, not yet that the host is Hydra's public origin.
-4. The coverage ratchet (no `jacoco` report yet), the dudect style timing test, T3, the private triage process for findings, CI actions pinned by commit SHA (the workflows use tags, as `ci.yml` does), and the OpenID Foundation suite.
-5. Dictionaries per harness: none yet; the seeds carry the tokens.
+4. A challenge that Hydra answers with 404 while a submit finishes (after the state was saved and the writes applied) is now answered `flow_not_found`; the writes stand, as before. Moving the host load before the save is a separate change.
+5. The coverage ratchet (no `jacoco` report yet), the dudect style timing test, T3, the private triage process for findings, CI actions pinned by commit SHA (the workflows use tags, as `ci.yml` does), and the OpenID Foundation suite.
+6. Dictionaries per harness: none yet; the seeds carry the tokens.
 
 ### Consequences
 

@@ -31,7 +31,7 @@ How should a tenant write consent, and how does the editor show it, without chan
 
 ## Decision Outcome
 
-Chosen: **A.** A flow is one list of steps. The step that calls `consent.record` anywhere in its body (a plain step, an option of an `alternative`, or nested `steps`) and every step after it lower to the `consent` entry; the steps before it lower to the `authenticate` entry. The split follows time: everything from that step on happens after the sign in was accepted, on the host's consent challenge. A flow with no such step has no consent entry, and the host's consent is granted without a screen, as before.
+Chosen: **A.** A flow is one list of steps. The step that asks for consent, by showing the `consent` screen or calling `consent.record` in its body (directly, in an option of an `alternative`, or in nested `steps`), and every step after it lower to the `consent` entry; the steps before it lower to the `authenticate` entry. The split follows time: everything from that step on happens after the sign in was accepted, on the host's consent challenge. A flow with no such step has no consent entry, and the host's consent is granted without a screen, as before.
 
 ```yaml
 login:
@@ -45,8 +45,8 @@ login:
 ```
 
 * **IR:** unchanged. The same two entries, `(entry login authenticate ...)` and `(entry consent consent ...)`, with the same ids, so existing published versions, stored flow states, conformance vectors and the IR format are untouched. The consent entry's source position is the step that starts it.
-* **Checker:** unchanged. A credential step placed after the consent step lands in the consent entry, which refuses it at the YAML that wrote it (`CheckerTest.aConsentEntryCannotVerifyACredential`).
-* **Old YAML:** a top level `consent:` is refused with the fix in the message: "consent is a step of 'login' now: move these steps to the end of 'login.steps'" (`diagnostics/consent.yaml`). The Admin UI reads an old source (a stored version's YAML, a draft) by appending its consent steps to the steps, suffixing an id that would clash, so an old version opens migrated (`flow.test.ts`). Faye has no released tenants yet, so refusing the old key costs one move per draft.
+* **Checker:** a credential step placed after the consent step lands in the consent entry, which refuses it at the YAML that wrote it (`CheckerTest.aConsentEntryCannotVerifyACredential`). New: an `authenticate` entry may not show the consent screen or call `consent.record` (`CheckerTest.consentBelongsOnTheConsentChallenge`), so no IR, however produced, asks for consent before the sign in and then grants it without a screen.
+* **Old YAML:** a top level `consent:` is refused with the fix in the message: "consent is a step of 'login' now: move these steps to the end of 'login.steps'" (`diagnostics/consent.yaml`). The Admin UI reads an old source (a stored version's YAML, a draft) by appending its consent steps to the steps, suffixing an id that would clash, so an old version opens migrated (`flow.test.ts`); if the old section does not start with a step that asks for consent, it refuses to open it rather than move the steps before that into the sign in. Faye has no released tenants yet, so refusing the old key costs one move per draft.
 * **Admin UI:** one "Steps" list. A divider, "Consent: runs after sign in, on the consent challenge", sits above the first consent step; the graph ends the sign in with "signed in" there and the consent steps with "consented". The Consent block in the palette is an ordinary step. `consentStart` in `lib/flow.ts` mirrors the compiler's rule; the server stays the authority (AGENTS.md rule 5), since the checker's findings and paths come from the compiled IR.
 
 ### Consequences

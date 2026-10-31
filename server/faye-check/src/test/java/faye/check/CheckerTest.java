@@ -343,6 +343,19 @@ class CheckerTest {
                         + " access to a subject its authenticate entry proved");
     }
 
+    /** ADR 0025 review: consent in the sign in would ask too early and leave no consent entry. */
+    @Test
+    void consentBelongsOnTheConsentChallenge() {
+        Flow flow = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"step\",\"c\",[\"seq\",[\"screen\",\"identifier\"],[\"call\",\"identity.resolve\"],"
+                + "[\"screen\",\"password\"],[\"call\",\"password.verify\"],[\"screen\",\"consent\"],"
+                + "[\"call\",\"consent.record\"]]],[\"succeed\"]]]]");
+        assertThat(errors(check(flow)))
+                .containsExactly(
+                        ": the consent screen belongs on the consent challenge, not in the sign in",
+                        ": consent.record belongs on the consent challenge, not in the sign in");
+    }
+
     /** Found by EngineFuzzTest: the method picker shown by a step has no options and no answer. */
     @Test
     void aStepCannotShowTheMethodPicker() {

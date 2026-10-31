@@ -91,6 +91,22 @@ class FlowCompilerTest {
                 .isEqualTo(new SourceRef("f.yaml", 6, 5));
     }
 
+    /** The consent screen alone starts consent too; a literal that only says consent.record does not. */
+    @Test
+    void theConsentScreenStartsConsentAndLiteralsDoNot() {
+        var flow = FlowCompiler.compile("f.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    resolve: { use: identity.resolve, set: { use: consent.record } }
+                    ask: { screen: { type: consent } }
+                """);
+        assertThat(flow.entries()).containsOnlyKeys("login", "consent");
+        assertThat(IrCodec.canonicalJson(flow))
+                .contains("[\"entry\",\"consent\",\"consent\",[\"seq\",[\"step\",\"ask\"");
+    }
+
     /** A flow whose steps never record consent has no consent entry. */
     @Test
     void noConsentStepNoConsentEntry() {

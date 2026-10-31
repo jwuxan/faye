@@ -62,7 +62,7 @@ import org.jspecify.annotations.Nullable;
  * HookDef}). docs/roadmap/dsl-and-ir.md has the lowering table.
  *
  * <p>Consent is a step like any other (ADR 0025): the steps of {@code login} up to the first one
- * that calls {@value #CONSENT_HANDLER} lower to the {@code authenticate} entry, and that step and
+ * that shows the consent screen or calls {@value #CONSENT_HANDLER} lower to the {@code authenticate} entry, and that step and
  * every step after it to the {@code consent} entry, since they run on the host's consent challenge,
  * after the sign in was accepted. The IR keeps the two entries.
  */
@@ -239,15 +239,29 @@ public final class FlowCompiler {
         return out;
     }
 
-    /** Whether a step calls the consent handler anywhere in its body. */
+    /**
+     * Whether a step asks for consent: its body, or a body nested in its {@code alternative} or
+     * {@code steps}, shows the consent screen or calls the consent handler. Only those keys are
+     * looked at, so a literal elsewhere (a {@code set} value) never moves the split.
+     */
     private static boolean recordsConsent(Doc doc) {
         if (!(doc instanceof Doc.Map m)) return false;
         for (var e : m.entries().entrySet()) {
             Doc value = e.getValue().value();
-            if (e.getKey().equals("use") && value instanceof Doc.Scalar s && CONSENT_HANDLER.equals(s.value())) {
-                return true;
-            }
-            if (recordsConsent(value)) return true;
+            boolean asks = switch (e.getKey()) {
+                case "use" -> value instanceof Doc.Scalar s && CONSENT_HANDLER.equals(s.value());
+                case "screen" ->
+                    (value instanceof Doc.Scalar s && CONSENT.equals(s.value()))
+                            || (value instanceof Doc.Map screen
+                                    && screen.entries().get("type") instanceof Doc.Entry type
+                                    && type.value() instanceof Doc.Scalar t
+                                    && CONSENT.equals(t.value()));
+                case "alternative", "steps" ->
+                    value instanceof Doc.Map nested
+                            && nested.entries().values().stream().anyMatch(n -> recordsConsent(n.value()));
+                default -> false;
+            };
+            if (asks) return true;
         }
         return false;
     }

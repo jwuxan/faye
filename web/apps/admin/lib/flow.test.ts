@@ -17,6 +17,7 @@ import {
   consentStart,
   fromBlock,
   fromYaml,
+  FlowShapeError,
   insert,
   type ListRef,
   move,
@@ -90,6 +91,34 @@ login:
 `).login;
   assert.equal(consentStart(steps), 1);
   assert.equal(consentStart(steps.slice(0, 1)), 1);
+});
+
+test("the consent screen alone starts consent, as in the compiler", () => {
+  const steps = fromYaml(`flow: f
+version: 1
+login:
+  steps:
+    identify: { screen: identifier, use: identity.resolve, set: { use: consent.record } }
+    ask: { screen: consent }
+`).login;
+  assert.equal(consentStart(steps), 1);
+});
+
+test("an old consent section that does not start by asking for consent is refused, not moved into the sign in", () => {
+  assert.throws(
+    () =>
+      fromYaml(`flow: f
+version: 1
+login:
+  steps:
+    identify: { screen: identifier, use: identity.resolve }
+consent:
+  steps:
+    audit: { hook: h }
+    grant: { screen: consent, use: consent.record }
+`),
+    FlowShapeError,
+  );
 });
 
 test("a consent section from before ADR 0025 opens as steps at the end", () => {

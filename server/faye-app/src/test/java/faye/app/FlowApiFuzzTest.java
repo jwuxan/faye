@@ -128,7 +128,7 @@ class FlowApiFuzzTest {
         for (int i = 0; i < requests; i++) {
             String id = switch (data.consumeInt(0, 3)) {
                 case 0, 1 -> flowId;
-                case 2 -> data.pickValue(List.of("", "..", "%2F", "%00", "f_" + "a".repeat(300), "*", "{}", "é"));
+                case 2 -> data.pickValue(List.of("", "..", "%2F", "%00", "f_" + "a".repeat(300), "*", "%7B%7D", "é"));
                 default -> URLEncoder.encode(data.consumeString(20), StandardCharsets.UTF_8);
             };
             String path = switch (data.consumeInt(0, 5)) {

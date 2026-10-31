@@ -63,9 +63,15 @@ class StoredStateFuzzTest {
     /** Every unmutated state reads, views and resumes. */
     @Test
     void realStatesResume() {
+        // Unmutated, every state must view: a refusal here means the consistency check is wrong
         for (String state : STATES) {
-            exercise(FlowStateCodec.read(state).orElseThrow().flowId(), state, true);
+            World w = new World();
+            String flowId = FlowStateCodec.read(state).orElseThrow().flowId();
+            w.store.raw.put(flowId, state);
+            ScreenView view = w.engine.view(flowId, "binder");
+            org.assertj.core.api.Assertions.assertThat(view.flowId()).isEqualTo(flowId);
         }
+        org.assertj.core.api.Assertions.assertThat(STATES).hasSizeGreaterThan(8);
     }
 
     /** The F7 findings, as readable regressions: each corrupt state ends its flow as not found. */

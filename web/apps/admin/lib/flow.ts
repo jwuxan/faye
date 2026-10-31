@@ -5,7 +5,7 @@
  */
 import { Document, isMap, isPair, isScalar, isSeq, parse, parseDocument } from "yaml";
 import { ID_PATTERN, KEY_PATTERN } from "@faye/contract";
-import { CONSENT_HANDLER, SECTIONS, type Section } from "./entries.ts";
+import { CONSENT, CONSENT_HANDLER, SECTIONS, type Section } from "./entries.ts";
 
 export type Literal = string | number | boolean;
 
@@ -104,7 +104,13 @@ export function fromYaml(text: string): FlowDoc {
   if (raw.consent !== undefined) {
     if (!isObject(raw.consent)) throw new FlowShapeError("'consent' must be a mapping with 'steps'");
     const taken = new Set(out.login.map((e) => e.id));
-    for (const e of entries(raw.consent.steps, "consent.steps")) {
+    const moved = entries(raw.consent.steps, "consent.steps");
+    // Moved steps run on the consent challenge only from one that asks for consent; refuse rather
+    // than silently move a step before it into the sign in
+    if (moved.length > 0 && !recordsConsent(moved[0].body)) {
+      throw new FlowShapeError("move the 'consent' steps to the end of 'login.steps', starting with the one that asks for consent");
+    }
+    for (const e of moved) {
       let id = e.id;
       for (let n = 2; taken.has(id); n++) id = `${e.id}-${n}`;
       taken.add(id);
@@ -114,9 +120,13 @@ export function fromYaml(text: string): FlowDoc {
   return out;
 }
 
-/** Whether a body calls the consent handler anywhere in it, as the compiler decides. */
+/** Whether a body asks for consent (shows its screen or calls its handler), itself or nested, as the compiler decides. */
 export function recordsConsent(b: Body): boolean {
-  return b.use === CONSENT_HANDLER || [...(b.alternative ?? []), ...(b.steps ?? [])].some((e) => recordsConsent(e.body));
+  return (
+    b.use === CONSENT_HANDLER ||
+    b.screen?.type === CONSENT.kind ||
+    [...(b.alternative ?? []), ...(b.steps ?? [])].some((e) => recordsConsent(e.body))
+  );
 }
 
 /**
