@@ -61,7 +61,8 @@ record HostParams(@Nullable String subject, boolean skip, List<String> acrValues
 
 * `HostRequest.params` becomes `HostParams`.
 * The `host.*` namespace is exactly these fields under their wire names (`subject`, `skip`, `acr_values`, `requested_scope`, `requested_access_token_audience`, `login_hint`, `ui_locales`, `context`). `ir-spec.md` lists them as the host contract, with what each means and which host kinds supply it.
-* The verifier (L1 layer, ADR 0024 8B) refuses a predicate path `host.<x>` where `<x>` is not a field. Today the path pattern accepts any `host.` suffix.
+* The checker (L2, ADR 0024 8B) refuses a predicate path `host.<x>` where `<x>` is not a field. The refusal happens at publish and preview, not in the L1 verifier on load. Today the path pattern accepts any `host.` suffix.
+* A stored format 1 version therefore still loads and runs unchanged. An unknown `host.<x>` reads as null, exactly as it does today with the Hydra host, which never sets such a key. So no format bump is needed, and only a new publish is held to the closed list.
 * `context` is the one free-form field: the host's own data, carried to the outcome and readable as `host.context.*`.
 * Adding a field is a change to this contract, made through an ADR.
 * Each `FlowHost` maps its protocol into `HostParams`. For example, Hydra's `oidc_context.login_hint` becomes `loginHint`. An adapter cannot add a key.
@@ -82,7 +83,9 @@ interface CredentialIssuer {
 * The tenant's display name replaces the hard-coded issuer `"Faye"` in the otpauth label.
 * The passkey algorithms move to the issuer. `ScreenType.PASSKEY_ALGORITHMS` leaves the engine, and the Login UI still receives them in the screen, as in [ADR 0022](0022-passkey-ceremonies-with-simplewebauthn.md).
 * Issued data is stored, as today, only as the waiting screen's data (`FlowState.Awaiting.data`). It reaches the consuming handler only as `Submission.context()`. It is never in `Env`, so predicates and hooks cannot read it.
-* The issuer and the handler that consumes its output come from the same module. The `ScreenRegistry` refuses a screen whose issuer is missing at startup, not at the first flow.
+* The issuer and the handler that consumes its output come from the same module.
+* A `ScreenSpec` declares whether it needs an issuer: `identifier` (only for passkey autofill), `passkey` and `otp_enroll` do, while `password`, `otp`, `method_picker`, `consent` and `error` do not.
+* At startup, the `ScreenRegistry` refuses a screen that declares an issuer and has none registered, rather than failing at the first flow. It also refuses an issuer registered for a screen that does not declare one.
 * Requirements for an upstream issuer:
   * The upstream service creates the challenge or secret.
   * The issuer returns an opaque reference the upstream can verify (for example `{ "challenge": ..., "upstream_ref": ... }`).
@@ -139,10 +142,10 @@ The embedding contract goes in `docs/roadmap/engine.md`:
 These tests are proposed; none of them exists yet.
 
 * `cd server && ./gradlew build` with:
-  * `faye-engine`: `ConformanceTest` passes unchanged, which proves the behavior is the same. A new vector, `host-param-unknown`, is refused by the verifier.
+  * `faye-engine`: `ConformanceTest` passes unchanged, which proves the behavior is the same. A new checker case refuses `host.unknown` at publish, and a stored version that reads it still loads.
   * `faye-engine`: an `EngineTest` with a `FlowHost` that returns `Handoff`. A finished flow returns the handoff, and a lost race returns `conflict` without calling `accept`.
   * `faye-identity`: an issuer test showing that the TOTP secret survives a retry, the otpauth label uses the tenant's display name, and a failing issuer fails the step closed.
-  * `faye-app`: a `ScreenRegistry` startup test that refuses a screen with no issuer, and a `FlowApiTest` for a handoff response.
+  * `faye-app`: a `ScreenRegistry` startup test that refuses a declaring screen with no issuer and accepts `password` and `consent` without one, and a `FlowApiTest` for a handoff response.
   * The command `grep -rn 'login_hint\|requested_scope\|PASSKEY_ALGORITHMS\|"Faye"' server/faye-engine/src/main` prints nothing.
 * `deploy/smoke.sh` passes on a fresh stack, which proves the Hydra behavior is unchanged.
 
