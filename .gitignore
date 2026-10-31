@@ -14,3 +14,11 @@ deploy/.data/
 
 # Redis dumps (Redis is gone since ADR 0017; never commit binaries)
 *.rdb
+
+# Fuzzing (ADR 0007): the generated corpus and raw crash files stay out of the repo; a finding is
+# committed only as a readable regression input
+.cifuzz-corpus/
+crash-*
+timeout-*
+slow-unit-*
+oom-*

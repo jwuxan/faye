@@ -14,8 +14,10 @@ import {
   emptyFlow,
   entryAt,
   type FlowDoc,
+  consentStart,
   fromBlock,
   fromYaml,
+  FlowShapeError,
   insert,
   type ListRef,
   move,
@@ -34,7 +36,6 @@ const FLOWS = new URL("../../../../server/faye-app/src/main/resources/flows/", i
 const shipped = (name: string) => readFileSync(new URL(name, FLOWS), "utf8");
 
 const LOGIN: ListRef = { section: "login", owner: [], kind: "steps" };
-const CONSENT: ListRef = { section: "consent", owner: [], kind: "steps" };
 const step = (i: number): Address => ({ section: "login", path: [["steps", i]] });
 const option = (s: number, o: number): Address => ({ section: "login", path: [["steps", s], ["alternative", o]] });
 const options = (s: number): ListRef => ({ section: "login", owner: [["steps", s]], kind: "alternative" });
@@ -70,10 +71,70 @@ test("partner consent", () => {
   let doc = emptyFlow("partner-consent");
   doc = add(doc, LOGIN, "Identifier");
   doc = add(doc, LOGIN, "Password");
-  doc = { ...doc, consent: [] };
-  doc = add(doc, CONSENT, "Consent");
-  doc = updateBody(doc, { section: "consent", path: [["steps", 0]] }, { if: not("client.first_party") });
+  doc = add(doc, LOGIN, "Consent");
+  doc = rename(doc, step(2), "grant");
+  doc = updateBody(doc, step(2), { if: not("client.first_party") });
+  assert.equal(consentStart(doc.login), 2);
   sameAsShipped(doc, "partner-consent.yaml");
+});
+
+test("consent starts at the first step that records it, nested or not", () => {
+  const steps = fromYaml(`flow: f
+version: 1
+login:
+  steps:
+    identify: { screen: identifier, use: identity.resolve }
+    ask:
+      alternative:
+        grant: { screen: consent, use: consent.record }
+    after: { set: { done: true } }
+`).login;
+  assert.equal(consentStart(steps), 1);
+  assert.equal(consentStart(steps.slice(0, 1)), 1);
+});
+
+test("the consent screen alone starts consent, as in the compiler", () => {
+  const steps = fromYaml(`flow: f
+version: 1
+login:
+  steps:
+    identify: { screen: identifier, use: identity.resolve, set: { use: consent.record } }
+    ask: { screen: consent }
+`).login;
+  assert.equal(consentStart(steps), 1);
+});
+
+test("an old consent section that does not start by asking for consent is refused, not moved into the sign in", () => {
+  assert.throws(
+    () =>
+      fromYaml(`flow: f
+version: 1
+login:
+  steps:
+    identify: { screen: identifier, use: identity.resolve }
+consent:
+  steps:
+    audit: { hook: h }
+    grant: { screen: consent, use: consent.record }
+`),
+    FlowShapeError,
+  );
+});
+
+test("a consent section from before ADR 0026 opens as steps at the end", () => {
+  const doc = fromYaml(`flow: f
+version: 1
+login:
+  steps:
+    identify: { screen: identifier, use: identity.resolve }
+    grant: { set: { x: 1 } }
+consent:
+  steps:
+    grant: { screen: consent, use: consent.record }
+`);
+  assert.deepEqual(doc.login.map((e) => e.id), ["identify", "grant", "grant-2"]);
+  assert.equal(consentStart(doc.login), 2);
+  assert.ok(!toYaml(doc).includes("\nconsent:"));
 });
 
 test("passkey, or password plus a second factor", () => {

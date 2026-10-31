@@ -17,7 +17,15 @@ public record Submission(Map<String, Object> payload, Map<String, Object> contex
         this(payload, Map.of());
     }
 
+    /**
+     * @throws FlowException {@code invalid_submission} when a field is null: JSON a browser posts
+     *     may carry one, no screen takes one, and it is refused rather than read as absent (ADR 0007,
+     *     seed finding 1)
+     */
     public Submission {
+        if (payload.values().stream().anyMatch(java.util.Objects::isNull)) {
+            throw new FlowException(FlowException.Code.INVALID_SUBMISSION);
+        }
         payload = Map.copyOf(payload);
         context = Map.copyOf(context);
     }

@@ -248,7 +248,6 @@ function flowVars(doc: FlowDoc): Map<string, string[]> {
       walk(e.body.steps);
     });
   walk(doc.login);
-  walk(doc.consent);
   return out;
 }
 

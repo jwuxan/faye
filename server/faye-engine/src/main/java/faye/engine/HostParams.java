@@ -119,11 +119,16 @@ public record HostParams(
         return type.cast(value);
     }
 
+    /** A list of strings, or the space separated string OIDC encodes lists as ({@code acr_values}). */
     private static List<String> strings(Map<String, ?> wire, String key) {
         Object value = wire.get(key);
         if (value == null) return List.of();
+        if (value instanceof String s) {
+            return s.isBlank() ? List.of() : List.of(s.trim().split("\\s+"));
+        }
         if (!(value instanceof List<?> list) || !list.stream().allMatch(String.class::isInstance)) {
-            throw new IllegalArgumentException("host." + key + " must be a list of strings");
+            throw new IllegalArgumentException(
+                    "host." + key + " must be a list of strings or a space separated string");
         }
         return list.stream().map(String.class::cast).toList();
     }

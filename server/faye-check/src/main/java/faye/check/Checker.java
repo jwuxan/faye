@@ -77,6 +77,9 @@ public final class Checker {
 
     private static final String HOST = "host.";
 
+    /** The events all paths being enumerated may hold between them. */
+    private static final long MAX_LIVE_EVENTS = 1_000_000;
+
     /** Stands for the subject a credential bound; {@code auth.subject} itself is never decided. */
     private static final String SUBJECT = "subject";
 
@@ -209,6 +212,14 @@ public final class Checker {
                         && !policy.screens().contains(screen.type())) {
                     error(screen.source(), "screen", "screen '" + screen.type() + "' is not enabled for this tenant");
                 }
+                // Consent shown during the sign in would ask before anyone is signed in, and leave the
+                // version without a consent entry, which grants consent with no screen (ADR 0026)
+                if (kind == Entry.Kind.AUTHENTICATE && "consent".equals(screen.type())) {
+                    error(
+                            screen.source(),
+                            "consent-screen",
+                            "the consent screen belongs on the consent challenge, not in the sign in");
+                }
             }
             case Call call -> {
                 Optional<Handler> handler = handlers.find(call.handler());
@@ -217,6 +228,12 @@ public final class Checker {
                     error(call.source(), "handler", "handler '" + call.handler() + "' is not enabled for this tenant");
                 }
                 HandlerMeta meta = handler.get().meta();
+                if (kind == Entry.Kind.AUTHENTICATE && "consent.record".equals(call.handler())) {
+                    error(
+                            call.source(),
+                            "consent-call",
+                            "consent.record belongs on the consent challenge, not in the sign in");
+                }
                 if (kind == Entry.Kind.CONSENT && (meta.credential() || meta.bindsSubject())) {
                     error(
                             call.source(),
@@ -417,13 +434,30 @@ public final class Checker {
                 List<Run> runs = List.of(run);
                 for (Node child : seq.children()) {
                     List<Run> next = new ArrayList<>();
-                    for (Run r : runs) next.addAll(r.stop() == null ? walk(child, r) : List.of(r));
+                    for (Run r : runs) {
+                        next.addAll(r.stop() == null ? walk(child, r) : List.of(r));
+                        // Bounded as it grows: the product of runs and outcomes is built here
+                        if (next.size() > MAX_PATHS) throw new TooComplex();
+                    }
                     runs = bounded(next);
                 }
                 yield runs;
             }
             case Step step -> walk(step.body(), run.with(new Entered(step.id(), step.source())));
-            case Screen screen -> List.of(run);
+            case Screen screen -> {
+                // Registering a passkey is a credential write, as webauthn.register is: its screen
+                // needs the subject a credential verified, or the engine has no one to register
+                // for (found by EngineFuzzTest, ADR 0007, O12)
+                if (Boolean.TRUE.equals(screen.opts().get("register"))
+                        && run.events().stream().noneMatch(e -> e instanceof Called c && c.verifiedSubject())) {
+                    error(
+                            screen.source(),
+                            "subject",
+                            "screen '" + screen.type() + "' registers a passkey, which needs a subject a credential"
+                                    + " verified earlier in the flow, but shows first on a path");
+                }
+                yield List.of(run);
+            }
             case Call call -> call(call, run);
             case Hook hook ->
                 bounded(List.of(
@@ -536,6 +570,7 @@ public final class Checker {
             }
             taken.add(option);
             out.addAll(walk(option.body(), r));
+            if (out.size() > MAX_PATHS) throw new TooComplex();
         }
         if (hookFails != null) out.add(hookFails);
         if (mayBeNone) out.add(none.stop(new Failing("no_method", choose.source())));
@@ -554,7 +589,9 @@ public final class Checker {
             List<Run> again = new ArrayList<>();
             for (Run start : starts) {
                 for (Run r : walk(retry.body(), start)) {
-                    if (r.events().size() > MAX_EVENTS) throw new TooComplex();
+                    if (r.events().size() > MAX_EVENTS || out.size() + again.size() > MAX_PATHS) {
+                        throw new TooComplex();
+                    }
                     if (r.stop() instanceof Failing && attempt < retry.attempts()) {
                         again.add(new Run(r.events(), r.knowledge(), null));
                     } else {
@@ -571,8 +608,16 @@ public final class Checker {
         if (visited.add(node)) visitOrder.add(node);
     }
 
+    /**
+     * The runs, if there are not too many and they do not hold too many events between them: the
+     * two bounds alone allow MAX_PATHS paths of MAX_EVENTS events each, which a flow of a few
+     * nested retries reaches and which no heap holds (found by EngineFuzzTest in CI, ADR 0007).
+     */
     private static List<Run> bounded(List<Run> runs) {
         if (runs.size() > MAX_PATHS) throw new TooComplex();
+        long events = 0;
+        for (Run r : runs) events += r.events().size();
+        if (events > MAX_LIVE_EVENTS) throw new TooComplex();
         return runs;
     }
 

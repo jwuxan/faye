@@ -43,6 +43,8 @@ class FlowController {
     /** The cookie that binds a flow to the browser that started it is this prefix and the flow id. */
     static final String COOKIE_PREFIX = "faye_flow_";
 
+    private static final System.Logger LOG = System.getLogger(FlowController.class.getName());
+
     record SubmitRequest(String nonce, String action, Map<String, Object> payload) {}
 
     record RedirectResponse(String redirectTo) {}
@@ -103,7 +105,7 @@ class FlowController {
                 response.header(HttpHeaders.SET_COOKIE, binderCookie(screen.flowId(), binder, props.flowTtl()));
                 yield props.loginUiUrl() + "/flow/" + screen.flowId();
             }
-            case Redirect redirect -> redirect.url();
+            case Redirect redirect -> checked(redirect.url());
             case Handoff handoff ->
                 throw new IllegalStateException("a host that hands off cannot complete a redirecting route");
         };
@@ -154,7 +156,7 @@ class FlowController {
             case Redirect redirect ->
                 ResponseEntity.ok()
                         .header(HttpHeaders.SET_COOKIE, binderCookie(flowId, "", Duration.ZERO))
-                        .body(new RedirectResponse(redirect.url()));
+                        .body(new RedirectResponse(checked(redirect.url())));
             case Handoff handoff ->
                 ResponseEntity.ok()
                         .header(HttpHeaders.SET_COOKIE, binderCookie(flowId, "", Duration.ZERO))
@@ -168,6 +170,43 @@ class FlowController {
                 .filter(b -> !b.isEmpty())
                 .orElse(null);
         return new ScreenResponse(view.flowId(), view.nonce(), view.step(), view.screen(), branding);
+    }
+
+    /**
+     * A redirect the host asked for, if it is one a browser can safely follow: an absolute http(s)
+     * URL with a host and nothing a header or {@code window.location} would read another way.
+     * The Login UI navigates to it, so a {@code javascript:} URL would run in its origin (ADR 0007,
+     * seed finding 3). Anything else is the host's fault and is refused as such.
+     */
+    static String checked(String url) {
+        try {
+            URI uri = new URI(url);
+            String scheme = uri.getScheme();
+            if (uri.isAbsolute()
+                    && ("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))
+                    && uri.getHost() != null
+                    && url.chars().noneMatch(c -> c < 0x21 || c == 0x7f)) {
+                return url;
+            }
+        } catch (java.net.URISyntaxException e) {
+            // refused below
+        }
+        throw new BadRedirect();
+    }
+
+    /** The host answered with a redirect {@link #checked} refuses. */
+    static final class BadRedirect extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        BadRedirect() {
+            super("the authorization server answered with a redirect a browser must not follow");
+        }
+    }
+
+    @ExceptionHandler
+    ResponseEntity<ErrorResponse> badRedirect(BadRedirect e) {
+        LOG.log(System.Logger.Level.ERROR, e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new ErrorResponse("host_error"));
     }
 
     @ExceptionHandler

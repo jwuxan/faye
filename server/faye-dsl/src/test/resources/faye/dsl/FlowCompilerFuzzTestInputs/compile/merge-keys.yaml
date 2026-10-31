@@ -1,0 +1,6 @@
+base: &b { use: identity.resolve }
+flow: f
+version: 1
+login:
+  steps:
+    a: { <<: *b }

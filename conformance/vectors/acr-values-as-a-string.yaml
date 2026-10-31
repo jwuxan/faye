@@ -1,0 +1,13 @@
+name: acr_values relayed as OIDC's space separated string is read, not ignored (ADR 0007, F4)
+ir: flows/password-only.json
+host:
+  params: { acr_values: "unknown faye:2fa" }
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: false, reason: acr_not_satisfied }

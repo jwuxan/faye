@@ -26,6 +26,7 @@ import {
   screenErrorMessage,
   terminalErrorMessage,
 } from "../../../lib/messages";
+import { isNavigable } from "../../../lib/redirect";
 import { autofillAvailable, cancelPasskeyCeremony, createPasskey, getPasskey } from "../../../lib/webauthn";
 
 type Payload = SubmitRequest["payload"];
@@ -66,7 +67,12 @@ export function FlowScreen({ initial, embedOrigin }: { initial: ScreenResponse; 
       });
       const body = (await res.json()) as ScreenProtocolResponse;
       if ("redirectTo" in body) {
-        window.location.assign(body.redirectTo);
+        if (isNavigable(body.redirectTo)) {
+          window.location.assign(body.redirectTo);
+          return;
+        }
+        setError(errorMessage("host_error"));
+        setPending(false);
         return;
       }
       if ("result" in body) {

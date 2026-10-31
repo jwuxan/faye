@@ -1,0 +1,5 @@
+flow: f
+version: 1
+
+# A flow needs an entry; which kinds it needs is the checker's rule.
+# expect: 1:1: missing 'login'

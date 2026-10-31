@@ -10,7 +10,7 @@ Format: [MADR 4](https://adr.github.io/madr/). One file per decision, `NNNN-titl
 | [0004](0004-identity-dependencies.md) | Dependencies for M2 credentials: webauthn4j, Spring Security Argon2, uqr | Accepted |
 | [0005](0005-m2-flow-forms-and-screens.md) | M2 flow forms, predicates and screens | Accepted |
 | [0006](0006-assurance-amr-acr.md) | Computing acr, enforcing acr_values, and reusing sessions | Accepted |
-| [0007](0007-fuzz-and-adversarial-testing.md) | Fuzz and adversarial testing | Proposed |
+| [0007](0007-fuzz-and-adversarial-testing.md) | Fuzz and adversarial testing | In progress |
 | [0008](0008-m3-checks-versions-and-tenant-policy.md) | M3: static checks, durable versions and tenant policy | Accepted |
 | [0009](0009-m4-javascript-hooks-on-quickjs-wasm.md) | M4: JavaScript hooks on QuickJS in WebAssembly | Accepted |
 | [0010](0010-m5-admin-ui.md) | M5: Admin UI | Accepted |
@@ -29,3 +29,4 @@ Format: [MADR 4](https://adr.github.io/madr/). One file per decision, `NNNN-titl
 | [0023](0023-one-container-many-processes.md) | One container, many processes | In progress |
 | [0024](0024-core-ir-as-a-narrow-waist.md) | The Core IR as a narrow waist: entries, format versions, handler and screen catalogs, effects after the compare and set, browser bound flows | In progress |
 | [0025](0025-host-neutral-boundaries-for-embedding.md) | Host neutral boundaries for embedding: host parameters, credential issuers and flow outcomes | In progress |
+| [0026](0026-consent-as-a-step.md) | Consent as a step of the sign in, not a section of its own | In progress |

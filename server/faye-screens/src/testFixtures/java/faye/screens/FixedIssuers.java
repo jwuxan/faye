@@ -9,8 +9,9 @@ import java.util.Map;
 
 /**
  * Issuers for the built in screens that issue fixed material, for tests that run flows without a
- * credential module: the challenge is always {@link #CHALLENGE}, the secret {@link #SECRET} unless a
- * retry keeps the previous one.
+ * credential module. They behave like the identity module's issuers (a passkey registration needs a
+ * signed in subject) and present what the screen protocol requires; the challenge is always {@link
+ * #CHALLENGE}, the secret {@link #SECRET} unless a retry keeps the previous one.
  */
 public final class FixedIssuers {
 
@@ -41,6 +42,9 @@ public final class FixedIssuers {
                     return Map.of("secret", previous.get("secret") instanceof String s ? s : SECRET);
                 }
                 if (onlyForPasskeyOption && !Boolean.TRUE.equals(opts.get("passkey"))) return Map.of();
+                if (Boolean.TRUE.equals(opts.get("register")) && env.auth().subject() == null) {
+                    throw new IllegalStateException("passkey registration needs a signed in subject");
+                }
                 return Map.of("challenge", CHALLENGE);
             }
 
@@ -51,8 +55,27 @@ public final class FixedIssuers {
                     case "identifier" -> {
                         if (issued.containsKey("challenge")) out.put("passkey", Map.of("challenge", CHALLENGE));
                     }
-                    case "passkey" -> out.put("challenge", issued.get("challenge"));
-                    default -> out.put("secret", issued.get("secret"));
+                    case "passkey" -> {
+                        out.put("challenge", issued.get("challenge"));
+                        if (Boolean.TRUE.equals(issued.get("register"))) {
+                            String name = env.user().get("identifier") instanceof String id ? id : "account";
+                            out.put(
+                                    "register",
+                                    Map.of(
+                                            "userId",
+                                            "dGVzdA",
+                                            "userName",
+                                            name,
+                                            "displayName",
+                                            name,
+                                            "algorithms",
+                                            List.of(-7L)));
+                        }
+                    }
+                    default -> {
+                        out.put("secret", issued.get("secret"));
+                        out.put("uri", "otpauth://totp/Test:account?secret=" + issued.get("secret") + "&issuer=Test");
+                    }
                 }
                 return out;
             }

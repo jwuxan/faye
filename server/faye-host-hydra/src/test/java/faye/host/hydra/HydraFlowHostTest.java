@@ -214,8 +214,11 @@ class HydraFlowHostTest {
 
     @Test
     void hydraErrorsSurface() {
+        // A challenge Hydra no longer holds is the browser's to fix: no such sign in, not a 5xx
         assertThatThrownBy(() -> host.load(HostKind.LOGIN, "gone"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("410");
+                .isInstanceOfSatisfying(
+                        faye.engine.FlowException.class,
+                        e -> org.assertj.core.api.Assertions.assertThat(e.code())
+                                .isEqualTo(faye.engine.FlowException.Code.FLOW_NOT_FOUND));
     }
 }

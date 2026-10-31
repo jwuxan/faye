@@ -23,6 +23,7 @@ public record Env(
 
     public record Verified(String handler, List<String> amr) {
         public Verified {
+            java.util.Objects.requireNonNull(handler);
             amr = List.copyOf(amr);
         }
     }
@@ -48,6 +49,7 @@ public record Env(
     }
 
     public Env {
+        java.util.Objects.requireNonNull(auth);
         request = Map.copyOf(request);
         client = Map.copyOf(client);
         // State saved before tenant settings existed has none

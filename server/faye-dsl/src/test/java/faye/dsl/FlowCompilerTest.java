@@ -65,6 +65,56 @@ class FlowCompilerTest {
         assertThat(((Call) body.children().get(1)).source().line()).isEqualTo(11);
     }
 
+    /** ADR 0026: the step that records consent, and every step after it, is the consent entry. */
+    @Test
+    void stepsFromConsentOnLowerToTheConsentEntry() {
+        var flow = FlowCompiler.compile("f.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    resolve: { use: identity.resolve }
+                    consent:
+                      if: { not: client.first_party }
+                      alternative:
+                        ask: { screen: consent, use: consent.record }
+                    after: { set: { done: true } }
+                """);
+        assertThat(IrCodec.canonicalJson(flow))
+                .isEqualTo("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                        + "[\"step\",\"resolve\",[\"call\",\"identity.resolve\"]],[\"succeed\"]]],"
+                        + "[\"entry\",\"consent\",\"consent\",[\"seq\",[\"step\",\"consent\",[\"when\","
+                        + "{\"not\":\"client.first_party\"},[\"choose\",[[\"opt\",\"ask\",[\"seq\","
+                        + "[\"screen\",\"consent\"],[\"call\",\"consent.record\"]]]]]]],"
+                        + "[\"step\",\"after\",[\"set\",\"done\",true]],[\"succeed\"]]]]");
+        // The consent entry points at the step that starts it
+        assertThat(Objects.requireNonNull(flow.entries().get("consent")).body().source())
+                .isEqualTo(new SourceRef("f.yaml", 6, 5));
+    }
+
+    /** The consent screen alone starts consent too; a literal that only says consent.record does not. */
+    @Test
+    void theConsentScreenStartsConsentAndLiteralsDoNot() {
+        var flow = FlowCompiler.compile("f.yaml", """
+                flow: f
+                version: 1
+                login:
+                  steps:
+                    resolve: { use: identity.resolve, set: { use: consent.record } }
+                    ask: { screen: { type: consent } }
+                """);
+        assertThat(flow.entries()).containsOnlyKeys("login", "consent");
+        assertThat(IrCodec.canonicalJson(flow))
+                .contains("[\"entry\",\"consent\",\"consent\",[\"seq\",[\"step\",\"ask\"");
+    }
+
+    /** A flow whose steps never record consent has no consent entry. */
+    @Test
+    void noConsentStepNoConsentEntry() {
+        var flow = FlowCompiler.compile("f.yaml", DEFAULT_LOGIN);
+        assertThat(flow.entries()).containsOnlyKeys("login");
+    }
+
     @Test
     void singleKeyStepCompilesWithoutSeq() {
         var flow = FlowCompiler.compile("f.yaml", """

@@ -37,6 +37,9 @@ final class YamlReader {
     private final String origin;
     private final List<Diagnostic> errors = new ArrayList<>();
 
+    /** Nodes already read, by identity. */
+    private final java.util.Set<Node> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
     private YamlReader(String origin) {
         this.origin = origin;
     }
@@ -80,6 +83,12 @@ final class YamlReader {
     }
 
     private Doc doc(Node node) {
+        // An alias is the same node reached twice; a recursive one never ends (ADR 0007, F2). A
+        // flow has no use for them, so the surface refuses anchors and aliases outright.
+        if (!seen.add(node)) {
+            errors.add(new Diagnostic(ref(node), "anchors and aliases are not supported; write the value out"));
+            return new Doc.Scalar(null, ref(node));
+        }
         return switch (node) {
             case MappingNode m -> {
                 Map<String, Doc.Entry> entries = new LinkedHashMap<>();

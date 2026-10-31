@@ -2,6 +2,7 @@ package faye.engine;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -50,11 +51,24 @@ public record FlowState(
             @Nullable String error,
             @Nullable Integer attemptsLeft) {
         public Awaiting {
+            Objects.requireNonNull(path);
+            Objects.requireNonNull(screen);
+            Objects.requireNonNull(nonce);
+            path = List.copyOf(path);
             data = Map.copyOf(data);
         }
     }
 
+    /** Every component but the nullable ones is required, so a state read with one missing fails to read. */
     public FlowState {
+        Objects.requireNonNull(flowId);
+        Objects.requireNonNull(tenantId);
+        Objects.requireNonNull(versionHash);
+        Objects.requireNonNull(kind);
+        Objects.requireNonNull(entry);
+        Objects.requireNonNull(hostRef);
+        Objects.requireNonNull(binder);
+        Objects.requireNonNull(env);
         stack = List.copyOf(stack);
         pending = List.copyOf(pending);
     }

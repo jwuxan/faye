@@ -255,7 +255,13 @@
       "type": "object",
       "required": ["redirectTo"],
       "additionalProperties": false,
-      "properties": { "redirectTo": { "type": "string" } }
+      "properties": {
+        "redirectTo": {
+          "description": "Where the browser goes next: always an absolute http or https URL, so the Login UI can hand it to window.location (ADR 0007).",
+          "type": "string",
+          "pattern": "^[hH][tT][tT][pP][sS]?://[^\\s]+$"
+        }
+      }
     },
     "HandoffResponse": {
       "type": "object",
@@ -269,7 +275,7 @@
       "required": ["error"],
       "additionalProperties": false,
       "properties": {
-        "error": { "enum": ["flow_not_found", "flow_finished", "stale_nonce", "conflict", "invalid_submission"] }
+        "error": { "enum": ["flow_not_found", "flow_finished", "stale_nonce", "conflict", "invalid_submission", "host_error"] }
       }
     }
   }

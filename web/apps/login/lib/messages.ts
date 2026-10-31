@@ -10,6 +10,8 @@ export function errorMessage(code: ErrorResponse["error"]): string {
       return "This page is out of date. Reload to continue.";
     case "invalid_submission":
       return "Please fill in the field.";
+    case "host_error":
+      return "We couldn't finish signing you in. Go back to the app and try again.";
   }
 }
 
