@@ -1,4 +1,4 @@
-name: a production client's ID token claims never carry the flow id
+name: a consent whose login the engine cannot find hands the host no attributes of the person
 ir: flows/partner-consent.json
 host:
   kind: consent
@@ -9,4 +9,4 @@ handlers:
 events:
   - expect_screen: consent
   - submit: { decision: allow }
-  - expect_result: { succeed: true, subject: alice, grant_scope: [openid], id_token: {} }
+  - expect_result: { succeed: true, subject: alice, grant_scope: [openid], user: {} }

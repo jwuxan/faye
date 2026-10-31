@@ -5,6 +5,16 @@ import { bindingHeader, fayeServerUrl, flowCookie } from "../../../lib/faye-serv
 import { errorMessage } from "../../../lib/messages";
 import { FlowScreen } from "./flow-screen";
 
+/** The value if it is exactly one origin (scheme, host, port); anything else, `*` included, is null. */
+function singleOrigin(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value).origin === value ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function FlowPage({ params }: { params: Promise<{ flowId: string }> }) {
   const { flowId } = await params;
   // Faye answers only the browser that started the flow, by the cookie its /login set
@@ -26,7 +36,7 @@ export default async function FlowPage({ params }: { params: Promise<{ flowId: s
       </Card>
     );
   }
-  // Where a host that hands off (ADR 0025) embeds this page; unset, a handoff result is never posted
-  const embedOrigin = process.env.FAYE_EMBED_ORIGIN || null;
+  // The page that opened this one for a host that hands off (ADR 0025); unset, a result is never posted
+  const embedOrigin = singleOrigin(process.env.FAYE_EMBED_ORIGIN);
   return <FlowScreen initial={(await res.json()) as ScreenResponse} embedOrigin={embedOrigin} />;
 }

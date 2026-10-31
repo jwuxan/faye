@@ -9,7 +9,6 @@ import faye.engine.FlowVersions;
 import faye.engine.HookStore;
 import faye.engine.HostKind;
 import faye.engine.HostParams;
-import faye.engine.HostRequest;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.InMemoryHookStore;
@@ -70,7 +69,7 @@ class PreviewsOffTest {
 
     @Test
     void aPreviewClientIsRefusedAndThePreviewApiIsAbsent() throws Exception {
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN,
                 "off",
                 Map.of("client_id", "preview-default", "metadata", Map.of("preview", true)),

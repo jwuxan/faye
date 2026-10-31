@@ -29,7 +29,6 @@ import faye.engine.HandlerRegistry;
 import faye.engine.HookRunner;
 import faye.engine.HostKind;
 import faye.engine.HostParams;
-import faye.engine.HostRequest;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.Invocation;
@@ -211,10 +210,10 @@ class IdentityFlowTest {
                 .orElseThrow();
         var env = new faye.engine.Env(
                 Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), faye.engine.Env.Auth.NONE);
-        var unknown = (faye.engine.Outcome.Ok) resolve.invoke(
-                new Invocation(env, new Submission(Map.of("identifier", "nobody@example.com")), Map.of(), "f_test"));
-        var bob = (faye.engine.Outcome.Ok) resolve.invoke(
-                new Invocation(env, new Submission(Map.of("identifier", "bob@example.com")), Map.of(), "f_test"));
+        var unknown = (faye.engine.Outcome.Ok) resolve.invoke(new Invocation(
+                env, new Submission(Map.of("identifier", "nobody@example.com")), Map.of(), "f_test", "default", false));
+        var bob = (faye.engine.Outcome.Ok) resolve.invoke(new Invocation(
+                env, new Submission(Map.of("identifier", "bob@example.com")), Map.of(), "f_test", "default", false));
         for (String key : List.of("has_password", "has_totp", "has_passkey", "mfa_required", "identified_by")) {
             assertThat(unknown.user().get(key)).as(key).isEqualTo(bob.user().get(key));
         }
@@ -245,7 +244,8 @@ class IdentityFlowTest {
                     : Map.of("client_id", "app", "metadata", Map.of("tenant", c.getKey()));
             var env = new faye.engine.Env(
                     Map.of(), client, Map.of(), Map.of(), Map.of(), Map.of(), faye.engine.Env.Auth.NONE);
-            var resolved = (faye.engine.Outcome.Ok) resolve.invoke(new Invocation(env, input, Map.of(), "f_test"));
+            var resolved = (faye.engine.Outcome.Ok) resolve.invoke(new Invocation(
+                    env, input, Map.of(), "f_test", c.getKey().isEmpty() ? "default" : c.getKey(), false));
             assertThat(resolved.user().get("exists")).as(c.getKey()).isEqualTo(c.getValue());
         }
 
@@ -303,7 +303,7 @@ class IdentityFlowTest {
                 .previews(previews)
                 .screens(BuiltinScreen.registry(IdentityIssuers.create()))
                 .build();
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN,
                 "preview",
                 Map.of("client_id", "preview-default", "metadata", Map.of("preview", true)),
@@ -326,8 +326,8 @@ class IdentityFlowTest {
 
     ScreenView start(Map<String, Object> hydra) {
         String challenge = "c" + challenges++;
-        host.register(
-                new HostRequest(HostKind.LOGIN, challenge, Map.of("client_id", "demo"), HostParams.fromMap(hydra)));
+        host.register(MockFlowHost.request(
+                HostKind.LOGIN, challenge, Map.of("client_id", "demo"), HostParams.fromMap(hydra)));
         return screen(engine.start(HostKind.LOGIN, challenge, Map.of(), "binder"));
     }
 

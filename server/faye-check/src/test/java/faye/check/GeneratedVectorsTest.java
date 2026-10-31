@@ -21,7 +21,6 @@ import faye.engine.HookException;
 import faye.engine.HookRunner;
 import faye.engine.HostKind;
 import faye.engine.HostParams;
-import faye.engine.HostRequest;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.Invocation;
@@ -238,7 +237,7 @@ class GeneratedVectorsTest {
         var versions = new InMemoryFlowVersions();
         versions.publish(Engine.DEFAULT_TENANT, FlowVersion.of(flow));
         var host = new MockFlowHost();
-        host.register(new HostRequest(kind, "challenge-1", client, HostParams.fromMap(params)));
+        host.register(MockFlowHost.request(kind, "challenge-1", client, HostParams.fromMap(params)));
         var engine = Engine.builder()
                 .versions(versions)
                 .handlers(new HandlerRegistry(handlers))

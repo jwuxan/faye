@@ -1,0 +1,14 @@
+name: an issuer that never issues ends the entry with issuer_error once the retry is spent; nothing is accepted
+ir: flows/enroll-totp.json
+issuers:
+  otp_enroll: [fail, fail, fail]
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_accepted: 0
+  - expect_result: { succeed: false, reason: issuer_error }

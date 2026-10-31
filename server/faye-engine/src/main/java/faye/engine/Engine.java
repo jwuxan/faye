@@ -190,8 +190,8 @@ public final class Engine {
         HostRequest req = host.load(kind, ref);
         @Nullable String subject = req.params().subject();
         boolean skip = req.params().skip();
-        boolean preview = Previews.isPreview(req.client());
-        String tenant = tenantOf(req);
+        boolean preview = req.preview();
+        String tenant = req.tenantOrDefault();
         FlowVersion version;
         Map<String, Object> user = Map.of();
         Map<String, Object> settings = tenants.get(tenant).env();
@@ -261,7 +261,8 @@ public final class Engine {
                 env,
                 null,
                 List.of(),
-                0);
+                0,
+                preview);
 
         List<TraceEvent> trace = new ArrayList<>();
         trace.add(TraceEvent.of("start", version.hash(), entry.get()));
@@ -496,7 +497,8 @@ public final class Engine {
                                     .orElseThrow(() -> new IllegalStateException(
                                             call.source() + ": unknown handler " + call.handler()));
                             HandlerMeta meta = handler.meta();
-                            switch (handler.invoke(new Invocation(env, input, call.args(), state.flowId()))) {
+                            switch (handler.invoke(new Invocation(
+                                    env, input, call.args(), state.flowId(), state.tenantId(), state.preview()))) {
                                 case Outcome.Fail f -> {
                                     failed = f.error();
                                     trace.add(TraceEvent.of("call", handler.name(), failed));
@@ -757,7 +759,8 @@ public final class Engine {
                 env,
                 awaiting,
                 pending,
-                revision);
+                revision,
+                s.preview());
     }
 
     // ---- edges ----
@@ -881,7 +884,7 @@ public final class Engine {
 
     /** Hands a preview flow's events to {@link Previews}; other flows are not traced. */
     private void emit(FlowState state, List<TraceEvent> events) {
-        if (!Previews.isPreview(state.env().client())) return;
+        if (!state.preview()) return;
         events.forEach(e -> previews.trace(state, e));
     }
 
@@ -896,34 +899,17 @@ public final class Engine {
     }
 
     /**
-     * Grants every requested scope and audience. ID token claims come from {@code user.*}, which
-     * {@code identity.resolve} filled during login: {@code email} and {@code email_verified} with
-     * scope email, {@code name} with scope profile. A preview client also gets {@code
-     * faye_flow_id}, the login's flow id, so it can find the run's trace.
+     * Grants every requested scope and audience, with what the login learned about the person;
+     * the host decides which of it becomes claims.
      */
     private static Consented consented(HostRequest req, Map<String, Object> user, String subject) {
-        List<String> scopes = req.params().requestedScope();
-        Map<String, Object> claims = new LinkedHashMap<>();
-        if (scopes.contains("email")) {
-            if (user.get("email") != null) claims.put("email", user.get("email"));
-            if (user.get("email_verified") != null) claims.put("email_verified", user.get("email_verified"));
-        }
-        if (scopes.contains("profile") && user.get("name") != null) claims.put("name", user.get("name"));
-        if (Previews.isPreview(req.client()) && req.params().context().get("flowId") instanceof String flowId) {
-            claims.put("faye_flow_id", flowId);
-        }
-        return new Consented(subject, scopes, req.params().requestedAccessTokenAudience(), claims);
+        return new Consented(
+                subject, req.params().requestedScope(), req.params().requestedAccessTokenAudience(), user);
     }
 
     private FlowVersion current(String tenant) {
         return versions.current(tenant)
                 .orElseThrow(() -> new IllegalStateException("no flow published for tenant " + tenant));
-    }
-
-    private static String tenantOf(HostRequest req) {
-        return req.client().get("metadata") instanceof Map<?, ?> meta && meta.get("tenant") instanceof String t
-                ? t
-                : DEFAULT_TENANT;
     }
 
     /** The binder as the flow state keeps it: hex SHA-256, so a stolen database does not hold binders. */

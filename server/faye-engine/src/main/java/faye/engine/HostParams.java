@@ -1,5 +1,6 @@
 package faye.engine;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,7 +58,8 @@ public record HostParams(
         requestedScope = List.copyOf(requestedScope);
         requestedAccessTokenAudience = List.copyOf(requestedAccessTokenAudience);
         uiLocales = List.copyOf(uiLocales);
-        context = Map.copyOf(context);
+        // JSON null is a value the host may relay; Map.copyOf would refuse it
+        context = Collections.unmodifiableMap(new LinkedHashMap<>(context));
     }
 
     /** Whether {@code host.<rest>} names a field of this contract. */

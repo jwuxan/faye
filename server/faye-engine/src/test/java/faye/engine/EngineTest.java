@@ -252,7 +252,7 @@ class EngineTest {
     void tenantComesFromClientMetadata() throws Exception {
         versions.publish(
                 "acme", FlowVersion.of(IrCodec.readFlow(Files.readString(FLOW.resolveSibling("explicit-fail.json")))));
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN,
                 "c-acme",
                 Map.of("client_id", "acme-app", "metadata", Map.of("tenant", "acme")),
@@ -268,7 +268,7 @@ class EngineTest {
 
     @Test
     void rememberedSessionIsReusedWhenItMeetsTheRequestedAcr() {
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN,
                 "c-skip",
                 Map.of("client_id", "demo"),
@@ -283,7 +283,7 @@ class EngineTest {
 
     @Test
     void rememberedSessionStepsUpForTheSameSubjectOnly() {
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN,
                 "c-up",
                 Map.of("client_id", "demo"),
@@ -335,7 +335,7 @@ class EngineTest {
 
         // A new version is published between login and consent; consent still runs the login's.
         versions.publish(Engine.DEFAULT_TENANT, FlowVersion.of(IrCodec.readFlow(Files.readString(FLOW))));
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.CONSENT,
                 "k1",
                 Map.of("client_id", "partner-app", "first_party", false),
@@ -356,9 +356,8 @@ class EngineTest {
         assertThat(host.consented()).singleElement().satisfies(c -> {
             assertThat(c.outcome().subject()).isEqualTo("alice");
             assertThat(c.outcome().grantScope()).containsExactly("openid", "email");
-            // email scope only: no name
-            assertThat(c.outcome().idTokenClaims())
-                    .isEqualTo(Map.of("email", "alice@example.com", "email_verified", true));
+            // What the login learned goes to the host, which decides the claims
+            assertThat(c.outcome().user()).containsEntry("email", "alice@example.com");
         });
     }
 
@@ -373,7 +372,7 @@ class EngineTest {
                 s.flowId(), "binder", s.nonce(), new Submission(Map.of("identifier", "alice@example.com")));
         engine.submit(s.flowId(), "binder", s.nonce(), new Submission(Map.of("password", "right")));
 
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.CONSENT,
                 "k1",
                 Map.of("client_id", "demo", "first_party", true),
@@ -387,7 +386,7 @@ class EngineTest {
         engine.start(HostKind.CONSENT, "k1", Map.of(), "binder");
         assertThat(host.consented())
                 .singleElement()
-                .satisfies(c -> assertThat(c.outcome().idTokenClaims()).isEmpty());
+                .satisfies(c -> assertThat(c.outcome().user()).isEmpty());
     }
 
     @Test
@@ -436,7 +435,7 @@ class EngineTest {
                 FlowVersion.of(IrCodec.readFlow("[\"flow\",1,\"f\",1,"
                         + "[\"entry\",\"login\",\"authenticate\",[\"succeed\"]],"
                         + "[\"entry\",\"a\",\"consent\",[\"succeed\"]],[\"entry\",\"b\",\"consent\",[\"succeed\"]]]")));
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.CONSENT,
                 "k2",
                 Map.of("client_id", "demo"),
@@ -489,7 +488,7 @@ class EngineTest {
                 return versions.rollback(tenantId, hash);
             }
         };
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.CONSENT,
                 "k1",
                 Map.of("client_id", "demo"),

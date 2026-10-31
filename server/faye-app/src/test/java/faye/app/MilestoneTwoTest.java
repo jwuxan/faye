@@ -16,10 +16,10 @@ import faye.engine.FlowVersions;
 import faye.engine.HookStore;
 import faye.engine.HostKind;
 import faye.engine.HostParams;
-import faye.engine.HostRequest;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.InMemoryHookStore;
+import faye.host.hydra.HydraFlowHost;
 import faye.host.mock.MockFlowHost;
 import faye.identity.Base32;
 import java.nio.ByteBuffer;
@@ -162,7 +162,7 @@ class MilestoneTwoTest {
         Authenticated login = accepted("m2-partner");
 
         // Third party: the consent screen, linked to the login through context.flowId.
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.CONSENT,
                 "m2-consent",
                 Map.of(
@@ -192,12 +192,12 @@ class MilestoneTwoTest {
         submit(s, Map.of("decision", "allow"));
         assertThat(host.consented()).anySatisfy(c -> {
             assertThat(c.request().ref()).isEqualTo("m2-consent");
-            assertThat(c.outcome().idTokenClaims())
+            assertThat(HydraFlowHost.idTokenClaims(c.request(), c.outcome()))
                     .isEqualTo(Map.of("email", "alice@example.com", "email_verified", true, "name", "Alice"));
         });
 
         // First party: no screen.
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.CONSENT,
                 "m2-consent-1p",
                 Map.of("client_id", "demo", "first_party", true, "metadata", Map.of("tenant", "partner")),
@@ -214,7 +214,7 @@ class MilestoneTwoTest {
     // ---- helpers ----
 
     JsonNode login(String challenge, String tenant, Map<String, Object> hydra) throws Exception {
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN,
                 challenge,
                 Map.of("client_id", "demo", "metadata", Map.of("tenant", tenant)),

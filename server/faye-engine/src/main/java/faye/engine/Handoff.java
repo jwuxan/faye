@@ -1,5 +1,7 @@
 package faye.engine;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -13,6 +15,7 @@ import java.util.Map;
 public record Handoff(Map<String, Object> result) implements Completion {
 
     public Handoff {
-        result = Map.copyOf(result);
+        // JSON null is a value; Map.copyOf would refuse it
+        result = Collections.unmodifiableMap(new LinkedHashMap<>(result));
     }
 }

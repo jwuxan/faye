@@ -16,6 +16,8 @@ import org.jspecify.annotations.Nullable;
  * @param awaiting the screen the flow is waiting on; null once the flow has finished
  * @param pending writes the entry staged so far, applied only if it succeeds; empty once it ends
  * @param revision bumped on every save, for optimistic concurrency
+ * @param preview the host started the flow for a preview client; absent in states saved before
+ *     the field existed, which read as false
  */
 public record FlowState(
         String flowId,
@@ -29,7 +31,8 @@ public record FlowState(
         Env env,
         @Nullable Awaiting awaiting,
         List<Effect> pending,
-        long revision) {
+        long revision,
+        boolean preview) {
 
     /**
      * @param step innermost enclosing step id, or null

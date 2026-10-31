@@ -16,7 +16,6 @@ import faye.engine.FlowVersions;
 import faye.engine.HookStore;
 import faye.engine.HostKind;
 import faye.engine.HostParams;
-import faye.engine.HostRequest;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.InMemoryHookStore;
@@ -186,7 +185,7 @@ class FlowApiTest {
 
     @Test
     void consentIsAutoAcceptedWithoutAConsentSection() throws Exception {
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.CONSENT,
                 "k-api",
                 Map.of("client_id", "demo"),

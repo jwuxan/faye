@@ -50,6 +50,21 @@ public final class MockFlowHost implements FlowHost {
         this("mock://callback");
     }
 
+    /**
+     * A request from {@code client}, whose tenant and preview flag the mock reads from its {@code
+     * metadata}, as the Hydra host does.
+     */
+    public static HostRequest request(HostKind kind, String ref, Map<String, Object> client, HostParams params) {
+        Map<?, ?> metadata = client.get("metadata") instanceof Map<?, ?> m ? m : Map.of();
+        return new HostRequest(
+                kind,
+                ref,
+                metadata.get("tenant") instanceof String t ? t : null,
+                Boolean.TRUE.equals(metadata.get("preview")),
+                client,
+                params);
+    }
+
     /** Registers a request. Unregistered refs load as a plain request from client {@code demo}. */
     public void register(HostRequest request) {
         requests.put(request.ref(), request);
@@ -59,7 +74,7 @@ public final class MockFlowHost implements FlowHost {
     public HostRequest load(HostKind kind, String ref) {
         HostRequest req = requests.get(ref);
         if (req != null && req.kind() == kind) return req;
-        return new HostRequest(kind, ref, client, HostParams.NONE);
+        return request(kind, ref, client, HostParams.NONE);
     }
 
     @Override

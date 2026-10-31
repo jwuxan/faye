@@ -66,7 +66,7 @@ A flow reads its environment through predicate paths `namespace.key...`. A missi
 | Namespace | Holds | Written by |
 |---|---|---|
 | `request` | IP, user agent, locale of the request that started the flow | the engine, at start (a preview scenario may override it) |
-| `client` | the client's id and metadata (`first_party`, `tenant`, `preview`) | the host, at start |
+| `client` | display data of the client: `client_id`, `client_name`, `first_party`, `metadata`; the engine decides nothing from it (the host decides the tenant and the preview flag) | the host, at start |
 | `host` | the request as the host relays it, exactly the fields of the host contract below | the host, at start |
 | `tenant` | the tenant's settings when the flow started: `mfa_required`, and `name`, its display name, when it has one | the engine, at start |
 | `user` | what handlers learned about the person | handlers, by merging fields on success |
@@ -114,7 +114,7 @@ A flow runs from its entry's body as a small step machine over an explicit conti
 
 ### screen
 
-`(screen type options?)` makes the flow wait on a screen of that type from the screen catalog, prepared with the options; the answer is the input of the run that resumes it. If the run's input also answers this screen (a hosted answer, see Screen catalog), the flow does not wait and the screen completes at once. A screen reached again at the same path, by a retry, keeps the server data it issued before (an enrollment secret). Pinned by `password-retry`, `passkey-autofill`, `step-up-enroll`.
+`(screen type options?)` makes the flow wait on a screen of that type from the screen catalog, prepared with the options; the answer is the input of the run that resumes it. If the run's input also answers this screen (a hosted answer, see Screen catalog), the flow does not wait and the screen completes at once. A screen reached again at the same path, by a retry, keeps the server data it issued before (an enrollment secret). A screen whose credential issuer cannot issue does not wait: it fails with `issuer_error` like a failing call, so an enclosing `retry` reruns it and otherwise the entry fails. Pinned by `password-retry`, `passkey-autofill`, `step-up-enroll`, `issuer-fails-then-retries`, `issuer-fails-closed`.
 
 ### call
 
@@ -172,6 +172,7 @@ A failure is retryable or terminal.
 | a handler's code (`invalid_credentials`, `invalid_code`, ...) | `call` | retryable |
 | a hook's reason, or `hook_error` | `hook`, a choose's pick | retryable |
 | `no_method` | `choose` | retryable |
+| `issuer_error` | `screen`, when its credential issuer cannot issue | retryable |
 | `subject_mismatch` | `call` | terminal |
 | a `fail` form's reason | `fail` | terminal |
 | a staged write's commit code, or `write_error` | after a successful end (Effects) | terminal |

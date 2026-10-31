@@ -12,7 +12,6 @@ import faye.engine.FlowVersion;
 import faye.engine.HandlerRegistry;
 import faye.engine.HostKind;
 import faye.engine.HostParams;
-import faye.engine.HostRequest;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.Redirect;
@@ -162,8 +161,8 @@ class EffectsTest {
 
     ScreenView start() {
         String challenge = "c" + challenges++;
-        host.register(
-                new HostRequest(HostKind.LOGIN, challenge, Map.of("client_id", "demo"), HostParams.fromMap(Map.of())));
+        host.register(MockFlowHost.request(
+                HostKind.LOGIN, challenge, Map.of("client_id", "demo"), HostParams.fromMap(Map.of())));
         return screen(engine.start(HostKind.LOGIN, challenge, Map.of(), "binder"));
     }
 

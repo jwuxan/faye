@@ -46,6 +46,7 @@ final class Tenants implements TenantPolicies {
     /** The policy the tenant would have under {@code settings}. */
     TenantPolicy policy(String tenantId, TenantSettings settings) {
         String name = settings.branding().name();
+        if (name != null && name.isBlank()) name = null;
         return new TenantPolicy(
                 settings.mfaRequired(),
                 settings.handlers(),

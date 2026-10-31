@@ -50,8 +50,8 @@ class CompatTest {
         versions.publish(Engine.DEFAULT_TENANT, FlowVersion.of(IrCodec.readFlow(canonical)));
         var store = new InMemoryFlowStore();
         var host = new MockFlowHost();
-        host.register(
-                new HostRequest(HostKind.LOGIN, "compat", Map.of("client_id", "demo"), HostParams.fromMap(Map.of())));
+        host.register(MockFlowHost.request(
+                HostKind.LOGIN, "compat", Map.of("client_id", "demo"), HostParams.fromMap(Map.of())));
         var engine = Engine.builder()
                 .versions(versions)
                 .handlers(handlers())
@@ -86,7 +86,7 @@ class CompatTest {
         var store = new InMemoryFlowStore();
         store.create(state);
         var host = new MockFlowHost();
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN, state.hostRef(), Map.of("client_id", "demo"), HostParams.fromMap(Map.of())));
         var engine = Engine.builder()
                 .versions(versions)

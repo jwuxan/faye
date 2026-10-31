@@ -38,6 +38,13 @@ class BoundaryTest {
             if (lower.contains("otpauth")) found.add(file + ": otpauth");
             if (text.contains("PASSKEY_ALGORITHMS")) found.add(file + ": PASSKEY_ALGORITHMS");
             if (text.contains("\"Faye\"")) found.add(file + ": \"Faye\"");
+            // Tenant and preview come typed from the host; claims are the host's (ADR 0025)
+            if (text.contains("\"metadata\"")) found.add(file + ": reads client metadata");
+            if (Pattern.compile("\"(faye_flow_id|email_verified)\"|id_?token", Pattern.CASE_INSENSITIVE)
+                    .matcher(text)
+                    .find()) {
+                found.add(file + ": token claims");
+            }
             if (!file.endsWith(CONTRACT)
                     && Pattern.compile("\"(login_hint|requested_scope|ui_locales)\"")
                             .matcher(text)

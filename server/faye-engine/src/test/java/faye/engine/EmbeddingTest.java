@@ -35,7 +35,7 @@ class EmbeddingTest {
 
         @Override
         public HostRequest load(HostKind kind, String ref) {
-            return new HostRequest(kind, ref, Map.of("client_id", "app"), params);
+            return new HostRequest(kind, ref, "embedded", false, Map.of("client_id", "app"), params);
         }
 
         @Override
@@ -121,7 +121,15 @@ class EmbeddingTest {
         @Override
         public Outcome invoke(Invocation call) {
             // The issued value arrives only as the submission's context, never through Env
-            assertThat(call.env().vars()).doesNotContainKey("expected");
+            assertThat(List.of(
+                            call.env().vars(),
+                            call.env().host(),
+                            call.env().user(),
+                            call.env().tenant(),
+                            call.env().request(),
+                            call.env().client()))
+                    .allSatisfy(m -> assertThat(m.toString()).doesNotContain("123456"));
+            assertThat(call.tenant()).isEqualTo("embedded");
             return call.input().context().get("expected").equals(call.input().string("code"))
                     ? Outcome.subject("alice")
                     : Outcome.fail("invalid_code");
@@ -243,5 +251,68 @@ class EmbeddingTest {
         assertThat(HostParams.readable("context.flowId")).isTrue();
         assertThat(HostParams.readable("login_hint.x")).isFalse();
         assertThat(HostParams.readable("unknown")).isFalse();
+    }
+
+    @Test
+    void aChooseNeedsAPickerOnlyWhenItCanOfferSeveralOptions() {
+        var flow = IrCodec.readFlow("""
+                ["flow", 1, "choice", 1,
+                  ["entry", "login", "authenticate",
+                    ["seq",
+                      ["choose", [["opt", "a", ["screen", "code"]], ["opt", "b", ["screen", "code"]]]],
+                      ["call", "code.verify"],
+                      ["succeed"]]]]
+                """);
+        var screens = new ScreenRegistry(List.of(new CodeScreen()), List.of(issuer));
+        var handlers = new HandlerRegistry(List.of(new CodeVerify()));
+        assertThat(Verifier.verify(flow, handlers, screens))
+                .singleElement()
+                .satisfies(
+                        p -> assertThat(p.message()).contains("method_picker").contains("not registered"));
+
+        var versions = new InMemoryFlowVersions();
+        versions.publish(Engine.DEFAULT_TENANT, FlowVersion.of(flow));
+        var engine = Engine.builder()
+                .versions(versions)
+                .handlers(handlers)
+                .screens(screens)
+                .store(store)
+                .host(host)
+                .build();
+        assertThat(engine.start(HostKind.LOGIN, "req-1", Map.of(), "b"))
+                .isEqualTo(new Handoff(Map.of("ref", "req-1", "error", Engine.FLOW_UNAVAILABLE)));
+    }
+
+    @Test
+    void thePickerIsFilledByTheEngineAndTakesNoIssuer() {
+        ScreenSpec picker = new ScreenSpec() {
+            @Override
+            public String type() {
+                return ScreenRegistry.METHOD_PICKER;
+            }
+
+            @Override
+            public boolean issued() {
+                return true;
+            }
+
+            @Override
+            public Map<String, Object> prepare(Env env, Map<String, Object> opts, Map<String, Object> previous) {
+                return Map.of();
+            }
+
+            @Override
+            public Map<String, Object> render(Env env, Map<String, Object> data) {
+                return Map.of();
+            }
+
+            @Override
+            public boolean accepts(Submission input, Map<String, Object> data) {
+                return false;
+            }
+        };
+        assertThatThrownBy(() -> new ScreenRegistry(List.of(picker), List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cannot declare an issuer");
     }
 }

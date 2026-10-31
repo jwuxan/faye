@@ -8,6 +8,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import faye.host.mock.MockFlowHost;
 import faye.ir.Hook;
 import faye.ir.IrCodec;
+import faye.screens.BuiltinScreen;
 import faye.screens.FixedIssuers;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -70,6 +71,9 @@ class ConformanceTest {
                         commits)));
 
         var hooks = new ScriptedHooks(v.path("hooks"));
+        var issuers = FixedIssuers.all().stream()
+                .map(i -> new ScriptedIssuer(i, v.path("issuers").path(i.screen())))
+                .toList();
         var versions = new InMemoryFlowVersions();
         versions.publish(
                 Engine.DEFAULT_TENANT,
@@ -78,7 +82,7 @@ class ConformanceTest {
         var host = new MockFlowHost();
         HostKind kind =
                 HostKind.valueOf(v.path("host").path("kind").asText("login").toUpperCase(java.util.Locale.ROOT));
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 kind,
                 "challenge-1",
                 map(v.path("host").path("client")),
@@ -95,7 +99,7 @@ class ConformanceTest {
                 .tenants(TenantPolicies.of(Map.of(Engine.DEFAULT_TENANT, policy)))
                 .hooks(hooks)
                 .previews(previews)
-                .screens(FixedIssuers.registry())
+                .screens(BuiltinScreen.registry(issuers))
                 .build();
 
         EngineResponse last = engine.start(kind, "challenge-1", Map.of(), "binder");
@@ -183,8 +187,8 @@ class ConformanceTest {
                     Consented c = host.consented().get(0).outcome();
                     assertThat(c.subject()).isEqualTo(expected.path("subject").asText());
                     assertThat(c.grantScope()).isEqualTo(JSON.convertValue(expected.path("grant_scope"), List.class));
-                    if (expected.has("id_token")) {
-                        assertThat(c.idTokenClaims()).isEqualTo(map(expected.get("id_token")));
+                    if (expected.has("user")) {
+                        assertThat(c.user()).isEqualTo(map(expected.get("user")));
                     }
                 } else if (expected.path("succeed").asBoolean()) {
                     assertThat(host.rejected()).isEmpty();
@@ -213,10 +217,43 @@ class ConformanceTest {
                 assertThat(f.script).as("unconsumed outcomes for " + f.name).isEmpty());
         hooks.scripts.forEach((id, script) ->
                 assertThat(script).as("unconsumed outcomes for hook " + id).isEmpty());
+        issuers.forEach(i -> assertThat(i.script)
+                .as("unconsumed outcomes for issuer " + i.screen())
+                .isEmpty());
         // Only preview clients' flows are traced
         List<String> expectedTrace = new ArrayList<>();
         v.path("expect_trace").forEach(e -> expectedTrace.add(e.asText()));
         assertThat(previews.trace).as("trace").isEqualTo(expectedTrace);
+    }
+
+    /**
+     * The fixed issuer of a screen, whose issues are scripted in order: {@code fail} throws, as an
+     * upstream that is down would; {@code ok}, and every issue once the script is used up, issues.
+     */
+    static final class ScriptedIssuer implements CredentialIssuer {
+        final CredentialIssuer fixed;
+        final ArrayDeque<String> script = new ArrayDeque<>();
+
+        ScriptedIssuer(CredentialIssuer fixed, JsonNode script) {
+            this.fixed = fixed;
+            script.forEach(s -> this.script.add(s.asText()));
+        }
+
+        @Override
+        public String screen() {
+            return fixed.screen();
+        }
+
+        @Override
+        public Map<String, Object> issue(Env env, Map<String, Object> opts, Map<String, Object> previous) {
+            if ("fail".equals(script.poll())) throw new IllegalStateException("scripted issuer failure");
+            return fixed.issue(env, opts, previous);
+        }
+
+        @Override
+        public Map<String, Object> present(Env env, Map<String, Object> issued) {
+            return fixed.present(env, issued);
+        }
     }
 
     @SuppressWarnings("unchecked")

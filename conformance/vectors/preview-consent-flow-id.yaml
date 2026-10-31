@@ -1,4 +1,4 @@
-name: a preview client's consent runs the draft and puts the login's flow id in the ID token claims
+name: a preview client's consent runs the draft and is traced; the host, not the engine, turns the outcome into claims
 ir: flows/password-only.json
 host:
   kind: consent
@@ -12,7 +12,7 @@ events:
   - expect_screen: consent
     expect_step: grant
   - submit: { decision: allow }
-  - expect_result: { succeed: true, subject: alice, grant_scope: [openid], id_token: { faye_flow_id: f_login } }
+  - expect_result: { succeed: true, subject: alice, grant_scope: [openid], user: {} }
 expect_trace:
   - start consent
   - step grant

@@ -98,7 +98,8 @@ public final class HydraFlowHost implements FlowHost {
                 }
                 default -> throw new IllegalStateException("unknown kind " + kind);
             }
-            return new HostRequest(kind, ref, client(client), params);
+            Map<String, Object> mapped = client(client);
+            return new HostRequest(kind, ref, tenant(mapped), preview(mapped), mapped, params);
         } catch (ApiException e) {
             throw failure("GET", segment(kind), e);
         }
@@ -147,7 +148,7 @@ public final class HydraFlowHost implements FlowHost {
                 .grantScope(outcome.grantScope())
                 .grantAccessTokenAudience(outcome.grantAudience())
                 .remember(false)
-                .session(new AcceptOAuth2ConsentRequestSession().idToken(outcome.idTokenClaims()));
+                .session(new AcceptOAuth2ConsentRequestSession().idToken(idTokenClaims(request, outcome)));
         try {
             return redirect(api.acceptOAuth2ConsentRequest(request.ref(), body));
         } catch (ApiException e) {
@@ -176,6 +177,40 @@ public final class HydraFlowHost implements FlowHost {
         } catch (ApiException e) {
             throw failure("PUT", segment(request.kind()) + "/reject", e);
         }
+    }
+
+    /**
+     * The tenant whose flow a client's sign ins run: its {@code metadata.tenant}, as the operator
+     * registered it in Hydra; null for the default tenant.
+     */
+    static @Nullable String tenant(Map<String, Object> client) {
+        return client.get("metadata") instanceof Map<?, ?> m && m.get("tenant") instanceof String t ? t : null;
+    }
+
+    /** A preview client: registered in Hydra with {@code metadata.preview: true}. */
+    static boolean preview(Map<String, Object> client) {
+        return client.get("metadata") instanceof Map<?, ?> m && Boolean.TRUE.equals(m.get("preview"));
+    }
+
+    /**
+     * ID token claims from what the login learned, by granted scope (OIDC Core 5.4): {@code email}
+     * and {@code email_verified} with scope email, {@code name} with scope profile. A preview client
+     * also gets {@code faye_flow_id}, the login's flow id that Hydra carried in the consent's
+     * context, so the demo client can find the run's trace.
+     */
+    public static Map<String, Object> idTokenClaims(HostRequest request, Consented outcome) {
+        Map<String, Object> user = outcome.user();
+        List<String> scopes = outcome.grantScope();
+        Map<String, Object> claims = new LinkedHashMap<>();
+        if (scopes.contains("email")) {
+            if (user.get("email") != null) claims.put("email", user.get("email"));
+            if (user.get("email_verified") != null) claims.put("email_verified", user.get("email_verified"));
+        }
+        if (scopes.contains("profile") && user.get("name") != null) claims.put("name", user.get("name"));
+        if (request.preview() && request.params().context().get("flowId") instanceof String flowId) {
+            claims.put("faye_flow_id", flowId);
+        }
+        return claims;
     }
 
     private static IllegalStateException failure(String method, String path, ApiException e) {

@@ -31,20 +31,20 @@ import { autofillAvailable, cancelPasskeyCeremony, createPasskey, getPasskey } f
 type Payload = SubmitRequest["payload"];
 
 /**
- * Gives a host's handoff result to the page that embeds or opened this one, and only when its
- * origin is configured: the result may be a one time code, so it never goes to an unknown origin.
+ * Gives a host's handoff result to the page that opened this one in a popup, and only at the
+ * configured origin: the result may be a one time code, so it never goes to an unknown origin.
+ * The sign in screens refuse to be framed, so there is no parent to post to.
  */
 function handOff(result: HandoffResponse["result"], embedOrigin: string | null) {
-  if (!embedOrigin) return;
-  const target = window.parent !== window ? window.parent : window.opener;
-  if (target) (target as Window).postMessage({ type: "faye:handoff", result }, embedOrigin);
+  if (!embedOrigin || !window.opener) return;
+  (window.opener as Window).postMessage({ type: "faye:handoff", result }, embedOrigin);
 }
 type Send = (payload: Payload) => Promise<void>;
 
 /**
  * Renders whichever typed screen the server sent; the UI never sees the flow itself.
  *
- * @param embedOrigin the origin of the page that embeds this one, for a host that hands off its
+ * @param embedOrigin the origin of the page that opened this one, for a host that hands off its
  *   result rather than redirecting; null posts nothing
  */
 export function FlowScreen({ initial, embedOrigin }: { initial: ScreenResponse; embedOrigin: string | null }) {

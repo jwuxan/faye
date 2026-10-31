@@ -13,7 +13,7 @@ interface FlowHost {
 }
 ```
 
-The engine depends only on this interface ([ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)). Hydra returns `Redirect` for every completion. `HydraFlowHost.load` maps Hydra's request into `HostParams`, the host contract: `subject`, `skip`, `requested_scope`, `requested_access_token_audience`, and from `oidc_context` `acr_values`, `ui_locales` and `login_hint`; for a consent, the `context` our login accept set. `HydraFlowHost.DSL_PATH_ALIASES` lets tenant YAML still say `hydra.` for `host.`; the app hands it to the compiler. `faye-host-hydra` implements it with the Hydra admin API; `faye-host-mock` implements it in memory for tests and the conformance suite.
+The engine depends only on this interface ([ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)). Hydra returns `Redirect` for every completion. `HydraFlowHost.load` maps Hydra's request into `HostParams`, the host contract: `subject`, `skip`, `requested_scope`, `requested_access_token_audience`, and from `oidc_context` `acr_values`, `ui_locales` and `login_hint`; for a consent, the `context` our login accept set. The client's `metadata.tenant` and `metadata.preview: true` become the request's tenant and preview flag. On consent accept, the adapter turns `Consented.user` into ID token claims by granted scope (`email`, `email_verified` with email, `name` with profile, `faye_flow_id` for preview clients); the engine computes no claims. `HydraFlowHost.DSL_PATH_ALIASES` lets tenant YAML still say `hydra.` for `host.`; the app hands it to the compiler. `faye-host-hydra` implements it with the Hydra admin API; `faye-host-mock` implements it in memory for tests and the conformance suite.
 
 ## Login
 

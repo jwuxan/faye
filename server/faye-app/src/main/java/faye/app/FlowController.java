@@ -74,21 +74,23 @@ class FlowController {
     }
 
     @GetMapping("/login")
-    ResponseEntity<?> login(@RequestParam("login_challenge") String challenge, HttpServletRequest http) {
+    ResponseEntity<Void> login(@RequestParam("login_challenge") String challenge, HttpServletRequest http) {
         return start(HostKind.LOGIN, challenge, http);
     }
 
     /** Runs the consent entry of the flow version the login ran. */
     @GetMapping("/consent")
-    ResponseEntity<?> consent(@RequestParam("consent_challenge") String challenge, HttpServletRequest http) {
+    ResponseEntity<Void> consent(@RequestParam("consent_challenge") String challenge, HttpServletRequest http) {
         return start(HostKind.CONSENT, challenge, http);
     }
 
     /**
      * The Hydra host's routes: a redirect to the Login UI, or Hydra's redirect if the flow ended at
-     * once. A host that hands off instead answers a flow that ended at once with its result.
+     * once. These are browser navigations, so a host that hands off has no business here: its result
+     * (perhaps a one time code) would render as a page. An embedding host starts flows through its
+     * own route or {@link Engine#start}.
      */
-    private ResponseEntity<?> start(HostKind kind, String challenge, HttpServletRequest http) {
+    private ResponseEntity<Void> start(HostKind kind, String challenge, HttpServletRequest http) {
         Map<String, Object> request = new HashMap<>();
         request.put("ip", http.getRemoteAddr());
         String userAgent = http.getHeader("User-Agent");
@@ -102,9 +104,8 @@ class FlowController {
                 yield props.loginUiUrl() + "/flow/" + screen.flowId();
             }
             case Redirect redirect -> redirect.url();
-            case Handoff handoff -> {
-                return ResponseEntity.ok(new HandoffResponse(handoff.result()));
-            }
+            case Handoff handoff ->
+                throw new IllegalStateException("a host that hands off cannot complete a redirecting route");
         };
         return response.location(URI.create(location)).build();
     }

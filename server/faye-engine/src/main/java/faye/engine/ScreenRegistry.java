@@ -28,6 +28,10 @@ public final class ScreenRegistry {
             if (this.screens.put(s.type(), s) != null) {
                 throw new IllegalArgumentException("duplicate screen " + s.type());
             }
+            // The engine fills the picker itself, with the options of the choose
+            if (s.type().equals(METHOD_PICKER) && s.issued()) {
+                throw new IllegalArgumentException(METHOD_PICKER + " cannot declare an issuer");
+            }
         }
         for (CredentialIssuer i : issuers) {
             ScreenSpec spec = this.screens.get(i.screen());

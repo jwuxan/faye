@@ -16,7 +16,6 @@ import faye.engine.FlowVersions;
 import faye.engine.HookStore;
 import faye.engine.HostKind;
 import faye.engine.HostParams;
-import faye.engine.HostRequest;
 import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.InMemoryHookStore;
@@ -346,7 +345,7 @@ class MilestoneFiveTest {
     }
 
     JsonNode login(String challenge, String tenant) throws Exception {
-        host.register(new HostRequest(
+        host.register(MockFlowHost.request(
                 HostKind.LOGIN,
                 challenge,
                 Map.of("client_id", "demo", "metadata", Map.of("tenant", tenant)),
