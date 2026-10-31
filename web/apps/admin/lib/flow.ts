@@ -99,7 +99,7 @@ export function fromYaml(text: string): FlowDoc {
     if (!isObject(s)) throw new FlowShapeError(`'${section}' must be a mapping with 'steps'`);
     out[section] = entries(s.steps, `${section}.steps`);
   }
-  // Before ADR 0025 consent was a section of its own; its steps now end the steps, so an old
+  // Before ADR 0026 consent was a section of its own; its steps now end the steps, so an old
   // version opens migrated. A clashing id gets a suffix rather than overwriting a step.
   if (raw.consent !== undefined) {
     if (!isObject(raw.consent)) throw new FlowShapeError("'consent' must be a mapping with 'steps'");

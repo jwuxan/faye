@@ -216,7 +216,7 @@ public final class Checker {
                     error(screen.source(), "screen", "screen '" + screen.type() + "' is not enabled for this tenant");
                 }
                 // Consent shown during the sign in would ask before anyone is signed in, and leave the
-                // version without a consent entry, which grants consent with no screen (ADR 0025)
+                // version without a consent entry, which grants consent with no screen (ADR 0026)
                 if (kind == Entry.Kind.AUTHENTICATE && "consent".equals(screen.type())) {
                     error(
                             screen.source(),

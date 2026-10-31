@@ -9,5 +9,5 @@ consent:
   steps:
     grant: { screen: consent, use: consent.record }
 
-# Consent is a step of 'login' (ADR 0025); the section it used to have is refused with the fix.
+# Consent is a step of 'login' (ADR 0026); the section it used to have is refused with the fix.
 # expect: 8:1: consent is a step of 'login' now: move these steps to the end of 'login.steps'

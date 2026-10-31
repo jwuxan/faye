@@ -121,7 +121,7 @@ consent:
   );
 });
 
-test("a consent section from before ADR 0025 opens as steps at the end", () => {
+test("a consent section from before ADR 0026 opens as steps at the end", () => {
   const doc = fromYaml(`flow: f
 version: 1
 login:

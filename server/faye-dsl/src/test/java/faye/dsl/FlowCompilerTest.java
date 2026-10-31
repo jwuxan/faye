@@ -64,7 +64,7 @@ class FlowCompilerTest {
         assertThat(((Call) body.children().get(1)).source().line()).isEqualTo(11);
     }
 
-    /** ADR 0025: the step that records consent, and every step after it, is the consent entry. */
+    /** ADR 0026: the step that records consent, and every step after it, is the consent entry. */
     @Test
     void stepsFromConsentOnLowerToTheConsentEntry() {
         var flow = FlowCompiler.compile("f.yaml", """

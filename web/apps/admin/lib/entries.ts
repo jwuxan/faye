@@ -5,7 +5,7 @@ import { ENTRY_KINDS } from "@faye/contract";
  * (docs/roadmap/dsl-and-ir.md), and how the console names it. The one place the console spells
  * them; elsewhere a `Section` is one of these keys. Consent is not a section: it is a step of
  * `login`, and the compiler lowers that step and every step after it to the consent entry
- * (ADR 0025, `consentStart`).
+ * (ADR 0026, `consentStart`).
  */
 export const ENTRIES = {
   login: { kind: "authenticate", title: "Steps", done: "signed in" },

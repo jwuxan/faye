@@ -55,7 +55,7 @@ login:
       use: consent.record
 ```
 
-Consent is a step like any other ([ADR 0025](../adr/0025-consent-as-a-step.md)). The step that calls `consent.record` (anywhere in its body) and every step after it run on the host's consent challenge, once the sign in was accepted, so they lower to the `consent` entry; the steps before it lower to the `authenticate` entry. A flow with no such step has no consent entry, and the host's consent is granted without a screen. The checker's rules for each entry kind still apply, so a credential step after consent is refused at the YAML that wrote it.
+Consent is a step like any other ([ADR 0026](../adr/0026-consent-as-a-step.md)). The step that asks for consent (it shows the `consent` screen or calls `consent.record`, in its body or in a nested `alternative` or `steps`) and every step after it run on the host's consent challenge, once the sign in was accepted, so they lower to the `consent` entry; the steps before it lower to the `authenticate` entry. A flow with no such step has no consent entry, and the host's consent is granted without a screen. The checker's rules for each entry kind still apply, so a credential step after consent is refused at the YAML that wrote it.
 
 ## Lowering
 
@@ -64,9 +64,9 @@ The compiler (`faye-dsl`) reads YAML into a positioned document (`YamlReader`, t
 | YAML | IR |
 |---|---|
 | `flow: id`, `version: n` | `(flow 1 id n entry...)` |
-| `login:` steps before the first that calls `consent.record` | `(entry login authenticate (seq step... (succeed)))` |
+| `login:` steps before the first that asks for consent | `(entry login authenticate (seq step... (succeed)))` |
 | that step and every step after it | `(entry consent consent (seq step... (succeed)))` |
-| a top level `consent:` (before ADR 0025) | refused: move its steps to the end of `login.steps` |
+| a top level `consent:` (before ADR 0026) | refused: move its steps to the end of `login.steps` |
 | `steps: { id: body }` | `(step id body)` each, in order |
 | `set: { name: v }` | `(set name v)` each, first in the body |
 | `hook: id` | `(hook id hash)`, the hash of the declared hook's definition |

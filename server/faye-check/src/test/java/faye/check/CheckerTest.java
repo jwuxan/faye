@@ -360,7 +360,7 @@ class CheckerTest {
         assertThat((System.nanoTime() - started) / 1_000_000).as("milliseconds").isLessThan(5_000);
     }
 
-    /** ADR 0025 review: consent in the sign in would ask too early and leave no consent entry. */
+    /** ADR 0026 review: consent in the sign in would ask too early and leave no consent entry. */
     @Test
     void consentBelongsOnTheConsentChallenge() {
         Flow flow = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","

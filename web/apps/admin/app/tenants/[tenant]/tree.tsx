@@ -209,7 +209,7 @@ function ListView({ list, entries, depth, ...ctx }: { list: ListRef; entries: En
 
 /**
  * Marks where the sign in ends: the step that records consent and every step after it run on the
- * authorization server's consent challenge, once the sign in was accepted (ADR 0025).
+ * authorization server's consent challenge, once the sign in was accepted (ADR 0026).
  */
 function ConsentDivider() {
   return (
