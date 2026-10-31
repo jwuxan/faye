@@ -227,7 +227,7 @@ class EngineConfiguration {
         String tenant = props.tenants().containsKey(Engine.DEFAULT_TENANT)
                 ? null
                 : props.tenants().keySet().stream().findFirst().orElse(null);
-        return new MockFlowHost("mock://callback", tenant);
+        return new MockFlowHost("http://localhost/mock-callback", tenant);
     }
 
     /** The screens of the screen protocol, which the Login UI renders. */

@@ -1,0 +1,8 @@
+name: a consent request that names no subject is refused, not run (ADR 0007, F11)
+ir: flows/partner-consent.json
+host:
+  kind: consent
+  client: { client_id: demo, first_party: false }
+  params: { requested_scope: [openid] }
+events:
+  - expect_result: { succeed: false, reason: no_subject }

@@ -177,7 +177,8 @@ public final class Engine {
                 }
             }
             case CONSENT -> {
-                if (subject == null) throw new IllegalStateException("consent request without a subject");
+                // A consent is for someone; a host that names no one gets a refusal, not a 5xx (F11)
+                if (subject == null) return host.reject(req, "access_denied", "no_subject");
                 Optional<FlowState> login = linkedLogin(req, subject);
                 if (login.isPresent()) {
                     tenant = login.get().tenantId();

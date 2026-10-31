@@ -63,19 +63,23 @@ public final class MockFlowHost implements FlowHost {
     @Override
     public Redirect accept(HostRequest request, Authenticated outcome) {
         accepted.add(new Accepted(request, outcome));
-        return new Redirect(callbackUrl + "?challenge=" + request.challenge() + "&result=accepted");
+        return new Redirect(callbackUrl + "?challenge=" + encode(request.challenge()) + "&result=accepted");
     }
 
     @Override
     public Redirect accept(HostRequest request, Consented outcome) {
         consented.add(new ConsentAccepted(request, outcome));
-        return new Redirect(callbackUrl + "?challenge=" + request.challenge() + "&result=accepted");
+        return new Redirect(callbackUrl + "?challenge=" + encode(request.challenge()) + "&result=accepted");
     }
 
     @Override
     public Redirect reject(HostRequest request, String error, String description) {
         rejected.add(new Rejected(request, error, description));
-        return new Redirect(callbackUrl + "?challenge=" + request.challenge() + "&result=" + error);
+        return new Redirect(callbackUrl + "?challenge=" + encode(request.challenge()) + "&result=" + error);
+    }
+
+    private static String encode(String value) {
+        return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     public List<Accepted> accepted() {

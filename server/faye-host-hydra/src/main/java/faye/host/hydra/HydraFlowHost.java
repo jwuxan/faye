@@ -2,6 +2,7 @@ package faye.host.hydra;
 
 import faye.engine.Authenticated;
 import faye.engine.Consented;
+import faye.engine.FlowException;
 import faye.engine.FlowHost;
 import faye.engine.HostKind;
 import faye.engine.HostRequest;
@@ -78,6 +79,11 @@ public final class HydraFlowHost implements FlowHost {
             }
             return new HostRequest(kind, challenge, client(client), hydra);
         } catch (ApiException e) {
+            // A challenge Hydra does not know, or no longer holds, is the browser's: anyone can put
+            // any string in the URL, and it is refused as no such sign in, not a 5xx (ADR 0007, B2)
+            if (e.getCode() == 400 || e.getCode() == 404 || e.getCode() == 410) {
+                throw new FlowException(FlowException.Code.FLOW_NOT_FOUND);
+            }
             throw failure("GET", segment(kind), e);
         }
     }
