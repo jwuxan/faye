@@ -173,7 +173,7 @@ Faye is the IdP's frontend: it completes the sign in and reports what was proven
 * Good, because `host.*` becomes closed: a flow cannot come to depend on a key that only one host provides.
 * Good, because challenges and secrets can come from the service that verifies them, which an upstream credential owner requires.
 * Bad, because `FlowHost`, `HostRequest`, `Engine`'s construction, `Checker` and `Publisher` change signature. Every host, test and the app's wiring change with them.
-* Bad, because an issuer adds a network call before a credential screen when the issuer is upstream. Its latency adds to the screen's (unmeasured).
+* Bad, because an issuer adds a network call before a credential screen when the issuer is upstream. Its latency adds to the screen's. Unverified: there is no upstream issuer yet; measure it with the first one, against the deadline that issuer holds.
 * Neutral: `Handoff` lets Faye return an outcome to a non-redirecting host. That is still reporting an outcome, not issuing a token (charter non-goal 2). The host owns what it does with the result.
 
 ### Confirmation
@@ -192,9 +192,7 @@ Faye is the IdP's frontend: it completes the sign in and reports what was proven
 * `cd web && pnpm generate && pnpm typecheck && pnpm lint && pnpm test`, and the contract diff check in CI.
 * `deploy/smoke.sh` passes on a fresh stack, which proves the Hydra behavior is unchanged. It passed in CI's `e2e` job on this change ([run 41222157517](https://github.com/jwuxan/faye/actions/runs/41222157517)).
 
-Open gaps, which keep this record `in progress`:
-
-* The latency an upstream issuer adds before a credential screen is unmeasured: there is no upstream issuer yet. Measure it with the first one, against its own deadline.
+No implementation gaps remain: every item above passes, and CI's `e2e` job ran `deploy/smoke.sh` on this change. The record stays `in progress` until a human marks it `accepted` (AGENTS.md, Decisions).
 
 ## Pros and Cons of the Options
 
