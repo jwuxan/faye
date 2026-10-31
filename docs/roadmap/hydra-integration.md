@@ -25,7 +25,7 @@ The engine depends only on this interface. `faye-host-hydra` implements it with 
 ## Consent
 
 1. `GET /consent?consent_challenge=…` → `load(CONSENT)`: `context.flowId` connects it to the login flow, so login and consent run from the same flow version.
-2. The engine runs the flow's `consent` entry. First party clients typically skip the screen via a predicate.
+2. The engine runs the flow's `consent` entry: the steps of `login` from the one that calls `consent.record` on ([ADR 0025](../adr/0025-consent-as-a-step.md)). First party clients typically skip the screen via a predicate.
 3. On `succeed`: accept with granted scopes and audience, and session claims. ID token claims are populated from the identity store (`email`, `email_verified`, `name`) filtered by granted scope.
 4. If Hydra reports `skip` for consent (previously granted), accept immediately.
 

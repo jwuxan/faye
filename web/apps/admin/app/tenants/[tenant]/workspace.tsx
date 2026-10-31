@@ -11,8 +11,8 @@ import { cn } from "@faye/ui/lib/utils";
 import { CircleX, FileCode, ListTree, Redo2, TriangleAlert, Undo2, Workflow, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PathView } from "../../../lib/api";
-import { ENTRIES, SECTIONS } from "../../../lib/entries";
-import { addressKey, block, type FlowDoc, fromBlock, insert, listOf, parseAddress, parseListKey, stepIds } from "../../../lib/flow";
+import { ENTRIES } from "../../../lib/entries";
+import { addressKey, block, consentStart, type FlowDoc, fromBlock, insert, listOf, parseAddress, parseListKey, stepIds } from "../../../lib/flow";
 import { PageHeader } from "../../shell";
 import { dense, denseMono, IconButton, Overline, Prop } from "../../ui";
 import { AddBlock } from "./add-block";
@@ -289,8 +289,8 @@ function FlowProperties({ doc, onEdit, selectedList }: { doc: FlowDoc; onEdit: (
             onChange={(e) => onEdit({ ...doc, version: Math.max(1, Number(e.target.value) || 1) })}
           />
         </Prop>
-        <Prop label="Sections">
-          <span className="font-mono text-xs">{SECTIONS.filter((s) => doc[s]).join(" · ")}</span>
+        <Prop label="Entries">
+          <span className="font-mono text-xs">{consentStart(doc.login) < doc.login.length ? "login · consent" : "login"}</span>
         </Prop>
         <Prop label="Size">
           <span className="text-xs text-muted-foreground">

@@ -5,7 +5,7 @@
  */
 import { Document, isMap, isPair, isScalar, isSeq, parse, parseDocument } from "yaml";
 import { ID_PATTERN, KEY_PATTERN } from "@faye/contract";
-import { SECTIONS, type Section } from "./entries.ts";
+import { CONSENT_HANDLER, SECTIONS, type Section } from "./entries.ts";
 
 export type Literal = string | number | boolean;
 
@@ -49,9 +49,8 @@ export type FlowDoc = {
   flow: string;
   version: number;
   hooks: HookSpec[];
+  /** Every step, sign in first; from `consentStart` on, the steps run on the consent challenge. */
   login: Entry[];
-  /** Absent: the flow has no consent section. */
-  consent?: Entry[];
   /** The comment above the document; other comments do not survive a block edit. */
   comment?: string;
 };
@@ -100,7 +99,33 @@ export function fromYaml(text: string): FlowDoc {
     if (!isObject(s)) throw new FlowShapeError(`'${section}' must be a mapping with 'steps'`);
     out[section] = entries(s.steps, `${section}.steps`);
   }
+  // Before ADR 0025 consent was a section of its own; its steps now end the steps, so an old
+  // version opens migrated. A clashing id gets a suffix rather than overwriting a step.
+  if (raw.consent !== undefined) {
+    if (!isObject(raw.consent)) throw new FlowShapeError("'consent' must be a mapping with 'steps'");
+    const taken = new Set(out.login.map((e) => e.id));
+    for (const e of entries(raw.consent.steps, "consent.steps")) {
+      let id = e.id;
+      for (let n = 2; taken.has(id); n++) id = `${e.id}-${n}`;
+      taken.add(id);
+      out.login.push({ ...e, id });
+    }
+  }
   return out;
+}
+
+/** Whether a body calls the consent handler anywhere in it, as the compiler decides. */
+export function recordsConsent(b: Body): boolean {
+  return b.use === CONSENT_HANDLER || [...(b.alternative ?? []), ...(b.steps ?? [])].some((e) => recordsConsent(e.body));
+}
+
+/**
+ * The index of the first step that records consent: it and every step after it run on the
+ * consent challenge, once the sign in was accepted. The length of the list if none does.
+ */
+export function consentStart(steps: Entry[]): number {
+  const at = steps.findIndex((e) => recordsConsent(e.body));
+  return at < 0 ? steps.length : at;
 }
 
 function entries(raw: unknown, at: string): Entry[] {
@@ -151,7 +176,6 @@ export function toPlain(doc: FlowDoc): Record<string, unknown> {
     );
   }
   out.login = { steps: plainEntries(doc.login) };
-  if (doc.consent) out.consent = { steps: plainEntries(doc.consent) };
   return out;
 }
 
@@ -313,7 +337,6 @@ export function stepIds(doc: FlowDoc): Set<string> {
     }
   };
   walk(doc.login, true);
-  walk(doc.consent, true);
   return out;
 }
 
@@ -468,9 +491,9 @@ export const PALETTE: Block[] = [
   {
     name: "Consent",
     group: "Steps",
-    description: "Ask to share data with the client",
-    stepId: "grant",
-    optionId: "grant",
+    description: "Ask to share data with the client; runs after sign in, on the consent challenge",
+    stepId: "consent",
+    optionId: "consent",
     body: () => ({ screen: { type: "consent", opts: {} }, use: "consent.record" }),
   },
   {

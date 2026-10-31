@@ -1,13 +1,13 @@
 "use client";
 
 import { cn } from "@faye/ui/lib/utils";
-import { Button } from "@faye/ui/components/button";
-import { CircleX, GripVertical, Plus, TriangleAlert, X } from "lucide-react";
+import { CircleX, GripVertical, Plus, TriangleAlert } from "lucide-react";
 import { type DragEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   type Address,
   addressKey,
   block,
+  consentStart,
   type Entry,
   entryAt,
   type FlowDoc,
@@ -25,10 +25,10 @@ import {
   remove,
   type Section,
 } from "../../../lib/flow";
-import { AUTHENTICATE, ENTRIES } from "../../../lib/entries";
+import { AUTHENTICATE, CONSENT, ENTRIES } from "../../../lib/entries";
 import { kindOf } from "../../../lib/kinds";
 import { describe } from "../../../lib/predicate";
-import { Chip, IconButton, Tile } from "../../ui";
+import { Chip, Tile } from "../../ui";
 
 /** What is being dragged: a palette block, or an entry already in the tree. */
 type Dragging = { palette: string } | { entry: string } | null;
@@ -150,14 +150,6 @@ export function Tree({
           className="field-sizing-content -mx-2 resize-none rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] leading-5 text-muted-foreground outline-none placeholder:text-muted-foreground/60 hover:border-input focus:border-ring focus:text-foreground"
         />
         <SectionView section={AUTHENTICATE} title={ENTRIES[AUTHENTICATE].title} {...ctx} />
-        {doc.consent ? (
-          <SectionView section="consent" title={ENTRIES.consent.title} onRemove={() => onEdit({ ...doc, consent: undefined })} {...ctx} />
-        ) : (
-          <Button variant="ghost" size="sm" className="justify-self-start text-[13px] font-normal text-muted-foreground" onClick={() => onEdit({ ...doc, consent: [] })}>
-            <Plus />
-            Add consent section
-          </Button>
-        )}
       </div>
     </div>
   );
@@ -177,7 +169,7 @@ type Ctx = {
   canDrop: (list: ListRef) => boolean;
 };
 
-function SectionView({ section, title, onRemove, ...ctx }: { section: Section; title: string; onRemove?: () => void } & Ctx) {
+function SectionView({ section, title, ...ctx }: { section: Section; title: string } & Ctx) {
   const entries = ctx.doc[section] ?? [];
   return (
     <section>
@@ -187,7 +179,6 @@ function SectionView({ section, title, onRemove, ...ctx }: { section: Section; t
         </ListLabel>
         <span className="font-mono text-xs text-muted-foreground">{section}</span>
         <span className="text-xs text-muted-foreground">· {entries.length} {entries.length === 1 ? "step" : "steps"}</span>
-        {onRemove && <IconButton icon={X} label="Remove section (⌘Z undoes)" className="ml-auto" onClick={onRemove} />}
       </header>
       <ListView list={{ section, owner: [], kind: "steps" }} entries={entries} depth={0} {...ctx} />
     </section>
@@ -199,6 +190,7 @@ function ListView({ list, entries, depth, ...ctx }: { list: ListRef; entries: En
     <ol role="group" aria-label={list.kind === "steps" ? "Steps" : "Options"}>
       {entries.map((e, i) => (
         <li key={`${listKey(list)}-${i}-${e.id}`} className="relative">
+          {depth === 0 && list.kind === "steps" && i === consentStart(entries) && <ConsentDivider />}
           {depth > 0 && <span aria-hidden className="absolute top-[18px] -left-4 h-px w-3 bg-border" />}
           <DropZone list={list} index={i} {...ctx} />
           <EntryView address={{ section: list.section, path: [...list.owner, [list.kind, i]] }} entry={e} kind={list.kind} depth={depth} {...ctx} />
@@ -212,6 +204,20 @@ function ListView({ list, entries, depth, ...ctx }: { list: ListRef; entries: En
         )}
       </li>
     </ol>
+  );
+}
+
+/**
+ * Marks where the sign in ends: the step that records consent and every step after it run on the
+ * authorization server's consent challenge, once the sign in was accepted (ADR 0025).
+ */
+function ConsentDivider() {
+  return (
+    <div role="separator" aria-label={`${CONSENT.title}: runs after sign in`} className="flex items-center gap-2 pt-3 pb-1 text-xs text-muted-foreground">
+      <span className="font-medium text-foreground">{CONSENT.title}</span>
+      <span>runs after sign in, on the consent challenge</span>
+      <span aria-hidden className="h-px flex-1 bg-border" />
+    </div>
   );
 }
 

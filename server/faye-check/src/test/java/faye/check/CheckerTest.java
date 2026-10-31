@@ -335,12 +335,11 @@ class CheckerTest {
                   steps:
                     identify: { screen: identifier, use: identity.resolve }
                     credential: { screen: password, use: password.verify }
-                consent:
-                  steps:
+                    consent: { screen: consent, use: consent.record }
                     again: { screen: password, use: password.verify }
                 """);
         assertThat(errors(check(flow)))
-                .containsExactly("tenant.yaml:9:37: password.verify verifies a credential; a consent entry only grants"
+                .containsExactly("tenant.yaml:8:37: password.verify verifies a credential; a consent entry only grants"
                         + " access to a subject its authenticate entry proved");
     }
 
