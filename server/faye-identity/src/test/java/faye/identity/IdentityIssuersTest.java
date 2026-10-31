@@ -66,11 +66,10 @@ class IdentityIssuersTest {
         Map<String, Object> issued = passkey.issue(ALICE, Map.of("register", true), Map.of());
         Map<String, Object> data = new java.util.HashMap<>(issued);
         data.put("register", true);
-        assertThat(passkey.present(ALICE, data))
-                .containsEntry("challenge", issued.get("challenge"))
-                .extractingByKey("register")
-                .satisfies(
-                        r -> assertThat((Map<?, ?>) r).containsEntry("algorithms", IdentityIssuers.PASSKEY_ALGORITHMS));
+        Map<String, Object> shown = passkey.present(ALICE, data);
+        assertThat(shown).containsEntry("challenge", issued.get("challenge"));
+        Map<?, ?> register = (Map<?, ?>) java.util.Objects.requireNonNull(shown.get("register"));
+        assertThat(register.get("algorithms")).isEqualTo(IdentityIssuers.PASSKEY_ALGORITHMS);
     }
 
     @Test

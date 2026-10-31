@@ -130,7 +130,8 @@ class EmbeddingTest {
                             call.env().client()))
                     .allSatisfy(m -> assertThat(m.toString()).doesNotContain("123456"));
             assertThat(call.tenant()).isEqualTo("embedded");
-            return call.input().context().get("expected").equals(call.input().string("code"))
+            return "123456".equals(call.input().context().get("expected"))
+                            && "123456".equals(call.input().string("code"))
                     ? Outcome.subject("alice")
                     : Outcome.fail("invalid_code");
         }
@@ -167,7 +168,7 @@ class EmbeddingTest {
 
     private Engine engine() {
         var versions = new InMemoryFlowVersions();
-        versions.publish(Engine.DEFAULT_TENANT, FlowVersion.of(IrCodec.readFlow(FLOW)));
+        versions.publish("embedded", FlowVersion.of(IrCodec.readFlow(FLOW)));
         return Engine.builder()
                 .versions(versions)
                 .handlers(new HandlerRegistry(List.of(new CodeVerify())))
@@ -271,7 +272,7 @@ class EmbeddingTest {
                         p -> assertThat(p.message()).contains("method_picker").contains("not registered"));
 
         var versions = new InMemoryFlowVersions();
-        versions.publish(Engine.DEFAULT_TENANT, FlowVersion.of(flow));
+        versions.publish("embedded", FlowVersion.of(flow));
         var engine = Engine.builder()
                 .versions(versions)
                 .handlers(handlers)

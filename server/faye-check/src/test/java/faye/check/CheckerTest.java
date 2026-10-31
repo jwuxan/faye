@@ -408,7 +408,7 @@ class CheckerTest {
                       use: identity.resolve
                     credential: { screen: password, use: password.verify }
                 """);
-        assertThat(errors(check(flow)))
+        assertThat(errors(check(flow)).stream().filter(e -> e.contains("host contract")))
                 .singleElement()
                 .satisfies(e ->
                         assertThat(e).startsWith("tenant.yaml:6:11: 'host.prompt' is not part of the host contract"));

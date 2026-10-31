@@ -37,7 +37,7 @@ public final class FixedIssuers {
 
             @Override
             public Map<String, Object> issue(Env env, Map<String, Object> opts, Map<String, Object> previous) {
-                if (screen.equals("otp_enroll")) {
+                if ("otp_enroll".equals(screen)) {
                     return Map.of("secret", previous.get("secret") instanceof String s ? s : SECRET);
                 }
                 if (onlyForPasskeyOption && !Boolean.TRUE.equals(opts.get("passkey"))) return Map.of();
