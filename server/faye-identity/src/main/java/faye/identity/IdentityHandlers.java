@@ -125,6 +125,12 @@ public final class IdentityHandlers {
                 out.put("identifier", identifier);
                 user = users.byIdentifier(identifier).filter(u -> visible(u, call));
             }
+            // A step up is for the subject the host already knows: identifying anyone else would
+            // put their attributes beside that subject's credentials (and so in its claims)
+            String bound = env.auth().subject();
+            if (bound != null && !user.map(u -> u.subject().equals(bound)).orElse(false)) {
+                return Outcome.fail("wrong_account");
+            }
             out.put("exists", user.isPresent());
             out.put("has_password", user.map(u -> u.passwordHash() != null).orElse(true));
             out.put("has_totp", user.map(u -> u.totpSecret() != null).orElse(false));

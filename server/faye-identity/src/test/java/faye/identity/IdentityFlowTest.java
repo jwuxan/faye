@@ -220,6 +220,36 @@ class IdentityFlowTest {
     }
 
     @Test
+    void aStepUpIdentifiesOnlyTheSubjectTheHostKnows() {
+        var resolve = new HandlerRegistry(
+                        IdentityHandlers.create(users, new WebAuthnSettings("localhost", Set.of()), Clock.systemUTC()))
+                .find("identity.resolve")
+                .orElseThrow();
+        // bob holds a session and steps up; typing alice's identifier must not bring her attributes
+        var bob = new faye.engine.Env(
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                new faye.engine.Env.Auth("user-bob", List.of()));
+        assertThat(resolve.invoke(new Invocation(
+                        bob,
+                        new Submission(Map.of("identifier", "alice@example.com")),
+                        Map.of(),
+                        "f",
+                        "default",
+                        false)))
+                .isEqualTo(new faye.engine.Outcome.Fail("wrong_account"));
+        assertThat(resolve.invoke(new Invocation(
+                        bob, new Submission(Map.of("identifier", "bob@example.com")), Map.of(), "f", "default", false)))
+                .isInstanceOfSatisfying(
+                        faye.engine.Outcome.Ok.class,
+                        ok -> assertThat(ok.user()).containsEntry("email", "bob@example.com"));
+    }
+
+    @Test
     void anAccountOfOneTenantIsUnknownToTheClientsOfAnother() {
         users.save(new User(
                 "user-carol",

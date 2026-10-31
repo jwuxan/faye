@@ -73,7 +73,7 @@ A flow reads its environment through predicate paths `namespace.key...`. A missi
 | `vars` | the flow's own values | `set`, and hooks in steps |
 | `auth` | `subject`, `amr`, `acr` | the engine only, from credentials that verified |
 
-`user` merges shallowly and keeps its fields across retry attempts. Pinned by `login-hint`, `tenant-mfa-predicate`, `picker`, `hook-set-cannot-write-auth`.
+`user` merges shallowly and keeps its fields across retry attempts, except that a handler that identifies the person (`identifies`) replaces it: it names a new person, and nothing learned about an earlier one may stay (O16, `identify-replaces-user`). Pinned by `login-hint`, `tenant-mfa-predicate`, `picker`, `hook-set-cannot-write-auth`.
 
 ### Host contract
 
@@ -206,10 +206,11 @@ A handler is built in and reviewed (charter principle 2). It declares (`HandlerM
 |---|---|
 | `amr` | what it may prove; nonempty makes it a credential |
 | `binds_subject` | on success it names the subject |
-| `identifies` | it fills `user` from what the person typed; credentials run only after one succeeded |
+| `identifies` | it fills `user` from what the person typed, replacing what `user` held; credentials run only after one succeeded |
 | `requires_subject` | it runs only once a credential verified the subject in this flow |
 | `effect` | `none`, `guard` or `write` (absent: `write`) |
 | `args` | the JSON Schema of the call's args (absent: none) |
+| `entries` | the kinds of entry it belongs in (absent: every kind); the checker refuses it in any other (`consent.record`: consent only) |
 
 A handler that binds a subject is a credential and must name a subject on success. It may prove part of its declared amr, never more.
 

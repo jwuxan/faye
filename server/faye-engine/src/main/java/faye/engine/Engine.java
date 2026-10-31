@@ -270,7 +270,8 @@ public final class Engine {
                 null,
                 List.of(),
                 0,
-                preview);
+                preview,
+                kind == HostKind.CONSENT ? user : Map.of());
 
         List<TraceEvent> trace = new ArrayList<>();
         trace.add(TraceEvent.of("start", version.hash(), entry.get()));
@@ -520,7 +521,13 @@ public final class Engine {
                                             "call", handler.name(), mismatch == null ? "ok" : mismatch, amr, null));
                                     if (mismatch != null) return end(state, env, effects, revision, mismatch);
                                     effects.addAll(staged);
-                                    if (!ok.user().isEmpty()) env = env.withUser(ok.user());
+                                    // An identifying handler names the person afresh: nothing an
+                                    // earlier attempt learned about someone else may stay (O16)
+                                    if (meta.identifies()) {
+                                        env = env.withUserReplaced(ok.user());
+                                    } else if (!ok.user().isEmpty()) {
+                                        env = env.withUser(ok.user());
+                                    }
                                     if (amr != null) {
                                         @Nullable
                                         String subject = meta.bindsSubject()
@@ -772,7 +779,8 @@ public final class Engine {
                 awaiting,
                 pending,
                 revision,
-                s.preview());
+                s.preview(),
+                s.proven());
     }
 
     // ---- edges ----
@@ -839,6 +847,14 @@ public final class Engine {
         }
         if (picker && !(awaiting.data().get("options") instanceof List<?>)) return "picker options";
         if (!picker && screens.find(awaiting.screen()).isEmpty()) return "screen " + awaiting.screen();
+        // A screen that acts for the signed in subject cannot wait without one, whatever its issuer
+        if (waiting instanceof Screen s
+                && state.env().auth().subject() == null
+                && screens.find(s.type())
+                        .map(spec -> spec.requiresSubject(s.opts()))
+                        .orElse(false)) {
+            return "screen " + awaiting.screen() + " without a subject";
+        }
         if (screens.issuer(awaiting.screen())
                 .map(i -> !i.resumable(state.env(), awaiting.data()))
                 .orElse(false)) {
@@ -917,8 +933,12 @@ public final class Engine {
             try {
                 shown = issuer.get().present(state.env(), awaiting.data());
             } catch (RuntimeException e) {
-                // The material the flow waits with cannot be shown: the flow fails closed
-                LOG.log(System.Logger.Level.WARNING, "issuer of {0} cannot present; its flow ends", awaiting.screen());
+                // The material the flow waits with cannot be shown: this view is refused as an unknown
+                // flow, and the flow stays unusable until it expires
+                LOG.log(
+                        System.Logger.Level.WARNING,
+                        "issuer of {0} cannot present; the flow is refused until it expires",
+                        awaiting.screen());
                 throw new FlowException(Code.FLOW_NOT_FOUND);
             }
             merge(screen, shown, "issuer of " + awaiting.screen());
@@ -947,14 +967,10 @@ public final class Engine {
                                 auth.amr(),
                                 Objects.requireNonNull(auth.acr()),
                                 Map.of("flowId", s.flowId(), "versionHash", s.versionHash())));
-            case CONSENT -> {
-                String subject = Objects.requireNonNull(auth.subject());
-                // Only what the login that proved this subject learned: user.* filled inside the
-                // consent entry (an identifying handler) may describe someone else (O16)
-                Map<String, Object> user =
-                        linkedLogin(req, subject).map(l -> l.env().user()).orElse(Map.of());
-                yield host.accept(req, consented(req, user, subject));
-            }
+            // Only what the login that proved this subject learned, as the consent started: user.*
+            // filled inside the consent entry may describe someone else (O16), and the login row
+            // may have expired since
+            case CONSENT -> host.accept(req, consented(req, s.proven(), Objects.requireNonNull(auth.subject())));
             case LOGOUT -> throw new IllegalStateException("logout runs no flow entry");
         });
         emit(

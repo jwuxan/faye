@@ -49,7 +49,8 @@ class BoundaryTest {
             if (text.contains("PASSKEY_ALGORITHMS")) found.add(file + ": PASSKEY_ALGORITHMS");
             if (text.contains("\"Faye\"")) found.add(file + ": \"Faye\"");
             // Screens and handlers say what they need through the catalogs (ScreenSpec, HandlerMeta)
-            if (Pattern.compile("\"(consent\\.record|register|passkey|otp_enroll|identifier|password)\"")
+            if (Pattern.compile("\"(consent\\.record|totp\\.\\w+|webauthn\\.\\w+|password\\.verify|identity\\.resolve"
+                            + "|register|passkey|otp_enroll|identifier|password|challenge|secret)\"")
                     .matcher(text)
                     .find()) {
                 found.add(file + ": a built in screen, option or handler by name");

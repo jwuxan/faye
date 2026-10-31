@@ -55,7 +55,7 @@ login:
       use: consent.record
 ```
 
-Consent is a step like any other ([ADR 0026](../adr/0026-consent-as-a-step.md)). The step that asks for consent (it shows the `consent` screen or calls `consent.record`, in its body or in a nested `alternative` or `steps`) and every step after it run on the host's consent challenge, once the sign in was accepted, so they lower to the `consent` entry; the steps before it lower to the `authenticate` entry. A flow with no such step has no consent entry, and the host's consent is granted without a screen. The checker's rules for each entry kind still apply, so a credential step after consent is refused at the YAML that wrote it.
+Consent is a step like any other ([ADR 0026](../adr/0026-consent-as-a-step.md)). The step that asks for consent (it shows a consent screen or calls a consent handler, in its body or in a nested `alternative` or `steps`; the compiler learns which from its caller, `FlowCompiler.Options`, and the app derives them from its catalogs: the `consent` screen and `consent.record`, which belong in consent entries only) and every step after it run on the host's consent challenge, once the sign in was accepted, so they lower to the `consent` entry; the steps before it lower to the `authenticate` entry. A flow with no such step has no consent entry, and the host's consent is granted without a screen. The checker's rules for each entry kind still apply, so a credential step after consent is refused at the YAML that wrote it.
 
 ## Lowering
 

@@ -19,6 +19,9 @@ import org.jspecify.annotations.Nullable;
  * @param revision bumped on every save, for optimistic concurrency
  * @param preview the host started the flow for a preview client; absent in states saved before
  *     the field existed, which read as false
+ * @param proven for a consent, what the login that proved its subject learned about the person,
+ *     taken when the consent started; the host receives exactly this. Empty otherwise, and in states
+ *     saved before the field existed
  */
 public record FlowState(
         String flowId,
@@ -33,7 +36,8 @@ public record FlowState(
         @Nullable Awaiting awaiting,
         List<Effect> pending,
         long revision,
-        boolean preview) {
+        boolean preview,
+        Map<String, Object> proven) {
 
     /**
      * @param step innermost enclosing step id, or null
@@ -71,5 +75,7 @@ public record FlowState(
         Objects.requireNonNull(env);
         stack = List.copyOf(stack);
         pending = List.copyOf(pending);
+        // Absent in states saved before the field existed
+        proven = proven == null ? Map.of() : Map.copyOf(proven);
     }
 }

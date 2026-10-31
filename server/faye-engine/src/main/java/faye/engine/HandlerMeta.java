@@ -20,7 +20,7 @@ import java.util.TreeSet;
  * @param effect what it changes outside the flow
  * @param args JSON Schema of the {@code call}'s args object
  * @param entries the kinds of entry it belongs in; the checker refuses it in any other (recording
- *     consent during the sign in). Empty means every kind.
+ *     consent during the sign in). Empty is read as every kind.
  */
 public record HandlerMeta(
         Set<String> amr,
@@ -68,12 +68,13 @@ public record HandlerMeta(
     public HandlerMeta {
         amr = Set.copyOf(amr);
         args = args.deepCopy();
-        entries = Set.copyOf(entries);
+        // Empty means every kind, normalized so equal declarations are equal records
+        entries = Set.copyOf(entries.isEmpty() ? java.util.EnumSet.allOf(Entry.Kind.class) : entries);
     }
 
     /** Whether it may run in an entry of this kind. */
     public boolean belongsIn(Entry.Kind kind) {
-        return entries.isEmpty() || entries.contains(kind);
+        return entries.contains(kind);
     }
 
     /** A credential: it proves some amr. */
