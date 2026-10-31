@@ -1,0 +1,10 @@
+["flow", "hook-pick", 1,
+  ["login",
+    ["seq",
+      ["step", "identify", ["seq", ["screen", "identifier"], ["call", "identity.resolve"]]],
+      ["step", "credential",
+        ["choose",
+          ["hook", "route", "sha256:80db87fa9ddcd1a7595917ba86d3c7ad0b8b305f53f31b6f5615dc6e44d5f8db"],
+          ["opt", "password", ["retry", 3, ["seq", ["screen", "password"], ["call", "password.verify"]]]],
+          ["opt", "otp", ["when", "user.has_totp", ["seq", ["screen", "otp"], ["call", "totp.verify"]]]]]],
+      ["succeed"]]]]

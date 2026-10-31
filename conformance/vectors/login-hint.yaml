@@ -1,0 +1,15 @@
+name: login_hint prefills the identifier screen
+ir: flows/default-login.json
+host:
+  hydra: { login_hint: bob@example.com }
+subject: bob
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+    expect_identifier: bob@example.com
+  - submit: { identifier: bob@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: bob, amr: [pwd] }

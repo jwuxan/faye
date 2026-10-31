@@ -1,0 +1,21 @@
+name: a preview client's consent runs the draft and puts the login's flow id in the ID token claims
+ir: flows/password-only.json
+host:
+  kind: consent
+  client: { client_id: preview-partner, first_party: false, metadata: { preview: true } }
+  hydra: { subject: alice, requested_scope: [openid], context: { flowId: f_login } }
+preview:
+  draft: flows/partner-consent.json
+handlers:
+  consent.record: [ok]
+events:
+  - expect_screen: consent
+    expect_step: grant
+  - submit: { decision: allow }
+  - expect_result: { succeed: true, subject: alice, grant_scope: [openid], id_token: { faye_flow_id: f_login } }
+expect_trace:
+  - start consent
+  - step grant
+  - screen consent
+  - call consent.record ok
+  - end succeed

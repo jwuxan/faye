@@ -1,0 +1,11 @@
+name: choose with one enabled option runs it without a picker
+ir: flows/forms.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: false, attempts: 1 } } }]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd] }

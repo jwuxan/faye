@@ -1,0 +1,117 @@
+# docker compose -f deploy/compose.yaml up --build
+# then open http://localhost:3001 and sign in as alice@example.com or bob@example.com,
+# password "correct horse battery staple". Alice's TOTP secret is JBSWY3DPEHPK3PXP.
+# The Admin UI is http://localhost:3002; sign in as Alice, with her TOTP code.
+name: faye
+
+# Hydra v2.2.0, pinned by digest; deploy/hydra-local.sh pins the same release by checksum.
+x-hydra-image: &hydra-image oryd/hydra:v2.2.0@sha256:2c93beb5e5f260cb5ed5ab579d8a1c133b0ec503c933244370522a2a53695ce7
+
+x-hydra-env: &hydra-env
+  DSN: postgres://hydra:secret@postgres:5432/hydra?sslmode=disable
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: hydra
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: hydra
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "hydra"]
+      interval: 2s
+      retries: 30
+
+  redis:
+    image: redis:7
+
+  hydra-migrate:
+    image: *hydra-image
+    command: migrate sql -e --yes
+    environment: *hydra-env
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  hydra:
+    image: *hydra-image
+    # --dev allows the plain http issuer used locally
+    command: serve all --dev
+    environment:
+      <<: *hydra-env
+      URLS_SELF_ISSUER: http://localhost:4444
+      URLS_LOGIN: http://localhost:8080/login
+      URLS_CONSENT: http://localhost:8080/consent
+      SECRETS_SYSTEM: faye-local-development-secret-not-for-production
+    ports: ["4444:4444", "4445:4445"]
+    depends_on:
+      hydra-migrate: { condition: service_completed_successfully }
+
+  bootstrap:
+    image: curlimages/curl:8.11.1
+    entrypoint: ["sh", "/bootstrap.sh"]
+    volumes: ["./bootstrap.sh:/bootstrap.sh:ro"]
+    environment:
+      HYDRA_ADMIN_URL: http://hydra:4445
+      DEMO_REDIRECT_URI: http://localhost:3001/callback
+      ADMIN_REDIRECT_URI: http://localhost:3002/callback
+    depends_on: [hydra]
+
+  # Stand in for an IP reputation service: the egress target of the risk hook (tenant risk).
+  # Same JDK image the server builds with, running one source file.
+  ip-reputation:
+    image: eclipse-temurin:21-jdk
+    command: ["java", "/stub/IpReputation.java"]
+    volumes: ["./ip-reputation:/stub:ro"]
+
+  faye:
+    build: ../server
+    environment:
+      REDIS_HOST: redis
+      FAYE_HYDRA_ADMIN_URL: http://hydra:4445
+      FAYE_LOGIN_UI_URL: http://localhost:3000
+      # Passkeys are scoped to the Login UI's origin as the browser sees it
+      FAYE_WEBAUTHN_RP_ID: localhost
+      FAYE_WEBAUTHN_ORIGINS: http://localhost:3000
+      # Turns on the admin API (validate, publish, roll back); a local only default
+      FAYE_ADMIN_TOKEN: ${FAYE_ADMIN_TOKEN:-dev-admin-token}
+      # Named egress target the risk tenant grants its hooks
+      FAYE_IP_REPUTATION_URL: http://ip-reputation:8000/score
+      # Preview clients (preview-<tenant>) run each tenant's draft; local only
+      FAYE_PREVIEW_ENABLED: "true"
+    ports: ["8080:8080"]
+    depends_on: [redis, hydra, ip-reputation]
+
+  login:
+    build: { context: ../web, args: { APP: login } }
+    environment:
+      FAYE_SERVER_URL: http://faye:8080
+    ports: ["3000:3000"]
+    depends_on: [faye]
+
+  demo-client:
+    build: { context: ../web, args: { APP: demo-client } }
+    environment:
+      HYDRA_PUBLIC_URL: http://localhost:4444
+      HYDRA_INTERNAL_URL: http://hydra:4444
+      DEMO_CLIENT_URL: http://localhost:3001
+      # Where the result view reads a preview run's trace
+      FAYE_SERVER_URL: http://faye:8080
+    ports: ["3001:3001"]
+    depends_on: [bootstrap, faye]
+
+  # Compose, check and publish flows. Operators sign in through Hydra with the admin tenant's
+  # flow (password + TOTP); alice@example.com is the local operator.
+  admin:
+    build: { context: ../web, args: { APP: admin } }
+    environment:
+      FAYE_SERVER_URL: http://faye:8080
+      FAYE_ADMIN_TOKEN: ${FAYE_ADMIN_TOKEN:-dev-admin-token}
+      HYDRA_PUBLIC_URL: http://localhost:4444
+      HYDRA_INTERNAL_URL: http://hydra:4444
+      ADMIN_URL: http://localhost:3002
+      # Preview opens the demo client with the tenant's preview client
+      DEMO_CLIENT_URL: http://localhost:3001
+      FAYE_ADMIN_SUBJECTS: user-alice
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:-faye-local-admin-session-secret-not-for-production}
+    ports: ["3002:3002"]
+    depends_on: [bootstrap, faye]

@@ -1,0 +1,8 @@
+name: fail ends the section with its reason
+ir: flows/explicit-fail.json
+handlers:
+  identity.resolve: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_result: { succeed: false, reason: blocked }

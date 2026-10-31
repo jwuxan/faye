@@ -1,0 +1,12 @@
+name: a version published mid flow does not change it; the flow finishes on the version it started with
+ir: flows/password-only.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+  - publish: flows/no-credential.json
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

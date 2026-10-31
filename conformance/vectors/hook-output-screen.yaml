@@ -1,0 +1,10 @@
+name: 'a hook result outside set, fail, pick and {} is a hook error: screen'
+ir: flows/risk-hook.json
+handlers:
+  identity.resolve: [ok]
+hooks:
+  risk: [{ returns: { screen: password } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_result: { succeed: false, reason: hook_error }

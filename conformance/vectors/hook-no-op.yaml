@@ -1,0 +1,13 @@
+name: a hook that returns an empty object changes nothing
+ir: flows/risk-hook.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+hooks:
+  risk: [{ returns: {} }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

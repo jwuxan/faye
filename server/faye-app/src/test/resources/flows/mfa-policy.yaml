@@ -1,0 +1,18 @@
+# Password, then TOTP whenever the tenant requires MFA or the account has TOTP.
+flow: mfa-policy
+version: 1
+
+login:
+  steps:
+    identify:
+      screen: identifier
+      use: identity.resolve
+    credential:
+      retry: 3
+      screen: password
+      use: password.verify
+    second-factor:
+      if: { or: [tenant.mfa_required, user.has_totp] }
+      retry: 3
+      screen: otp
+      use: totp.verify

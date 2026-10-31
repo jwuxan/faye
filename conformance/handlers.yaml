@@ -1,0 +1,7 @@
+identity.resolve: { amr: [], binds_subject: false }
+password.verify: { amr: [pwd], binds_subject: true }
+totp.verify: { amr: [otp], binds_subject: true }
+totp.enroll: { amr: [otp], binds_subject: true }
+webauthn.assert: { amr: [hwk, user], binds_subject: true }
+webauthn.register: { amr: [], binds_subject: false }
+consent.record: { amr: [], binds_subject: false }

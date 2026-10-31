@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://faye.invalid/schema/ir.schema.json",
+  "title": "Faye flow IR",
+  "description": "A flow as an S expression tree stored as JSON arrays. Canonical form (input to the version hash): UTF-8, no insignificant whitespace, object keys sorted, empty opts and args objects omitted. Forms not listed here are not yet part of the language.",
+  "type": "array",
+  "prefixItems": [
+    { "const": "flow" },
+    { "$ref": "#/$defs/id" },
+    { "type": "integer", "minimum": 1 }
+  ],
+  "items": { "$ref": "#/$defs/section" },
+  "minItems": 4,
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$" },
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$" },
+    "key": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "literal": { "type": ["string", "integer", "boolean"] },
+    "literals": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/id" },
+      "additionalProperties": { "$ref": "#/$defs/literal" }
+    },
+    "path": {
+      "description": "A value in the flow environment; the first segment is a namespace.",
+      "type": "string",
+      "pattern": "^(request|client|hydra|tenant|user|vars|auth)(\\.[a-z][a-z0-9_]*)+$"
+    },
+    "section": {
+      "type": "array",
+      "prefixItems": [{ "enum": ["login", "consent"] }, { "$ref": "#/$defs/node" }],
+      "items": false,
+      "minItems": 2
+    },
+    "node": {
+      "description": "Dispatches on the form name, so only that form's schema checks the children. A oneOf over the forms would check every child against every form, which costs time exponential in the nesting depth.",
+      "type": "array",
+      "prefixItems": [{ "enum": ["seq", "step", "screen", "call", "hook", "choose", "when", "retry", "set", "succeed", "fail"] }],
+      "minItems": 1,
+      "allOf": [
+        { "if": { "prefixItems": [{ "const": "seq" }] }, "then": { "$ref": "#/$defs/seq" } },
+        { "if": { "prefixItems": [{ "const": "step" }] }, "then": { "$ref": "#/$defs/step" } },
+        { "if": { "prefixItems": [{ "const": "screen" }] }, "then": { "$ref": "#/$defs/screen" } },
+        { "if": { "prefixItems": [{ "const": "call" }] }, "then": { "$ref": "#/$defs/call" } },
+        { "if": { "prefixItems": [{ "const": "hook" }] }, "then": { "$ref": "#/$defs/hook" } },
+        { "if": { "prefixItems": [{ "const": "choose" }] }, "then": { "$ref": "#/$defs/choose" } },
+        { "if": { "prefixItems": [{ "const": "when" }] }, "then": { "$ref": "#/$defs/when" } },
+        { "if": { "prefixItems": [{ "const": "retry" }] }, "then": { "$ref": "#/$defs/retry" } },
+        { "if": { "prefixItems": [{ "const": "set" }] }, "then": { "$ref": "#/$defs/set" } },
+        { "if": { "prefixItems": [{ "const": "succeed" }] }, "then": { "$ref": "#/$defs/succeed" } },
+        { "if": { "prefixItems": [{ "const": "fail" }] }, "then": { "$ref": "#/$defs/fail" } }
+      ]
+    },
+    "seq": {
+      "description": "(seq a b ...) runs children in order; any failure fails the sequence.",
+      "type": "array",
+      "prefixItems": [{ "const": "seq" }],
+      "items": { "$ref": "#/$defs/node" },
+      "minItems": 2
+    },
+    "step": {
+      "description": "(step id body) names a boundary for audit, metrics and source maps.",
+      "type": "array",
+      "prefixItems": [{ "const": "step" }, { "$ref": "#/$defs/id" }, { "$ref": "#/$defs/node" }],
+      "items": false,
+      "minItems": 3
+    },
+    "screen": {
+      "description": "(screen :type opts?) suspends and emits a typed screen.",
+      "type": "array",
+      "prefixItems": [{ "const": "screen" }, { "$ref": "#/$defs/id" }, { "$ref": "#/$defs/literals" }],
+      "items": false,
+      "minItems": 2
+    },
+    "call": {
+      "description": "(call handler args?) invokes a registered server handler.",
+      "type": "array",
+      "prefixItems": [{ "const": "call" }, { "$ref": "#/$defs/name" }, { "$ref": "#/$defs/literals" }],
+      "items": false,
+      "minItems": 2
+    },
+    "hook": {
+      "description": "(hook id hash) runs the tenant JavaScript hook stored under hash. It may only set vars, fail, or (first in a choose) pick an enabled option.",
+      "type": "array",
+      "prefixItems": [{ "const": "hook" }, { "$ref": "#/$defs/id" }, { "$ref": "#/$defs/hash" }],
+      "items": false,
+      "minItems": 3
+    },
+    "hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "choose": {
+      "description": "(choose (hook id hash)? (opt id body) ...) offers the enabled options and runs the chosen one. An option is enabled unless its body is a when whose predicate is false. A leading hook runs once some option is enabled and may pick one of them.",
+      "type": "array",
+      "prefixItems": [{ "const": "choose" }, { "anyOf": [{ "$ref": "#/$defs/hook" }, { "$ref": "#/$defs/opt" }] }],
+      "items": { "$ref": "#/$defs/opt" },
+      "minItems": 2,
+      "if": { "prefixItems": [true, { "prefixItems": [{ "const": "hook" }] }] },
+      "then": { "minItems": 3 }
+    },
+    "opt": {
+      "type": "array",
+      "prefixItems": [{ "const": "opt" }, { "$ref": "#/$defs/id" }, { "$ref": "#/$defs/node" }],
+      "items": false,
+      "minItems": 3
+    },
+    "when": {
+      "description": "(when pred body) runs body if the predicate holds, else completes.",
+      "type": "array",
+      "prefixItems": [{ "const": "when" }, { "$ref": "#/$defs/predicate" }, { "$ref": "#/$defs/node" }],
+      "items": false,
+      "minItems": 3
+    },
+    "retry": {
+      "description": "(retry n body) runs body up to n times in total while a handler in it fails; the next screen shows the error.",
+      "type": "array",
+      "prefixItems": [{ "const": "retry" }, { "type": "integer", "minimum": 1, "maximum": 10 }, { "$ref": "#/$defs/node" }],
+      "items": false,
+      "minItems": 3
+    },
+    "set": {
+      "description": "(set name value) writes a literal to vars.name.",
+      "type": "array",
+      "prefixItems": [{ "const": "set" }, { "$ref": "#/$defs/key" }, { "$ref": "#/$defs/literal" }],
+      "items": false,
+      "minItems": 3
+    },
+    "succeed": {
+      "type": "array",
+      "prefixItems": [{ "const": "succeed" }],
+      "items": false,
+      "minItems": 1
+    },
+    "fail": {
+      "type": "array",
+      "prefixItems": [{ "const": "fail" }, { "$ref": "#/$defs/id" }],
+      "items": false,
+      "minItems": 2
+    },
+    "predicate": {
+      "description": "A bare path tests truthiness. Comparisons take [path, literal]; has tests list membership.",
+      "oneOf": [
+        { "$ref": "#/$defs/path" },
+        { "$ref": "#/$defs/and" },
+        { "$ref": "#/$defs/or" },
+        { "$ref": "#/$defs/not" },
+        { "$ref": "#/$defs/exists" },
+        { "$ref": "#/$defs/compare" }
+      ]
+    },
+    "and": { "type": "object", "required": ["and"], "additionalProperties": false, "properties": { "and": { "$ref": "#/$defs/predicates" } } },
+    "or": { "type": "object", "required": ["or"], "additionalProperties": false, "properties": { "or": { "$ref": "#/$defs/predicates" } } },
+    "not": { "type": "object", "required": ["not"], "additionalProperties": false, "properties": { "not": { "$ref": "#/$defs/predicate" } } },
+    "exists": { "type": "object", "required": ["exists"], "additionalProperties": false, "properties": { "exists": { "$ref": "#/$defs/path" } } },
+    "compare": {
+      "description": "Exactly one of eq, ne, has (any literal) or gt, lt (an integer).",
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "eq": { "$ref": "#/$defs/comparison" },
+        "ne": { "$ref": "#/$defs/comparison" },
+        "has": { "$ref": "#/$defs/comparison" },
+        "gt": { "$ref": "#/$defs/ordering" },
+        "lt": { "$ref": "#/$defs/ordering" }
+      }
+    },
+    "predicates": { "type": "array", "items": { "$ref": "#/$defs/predicate" }, "minItems": 1 },
+    "comparison": {
+      "type": "array",
+      "prefixItems": [{ "$ref": "#/$defs/path" }, { "$ref": "#/$defs/literal" }],
+      "items": false,
+      "minItems": 2
+    },
+    "ordering": {
+      "type": "array",
+      "prefixItems": [{ "$ref": "#/$defs/path" }, { "type": "integer" }],
+      "items": false,
+      "minItems": 2
+    }
+  }
+}

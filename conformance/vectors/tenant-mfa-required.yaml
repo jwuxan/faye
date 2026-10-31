@@ -1,0 +1,12 @@
+name: a tenant that requires MFA refuses a login that proved one factor
+ir: flows/password-only.json
+tenant: { mfa_required: true }
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: false, reason: mfa_required }

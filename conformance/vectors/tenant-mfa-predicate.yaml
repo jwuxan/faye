@@ -1,0 +1,16 @@
+name: a flow reads the tenant's MFA policy as tenant.mfa_required
+ir: flows/mfa-policy.json
+tenant: { mfa_required: true }
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+  totp.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: otp
+    expect_step: second-factor
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd, otp], acr: "faye:2fa" }

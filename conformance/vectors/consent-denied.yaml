@@ -1,0 +1,12 @@
+name: denying consent rejects the request
+ir: flows/partner-consent.json
+host:
+  kind: consent
+  client: { client_id: partner-app, first_party: false }
+  hydra: { subject: alice, requested_scope: [openid] }
+handlers:
+  consent.record: [{ fail: consent_denied }]
+events:
+  - expect_screen: consent
+  - submit: { decision: deny }
+  - expect_result: { succeed: false, reason: consent_denied }

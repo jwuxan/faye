@@ -1,0 +1,10 @@
+name: a hook cannot pick an option the choose does not declare
+ir: flows/hook-pick.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: true } } }]
+hooks:
+  route: [{ returns: { pick: skip } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_result: { succeed: false, reason: hook_error }

@@ -1,0 +1,10 @@
+name: the hook of a choose only picks; set there is a hook error
+ir: flows/hook-pick.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: true } } }]
+hooks:
+  route: [{ returns: { set: { risk: high } } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_result: { succeed: false, reason: hook_error }

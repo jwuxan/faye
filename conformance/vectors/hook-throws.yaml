@@ -1,0 +1,10 @@
+name: a hook that throws, times out or runs out of memory fails the step with hook_error
+ir: flows/risk-hook.json
+handlers:
+  identity.resolve: [ok]
+hooks:
+  risk: [{ throws: exceeded its 200 ms deadline }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_result: { succeed: false, reason: hook_error }

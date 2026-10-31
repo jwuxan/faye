@@ -1,0 +1,31 @@
+name: the trace says how each option was chosen, by the person on the method picker or as the only one enabled
+ir: flows/password-only.json
+host:
+  client: { client_id: preview-default, metadata: { preview: true } }
+preview:
+  draft: flows/forms.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: true, attempts: 1 } } }]
+  totp.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: method_picker
+    expect_options: [password, totp]
+  - submit: { method: totp }
+  - expect_screen: otp
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [otp], acr: "faye:1fa" }
+expect_trace:
+  - start login
+  - step identify
+  - screen identifier
+  - call identity.resolve ok
+  - step credential
+  - screen method_picker
+  - option totp user
+  - screen otp
+  - call totp.verify ok otp
+  - step nothing-left
+  - option done only
+  - end succeed otp faye:1fa

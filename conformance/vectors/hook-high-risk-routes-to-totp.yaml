@@ -1,0 +1,17 @@
+name: a risk hook that sets vars.risk to high routes the sign in through TOTP
+ir: flows/risk-hook.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+  totp.verify: [ok]
+hooks:
+  risk: [{ returns: { set: { risk: high } } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: otp
+    expect_step: second-factor
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd, otp], acr: "faye:2fa" }

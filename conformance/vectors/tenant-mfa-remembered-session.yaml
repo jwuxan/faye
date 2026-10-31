@@ -1,0 +1,17 @@
+name: a remembered session counts as one factor, so a tenant that requires MFA steps it up
+ir: flows/mfa-policy.json
+tenant: { mfa_required: true }
+host:
+  hydra: { skip: true, subject: alice }
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+  totp.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: otp
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd, otp], acr: "faye:2fa" }

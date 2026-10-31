@@ -1,0 +1,13 @@
+name: a risk hook that sets vars.risk to low skips the second factor
+ir: flows/risk-hook.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+hooks:
+  risk: [{ returns: { set: { risk: low } } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

@@ -1,0 +1,31 @@
+name: the trace of a preview shows a failed call and the retry that follows it
+ir: flows/password-only.json
+host:
+  client: { client_id: preview-default, metadata: { preview: true } }
+preview:
+  draft: flows/password-only.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [{ fail: invalid_credentials }, ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: wrong }
+  - expect_screen: password
+    expect_error: invalid_credentials
+    expect_attempts_left: 2
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }
+expect_trace:
+  - start login
+  - step identify
+  - screen identifier
+  - call identity.resolve ok
+  - step credential
+  - screen password
+  - call password.verify invalid_credentials
+  - retry invalid_credentials
+  - screen password
+  - call password.verify ok pwd
+  - end succeed pwd faye:1fa

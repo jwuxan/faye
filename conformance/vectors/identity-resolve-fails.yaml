@@ -1,0 +1,8 @@
+name: a failing handler skips the rest of the sequence
+ir: flows/default-login.json
+handlers:
+  identity.resolve: [{ fail: unavailable }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_result: { succeed: false, reason: unavailable }

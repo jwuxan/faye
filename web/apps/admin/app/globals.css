@@ -1,0 +1,57 @@
+@import "@faye/ui/globals.css";
+
+/* Admin console tokens on top of the shared theme. One accent (blue) for selection, focus, drop
+   targets and the highlighted path; semantic colors only where they carry meaning. */
+:root {
+  --radius: 0.375rem;
+  --surface-2: oklch(0.985 0 0);
+  --accent-ui: oklch(0.55 0.19 255);
+  --success: oklch(0.56 0.14 150);
+  --warning: oklch(0.68 0.15 70);
+  --warning-text: oklch(0.55 0.13 60);
+  --danger: oklch(0.577 0.245 27.325);
+  --warm: oklch(0.55 0.03 60);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface-2: oklch(0.18 0 0);
+    --accent-ui: oklch(0.68 0.16 255);
+    --success: oklch(0.72 0.15 150);
+    --warning: oklch(0.8 0.14 80);
+    --warning-text: oklch(0.8 0.14 80);
+    --danger: oklch(0.704 0.191 22.216);
+    --warm: oklch(0.72 0.03 60);
+  }
+}
+
+@theme inline {
+  --color-surface-2: var(--surface-2);
+  --color-accent-ui: var(--accent-ui);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-warning-text: var(--warning-text);
+  --color-danger: var(--danger);
+  --color-warm: var(--warm);
+}
+
+@layer base {
+  body {
+    font-size: 13px;
+    line-height: 20px;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--accent-ui) 22%, transparent);
+  }
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    border: 1px solid var(--border);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0 4px;
+    color: var(--muted-foreground);
+  }
+}

@@ -1,0 +1,11 @@
+name: a section that runs off its end fails as incomplete
+ir: flows/no-terminal.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: false, reason: incomplete }

@@ -1,0 +1,16 @@
+name: screens report the innermost enclosing step
+ir: flows/nested-steps.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+    expect_step: outer
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+    expect_step: inner
+  - submit: { password: right }
+  - expect_screen: password
+    expect_step: outer
+  - submit: { password: anything }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd] }

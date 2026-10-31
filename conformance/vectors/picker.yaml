@@ -1,0 +1,16 @@
+name: choose with two enabled options shows the method picker; set writes vars
+ir: flows/forms.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: true, attempts: 1 } } }]
+  totp.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: method_picker
+    expect_step: credential
+    expect_options: [password, totp]
+  - submit: { method: totp }
+  - expect_screen: otp
+    expect_step: credential
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [otp], acr: "faye:1fa" }

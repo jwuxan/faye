@@ -1,0 +1,21 @@
+# Password sign in, and a consent screen for third party clients. First party clients
+# (registered with metadata.first_party = true) are not asked.
+flow: partner-consent
+version: 1
+
+login:
+  steps:
+    identify:
+      screen: identifier
+      use: identity.resolve
+    credential:
+      retry: 3
+      screen: password
+      use: password.verify
+
+consent:
+  steps:
+    grant:
+      if: { not: client.first_party }
+      screen: consent
+      use: consent.record

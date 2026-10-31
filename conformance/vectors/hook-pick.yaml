@@ -1,0 +1,14 @@
+name: the hook of a choose picks an enabled option, so no method picker is shown
+ir: flows/hook-pick.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: true } } }]
+  totp.verify: [ok]
+hooks:
+  route: [{ returns: { pick: otp }, expect_options: [password, otp] }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: otp
+    expect_step: credential
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [otp], acr: "faye:1fa" }

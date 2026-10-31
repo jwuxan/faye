@@ -1,0 +1,12 @@
+{
+  "name": "faye-web",
+  "private": true,
+  "packageManager": "pnpm@11.20.0",
+  "scripts": {
+    "generate": "pnpm --filter @faye/contract generate",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "build": "pnpm -r build",
+    "test": "pnpm -r --if-present test"
+  }
+}

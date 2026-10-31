@@ -1,0 +1,16 @@
+name: the hook of a choose may leave the choice to the person
+ir: flows/hook-pick.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: true } } }]
+  password.verify: [ok]
+hooks:
+  route: [{ returns: {} }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: method_picker
+    expect_options: [password, otp]
+  - submit: { method: password }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

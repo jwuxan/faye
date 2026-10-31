@@ -1,0 +1,11 @@
+name: choose with no enabled option fails with no_method
+ir: flows/forms.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_result: { succeed: false, reason: no_method }

@@ -1,0 +1,10 @@
+name: a hook cannot pick an option whose condition is false
+ir: flows/hook-pick.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: false } } }]
+hooks:
+  route: [{ returns: { pick: otp }, expect_options: [password] }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_result: { succeed: false, reason: hook_error }

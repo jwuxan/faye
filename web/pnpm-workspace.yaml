@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Build scripts pnpm may run; unrs-resolver (via eslint-config-next) ships prebuilt binaries.
+allowBuilds:
+  unrs-resolver: false

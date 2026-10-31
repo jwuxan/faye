@@ -1,0 +1,17 @@
+name: a client without metadata.preview runs the current version, never the draft, and is not traced
+ir: flows/password-only.json
+host:
+  client: { client_id: demo, metadata: { preview: false } }
+preview:
+  draft: flows/two-credentials.json
+  request: { ip: 203.0.113.7 }
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+    expect_step: credential
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

@@ -1,0 +1,8 @@
+name: a first party client is not asked for consent
+ir: flows/partner-consent.json
+host:
+  kind: consent
+  client: { client_id: demo, first_party: true }
+  hydra: { subject: alice, requested_scope: [openid] }
+events:
+  - expect_result: { succeed: true, subject: alice, grant_scope: [openid] }

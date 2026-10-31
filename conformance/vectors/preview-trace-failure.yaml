@@ -1,0 +1,24 @@
+name: a preview that fails ends its trace with the reason
+ir: flows/password-only.json
+host:
+  client: { client_id: preview-default, metadata: { preview: true } }
+preview:
+  draft: flows/two-credentials.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [{ fail: invalid_credentials }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: wrong }
+  - expect_result: { succeed: false, reason: invalid_credentials }
+expect_trace:
+  - start login
+  - step identify
+  - screen identifier
+  - call identity.resolve ok
+  - step first
+  - screen password
+  - call password.verify invalid_credentials
+  - end invalid_credentials

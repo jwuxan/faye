@@ -1,0 +1,18 @@
+# Signs operators in to the Admin UI: password, then TOTP. The tenant requires MFA, and the
+# Admin UI accepts only faye:2fa, so no edit to this flow or its settings can weaken that.
+flow: admin
+version: 1
+
+login:
+  steps:
+    identify:
+      screen: identifier
+      use: identity.resolve
+    credential:
+      retry: 3
+      screen: password
+      use: password.verify
+    second-factor:
+      retry: 3
+      screen: otp
+      use: totp.verify

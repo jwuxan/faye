@@ -1,0 +1,28 @@
+name: the trace shows the hook of a choose, then the option it picked
+ir: flows/password-only.json
+host:
+  client: { client_id: preview-default, metadata: { preview: true } }
+preview:
+  draft: flows/hook-pick.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: true } } }]
+  totp.verify: [ok]
+hooks:
+  route: [{ returns: { pick: otp }, expect_options: [password, otp] }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: otp
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [otp], acr: "faye:1fa" }
+expect_trace:
+  - start login
+  - step identify
+  - screen identifier
+  - call identity.resolve ok
+  - step credential
+  - hook route ok
+  - option otp hook
+  - screen otp
+  - call totp.verify ok otp
+  - end succeed otp faye:1fa

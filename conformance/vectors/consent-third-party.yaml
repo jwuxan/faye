@@ -1,0 +1,13 @@
+name: a third party client gets the consent screen
+ir: flows/partner-consent.json
+host:
+  kind: consent
+  client: { client_id: partner-app, first_party: false }
+  hydra: { subject: alice, requested_scope: [openid, email] }
+handlers:
+  consent.record: [ok]
+events:
+  - expect_screen: consent
+    expect_step: grant
+  - submit: { decision: allow }
+  - expect_result: { succeed: true, subject: alice, grant_scope: [openid, email] }

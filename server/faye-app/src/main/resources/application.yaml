@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: faye
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+faye:
+  login-ui-url: ${FAYE_LOGIN_UI_URL:http://localhost:3000}
+  hydra-admin-url: ${FAYE_HYDRA_ADMIN_URL:}
+  flow-ttl: 30m
+  # Unset, the admin API (drafts, validate, publish, roll back, settings) is off
+  admin-token: ${FAYE_ADMIN_TOKEN:}
+  # On, clients registered with metadata.preview = true run their tenant's draft once it passes the
+  # checker, and are traced for the Admin UI. Off, their sign ins are refused.
+  preview-enabled: ${FAYE_PREVIEW_ENABLED:false}
+  # Each tenant's flow is checked against its settings, then published at startup. Settings saved
+  # through the admin API override these, except egress.
+  tenants:
+    # The Admin UI's own sign in (client faye-admin)
+    admin:
+      flow: classpath:flows/admin.yaml
+      mfa-required: true
+    default:
+      flow: classpath:flows/password-only.yaml
+    mfa:
+      flow: classpath:flows/passkey-totp.yaml
+    partner:
+      flow: classpath:flows/partner-consent.yaml
+    risk:
+      flow: classpath:flows/risk-totp.yaml
+      # Hooks of this tenant may call these named targets, and no others
+      egress: [ip-reputation]
+  # Named HTTP targets for hooks. Unset, the risk hook cannot reach its service and scores high.
+  egress:
+    ip-reputation: ${FAYE_IP_REPUTATION_URL:}
+  webauthn:
+    rp-id: ${FAYE_WEBAUTHN_RP_ID:localhost}
+    origins: ${FAYE_WEBAUTHN_ORIGINS:http://localhost:3000}
+  # Local demo accounts only. Alice has TOTP enrolled with this well known secret; Bob has none.
+  demo-users:
+    - subject: user-alice
+      identifier: alice@example.com
+      name: Alice
+      password: correct horse battery staple
+      totp-secret: JBSWY3DPEHPK3PXP
+    - subject: user-bob
+      identifier: bob@example.com
+      name: Bob
+      password: correct horse battery staple

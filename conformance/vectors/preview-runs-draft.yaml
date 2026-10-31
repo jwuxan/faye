@@ -1,0 +1,31 @@
+name: a preview client runs the draft Previews gives instead of the current version, and is traced
+ir: flows/password-only.json
+host:
+  client: { client_id: preview-default, metadata: { preview: true } }
+preview:
+  draft: flows/two-credentials.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok, ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+    expect_step: first
+  - submit: { password: right }
+  - expect_screen: password
+    expect_step: second
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }
+expect_trace:
+  - start login
+  - step identify
+  - screen identifier
+  - call identity.resolve ok
+  - step first
+  - screen password
+  - call password.verify ok pwd
+  - step second
+  - screen password
+  - call password.verify ok pwd
+  - end succeed pwd faye:1fa

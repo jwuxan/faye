@@ -1,0 +1,10 @@
+name: a hook that returns fail ends the sign in with its reason
+ir: flows/risk-hook.json
+handlers:
+  identity.resolve: [ok]
+hooks:
+  risk: [{ returns: { fail: too_risky } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_result: { succeed: false, reason: too_risky }

@@ -1,0 +1,162 @@
+package faye.host.hydra;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
+import faye.engine.Authenticated;
+import faye.engine.Consented;
+import faye.engine.HostKind;
+import faye.engine.HostRequest;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+/** Runs the host against a fake Hydra admin API that records what it was sent. */
+class HydraFlowHostTest {
+
+    static final ObjectMapper JSON = new ObjectMapper();
+
+    HttpServer server;
+    HydraFlowHost host;
+    /** "METHOD path?query" to the JSON body received, or "" for none. */
+    final Map<String, String> received = new ConcurrentHashMap<>();
+
+    @BeforeEach
+    void start() throws IOException {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/admin/oauth2/auth/requests/", exchange -> {
+            String key = exchange.getRequestMethod() + " " + exchange.getRequestURI();
+            received.put(key, new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            String path = exchange.getRequestURI().getPath();
+            String body;
+            int status = 200;
+            if (exchange.getRequestURI().getQuery().contains("challenge=gone")) {
+                status = 410;
+                body = "{\"error\":\"request_was_handled\"}";
+            } else if (path.endsWith("/login")) {
+                body = """
+                        {"challenge":"c1","skip":false,"subject":"","requested_scope":["openid","email"],
+                         "requested_access_token_audience":[],
+                         "client":{"client_id":"demo","client_name":"Demo","metadata":{"tenant":"acme"}},
+                         "oidc_context":{"acr_values":["faye:2fa"],"login_hint":"alice@example.com"}}
+                        """;
+            } else if (path.endsWith("/consent")) {
+                body = """
+                        {"challenge":"k1","skip":false,"subject":"user-alice","requested_scope":["openid","email"],
+                         "requested_access_token_audience":["api"],"client":{"client_id":"demo"},
+                         "context":{"flowId":"f_1","versionHash":"sha256:ab"}}
+                        """;
+            } else {
+                body = "{\"redirect_to\":\"http://hydra.test/next" + path.substring(path.lastIndexOf('/')) + "\"}";
+            }
+            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(status, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        host = new HydraFlowHost(
+                URI.create("http://127.0.0.1:" + server.getAddress().getPort()));
+    }
+
+    @AfterEach
+    void stop() {
+        server.stop(0);
+    }
+
+    @Test
+    void loadsALoginRequest() {
+        HostRequest req = host.load(HostKind.LOGIN, "c1");
+
+        assertThat(req.kind()).isEqualTo(HostKind.LOGIN);
+        assertThat(req.challenge()).isEqualTo("c1");
+        assertThat(req.client())
+                .containsEntry("client_id", "demo")
+                .containsEntry("client_name", "Demo")
+                .containsEntry("metadata", Map.of("tenant", "acme"))
+                .containsEntry("first_party", false);
+        assertThat(req.hydra())
+                .containsEntry("skip", false)
+                .containsEntry("requested_scope", List.of("openid", "email"))
+                .containsEntry("acr_values", List.of("faye:2fa"))
+                .containsEntry("login_hint", "alice@example.com")
+                .doesNotContainKey("subject");
+        assertThat(received).containsKey("GET /admin/oauth2/auth/requests/login?login_challenge=c1");
+    }
+
+    @Test
+    void acceptsLoginWithSubjectAmrAndContext() throws Exception {
+        HostRequest req = host.load(HostKind.LOGIN, "c1");
+        var redirect = host.accept(
+                req,
+                new Authenticated(
+                        "user-alice", List.of("pwd"), "faye:1fa", Map.of("flowId", "f_1", "versionHash", "sha256:ab")));
+
+        assertThat(redirect.url()).isEqualTo("http://hydra.test/next/accept");
+        JsonNode sent = JSON.readTree(received.get("PUT /admin/oauth2/auth/requests/login/accept?login_challenge=c1"));
+        assertThat(sent.get("subject").asText()).isEqualTo("user-alice");
+        assertThat(sent.get("amr")).containsExactly(JSON.valueToTree("pwd"));
+        assertThat(sent.get("acr").asText()).isEqualTo("faye:1fa");
+        assertThat(sent.get("remember").asBoolean()).isFalse();
+        assertThat(sent.at("/context/flowId").asText()).isEqualTo("f_1");
+        assertThat(sent.at("/context/versionHash").asText()).isEqualTo("sha256:ab");
+    }
+
+    @Test
+    void acceptsConsentWithGrantsAndIdTokenClaims() throws Exception {
+        HostRequest req = host.load(HostKind.CONSENT, "k1");
+        assertThat(req.hydra())
+                .containsEntry("subject", "user-alice")
+                .containsEntry("context", Map.of("flowId", "f_1", "versionHash", "sha256:ab"));
+
+        host.accept(
+                req,
+                new Consented(
+                        "user-alice",
+                        List.of("openid", "email"),
+                        List.of("api"),
+                        Map.of("email", "alice@example.com")));
+
+        JsonNode sent =
+                JSON.readTree(received.get("PUT /admin/oauth2/auth/requests/consent/accept?consent_challenge=k1"));
+        assertThat(sent.get("grant_scope")).containsExactly(JSON.valueToTree("openid"), JSON.valueToTree("email"));
+        assertThat(sent.get("grant_access_token_audience")).containsExactly(JSON.valueToTree("api"));
+        assertThat(sent.at("/session/id_token/email").asText()).isEqualTo("alice@example.com");
+        assertThat(sent.get("remember").asBoolean()).isFalse();
+    }
+
+    @Test
+    void rejectsWithErrorAndDescription() throws Exception {
+        HostRequest req = host.load(HostKind.LOGIN, "c1");
+        var redirect = host.reject(req, "access_denied", "invalid_credentials");
+
+        assertThat(redirect.url()).isEqualTo("http://hydra.test/next/reject");
+        JsonNode sent = JSON.readTree(received.get("PUT /admin/oauth2/auth/requests/login/reject?login_challenge=c1"));
+        assertThat(sent.get("error").asText()).isEqualTo("access_denied");
+        assertThat(sent.get("error_description").asText()).isEqualTo("invalid_credentials");
+    }
+
+    @Test
+    void challengeIsUrlEncoded() {
+        host.load(HostKind.LOGIN, "a b&c");
+        assertThat(received).containsKey("GET /admin/oauth2/auth/requests/login?login_challenge=a+b%26c");
+    }
+
+    @Test
+    void hydraErrorsSurface() {
+        assertThatThrownBy(() -> host.load(HostKind.LOGIN, "gone"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("410");
+    }
+}

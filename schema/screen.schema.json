@@ -1,0 +1,262 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://faye.invalid/schema/screen.schema.json",
+  "title": "Faye screen protocol v1",
+  "description": "Contract between the Faye server and the Login UI. GET /api/flows/{flowId} returns a ScreenResponse; POST /api/flows/{flowId}/submit takes a SubmitRequest and returns a ScreenResponse or a RedirectResponse. Failures return an ErrorResponse. The root schema accepts any response.",
+  "oneOf": [
+    { "$ref": "#/$defs/ScreenResponse" },
+    { "$ref": "#/$defs/RedirectResponse" },
+    { "$ref": "#/$defs/ErrorResponse" }
+  ],
+  "$defs": {
+    "ScreenResponse": {
+      "type": "object",
+      "required": ["flowId", "nonce", "screen"],
+      "additionalProperties": false,
+      "properties": {
+        "flowId": { "type": "string", "pattern": "^f_[A-Za-z0-9_-]+$" },
+        "nonce": { "type": "string", "pattern": "^n_[A-Za-z0-9_-]+$", "description": "Echo in the next SubmitRequest; single use." },
+        "step": { "type": "string", "description": "Innermost enclosing step id, when there is one." },
+        "screen": { "$ref": "#/$defs/Screen" },
+        "branding": { "$ref": "#/$defs/Branding" }
+      }
+    },
+    "Branding": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The tenant's branding, when it has any. Appearance only: layout is not tenant configurable.",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 64, "description": "Shown above every screen." },
+        "logoUrl": { "type": "string", "pattern": "^https://", "description": "Logo image." },
+        "primaryColor": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "Primary button and focus ring." },
+        "radius": { "type": "integer", "minimum": 0, "maximum": 24, "description": "Corner radius in px." }
+      }
+    },
+    "Screen": {
+      "oneOf": [
+        { "$ref": "#/$defs/IdentifierScreen" },
+        { "$ref": "#/$defs/PasswordScreen" },
+        { "$ref": "#/$defs/MethodPickerScreen" },
+        { "$ref": "#/$defs/PasskeyScreen" },
+        { "$ref": "#/$defs/OtpScreen" },
+        { "$ref": "#/$defs/OtpEnrollScreen" },
+        { "$ref": "#/$defs/ConsentScreen" },
+        { "$ref": "#/$defs/ErrorScreen" }
+      ]
+    },
+    "ScreenError": {
+      "type": "object",
+      "required": ["code"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Why the flow came back to this screen, e.g. invalid_credentials, invalid_code. Copy lives in the Login UI." }
+      }
+    },
+    "errors": { "type": "array", "items": { "$ref": "#/$defs/ScreenError" }, "description": "Failures that sent the flow back to this screen." },
+    "attemptsLeft": { "type": "integer", "minimum": 1, "description": "Attempts left after the failure in errors." },
+    "IdentifierScreen": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "identifier" },
+        "identifier": { "type": "string", "description": "Prefill, from login_hint." },
+        "passkey": {
+          "type": "object",
+          "required": ["challenge"],
+          "additionalProperties": false,
+          "description": "Present when passkey autofill (WebAuthn conditional mediation) is offered. Offered to every account alike.",
+          "properties": { "challenge": { "type": "string", "description": "base64url WebAuthn challenge." } }
+        },
+        "errors": { "$ref": "#/$defs/errors" },
+        "attemptsLeft": { "$ref": "#/$defs/attemptsLeft" }
+      }
+    },
+    "PasswordScreen": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "password" },
+        "identifier": { "type": "string", "description": "The identifier being signed in, shown as an editable chip." },
+        "errors": { "$ref": "#/$defs/errors" },
+        "attemptsLeft": { "$ref": "#/$defs/attemptsLeft" }
+      }
+    },
+    "MethodPickerScreen": {
+      "type": "object",
+      "required": ["type", "options"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "method_picker" },
+        "identifier": { "type": "string" },
+        "options": { "type": "array", "items": { "type": "string" }, "minItems": 2, "description": "Option ids of the enabled choose options, in flow order. Labels live in the Login UI." },
+        "errors": { "$ref": "#/$defs/errors" },
+        "attemptsLeft": { "$ref": "#/$defs/attemptsLeft" }
+      }
+    },
+    "PasskeyScreen": {
+      "type": "object",
+      "required": ["type", "challenge"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "passkey" },
+        "identifier": { "type": "string" },
+        "challenge": { "type": "string", "description": "base64url WebAuthn challenge." },
+        "register": {
+          "type": "object",
+          "required": ["userId", "userName", "displayName"],
+          "additionalProperties": false,
+          "description": "Present when creating a passkey rather than using one. The user may skip.",
+          "properties": {
+            "userId": { "type": "string", "description": "base64url user handle." },
+            "userName": { "type": "string" },
+            "displayName": { "type": "string" }
+          }
+        },
+        "errors": { "$ref": "#/$defs/errors" },
+        "attemptsLeft": { "$ref": "#/$defs/attemptsLeft" }
+      }
+    },
+    "OtpScreen": {
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "otp" },
+        "identifier": { "type": "string" },
+        "errors": { "$ref": "#/$defs/errors" },
+        "attemptsLeft": { "$ref": "#/$defs/attemptsLeft" }
+      }
+    },
+    "OtpEnrollScreen": {
+      "type": "object",
+      "required": ["type", "secret", "uri"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "otp_enroll" },
+        "identifier": { "type": "string" },
+        "secret": { "type": "string", "description": "base32 TOTP secret, for manual entry." },
+        "uri": { "type": "string", "description": "otpauth:// URI, shown as a QR code." },
+        "errors": { "$ref": "#/$defs/errors" },
+        "attemptsLeft": { "$ref": "#/$defs/attemptsLeft" }
+      }
+    },
+    "ConsentScreen": {
+      "type": "object",
+      "required": ["type", "client", "scopes"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "consent" },
+        "identifier": { "type": "string" },
+        "client": {
+          "type": "object",
+          "required": ["id"],
+          "additionalProperties": false,
+          "properties": { "id": { "type": "string" }, "name": { "type": "string" } }
+        },
+        "scopes": { "type": "array", "items": { "type": "string" } },
+        "errors": { "$ref": "#/$defs/errors" },
+        "attemptsLeft": { "$ref": "#/$defs/attemptsLeft" }
+      }
+    },
+    "ErrorScreen": {
+      "type": "object",
+      "required": ["type", "code"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "error" },
+        "identifier": { "type": "string" },
+        "code": { "type": "string", "description": "Safe error code; copy lives in the Login UI." },
+        "errors": { "$ref": "#/$defs/errors" },
+        "attemptsLeft": { "$ref": "#/$defs/attemptsLeft" }
+      }
+    },
+    "SubmitRequest": {
+      "type": "object",
+      "required": ["nonce", "action", "payload"],
+      "additionalProperties": false,
+      "properties": {
+        "nonce": { "type": "string" },
+        "action": { "const": "submit" },
+        "payload": {
+          "oneOf": [
+            { "$ref": "#/$defs/IdentifierPayload" },
+            { "$ref": "#/$defs/PasswordPayload" },
+            { "$ref": "#/$defs/PasskeyPayload" },
+            { "$ref": "#/$defs/SkipPayload" },
+            { "$ref": "#/$defs/MethodPayload" },
+            { "$ref": "#/$defs/CodePayload" },
+            { "$ref": "#/$defs/ConsentPayload" },
+            { "$ref": "#/$defs/ContinuePayload" }
+          ]
+        }
+      }
+    },
+    "IdentifierPayload": {
+      "type": "object",
+      "required": ["identifier"],
+      "additionalProperties": false,
+      "properties": { "identifier": { "type": "string", "minLength": 1, "maxLength": 256 } }
+    },
+    "PasswordPayload": {
+      "type": "object",
+      "required": ["password"],
+      "additionalProperties": false,
+      "properties": { "password": { "type": "string", "minLength": 1, "maxLength": 1024 } }
+    },
+    "PasskeyPayload": {
+      "type": "object",
+      "required": ["passkey"],
+      "additionalProperties": false,
+      "description": "Answers passkey, or identifier when it offers autofill.",
+      "properties": { "passkey": { "type": "object", "description": "The browser's PublicKeyCredential as JSON (base64url fields)." } }
+    },
+    "SkipPayload": {
+      "type": "object",
+      "required": ["skip"],
+      "additionalProperties": false,
+      "description": "Declines creating a passkey (passkey screen with register).",
+      "properties": { "skip": { "const": true } }
+    },
+    "MethodPayload": {
+      "type": "object",
+      "required": ["method"],
+      "additionalProperties": false,
+      "properties": { "method": { "type": "string" } }
+    },
+    "CodePayload": {
+      "type": "object",
+      "required": ["code"],
+      "additionalProperties": false,
+      "description": "Answers otp and otp_enroll.",
+      "properties": { "code": { "type": "string", "pattern": "^[0-9]{6}$" } }
+    },
+    "ConsentPayload": {
+      "type": "object",
+      "required": ["decision"],
+      "additionalProperties": false,
+      "properties": { "decision": { "enum": ["allow", "deny"] } }
+    },
+    "ContinuePayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "maxProperties": 0,
+      "description": "Answers error."
+    },
+    "RedirectResponse": {
+      "type": "object",
+      "required": ["redirectTo"],
+      "additionalProperties": false,
+      "properties": { "redirectTo": { "type": "string" } }
+    },
+    "ErrorResponse": {
+      "type": "object",
+      "required": ["error"],
+      "additionalProperties": false,
+      "properties": {
+        "error": { "enum": ["flow_not_found", "flow_finished", "stale_nonce", "conflict", "invalid_submission"] }
+      }
+    }
+  }
+}
