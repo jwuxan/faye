@@ -77,6 +77,11 @@ public final class Checker {
 
     private static final String HOST = "host.";
 
+    private static String kinds(java.util.Collection<Entry.Kind> kinds) {
+        return String.join(
+                " or ", kinds.stream().map(Entry.Kind::wireName).sorted().toList());
+    }
+
     /** The events all paths being enumerated may hold between them. */
     private static final long MAX_LIVE_EVENTS = 1_000_000;
 
@@ -212,14 +217,16 @@ public final class Checker {
                         && !policy.screens().contains(screen.type())) {
                     error(screen.source(), "screen", "screen '" + screen.type() + "' is not enabled for this tenant");
                 }
-                // Consent shown during the sign in would ask before anyone is signed in, and leave the
-                // version without a consent entry, which grants consent with no screen (ADR 0026)
-                if (kind == Entry.Kind.AUTHENTICATE && "consent".equals(screen.type())) {
-                    error(
-                            screen.source(),
-                            "consent-screen",
-                            "the consent screen belongs on the consent challenge, not in the sign in");
-                }
+                // A screen in an entry it does not belong in: consent shown during the sign in would
+                // ask before anyone is signed in, and leave the version without a consent entry,
+                // which grants consent with no screen (ADR 0026). The catalog says which belong where.
+                screens.find(screen.type())
+                        .filter(spec -> !spec.entries().contains(kind))
+                        .ifPresent(spec -> error(
+                                screen.source(),
+                                "entry-screen",
+                                "screen '" + screen.type() + "' belongs in a " + kinds(spec.entries())
+                                        + " entry, not in this " + kind.wireName() + " entry"));
             }
             case Call call -> {
                 Optional<Handler> handler = handlers.find(call.handler());
@@ -228,11 +235,12 @@ public final class Checker {
                     error(call.source(), "handler", "handler '" + call.handler() + "' is not enabled for this tenant");
                 }
                 HandlerMeta meta = handler.get().meta();
-                if (kind == Entry.Kind.AUTHENTICATE && "consent.record".equals(call.handler())) {
+                if (!meta.belongsIn(kind)) {
                     error(
                             call.source(),
-                            "consent-call",
-                            "consent.record belongs on the consent challenge, not in the sign in");
+                            "entry-call",
+                            call.handler() + " belongs in a " + kinds(meta.entries()) + " entry, not in this "
+                                    + kind.wireName() + " entry");
                 }
                 if (kind == Entry.Kind.CONSENT && (meta.credential() || meta.bindsSubject())) {
                     error(
@@ -448,13 +456,15 @@ public final class Checker {
                 // Registering a passkey is a credential write, as webauthn.register is: its screen
                 // needs the subject a credential verified, or the engine has no one to register
                 // for (found by EngineFuzzTest, ADR 0007, O12)
-                if (Boolean.TRUE.equals(screen.opts().get("register"))
+                if (screens.find(screen.type())
+                                .map(spec -> spec.requiresSubject(screen.opts()))
+                                .orElse(false)
                         && run.events().stream().noneMatch(e -> e instanceof Called c && c.verifiedSubject())) {
                     error(
                             screen.source(),
                             "subject",
-                            "screen '" + screen.type() + "' registers a passkey, which needs a subject a credential"
-                                    + " verified earlier in the flow, but shows first on a path");
+                            "screen '" + screen.type() + "' acts for the signed in subject, which needs a subject a"
+                                    + " credential verified earlier in the flow, but shows first on a path");
                 }
                 yield List.of(run);
             }

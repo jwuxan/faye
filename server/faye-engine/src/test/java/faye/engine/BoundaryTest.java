@@ -48,6 +48,12 @@ class BoundaryTest {
             }
             if (text.contains("PASSKEY_ALGORITHMS")) found.add(file + ": PASSKEY_ALGORITHMS");
             if (text.contains("\"Faye\"")) found.add(file + ": \"Faye\"");
+            // Screens and handlers say what they need through the catalogs (ScreenSpec, HandlerMeta)
+            if (Pattern.compile("\"(consent\\.record|register|passkey|otp_enroll|identifier|password)\"")
+                    .matcher(text)
+                    .find()) {
+                found.add(file + ": a built in screen, option or handler by name");
+            }
             // Tenant and preview come typed from the host; claims are the host's (ADR 0025)
             if (text.contains("\"metadata\"")) found.add(file + ": reads client metadata");
             if (Pattern.compile("\"(faye_flow_id|email_verified)\"|id_?token", Pattern.CASE_INSENSITIVE)

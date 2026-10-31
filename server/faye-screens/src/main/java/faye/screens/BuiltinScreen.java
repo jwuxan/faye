@@ -5,6 +5,8 @@ import faye.engine.Env;
 import faye.engine.ScreenRegistry;
 import faye.engine.ScreenSpec;
 import faye.engine.Submission;
+import faye.ir.Entry;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +53,18 @@ public enum BuiltinScreen implements ScreenSpec {
             case ERROR -> Set.of("code");
             case PASSWORD, METHOD_PICKER, OTP, OTP_ENROLL, CONSENT -> Set.of();
         };
+    }
+
+    /** The consent screen asks a signed in person; it belongs in consent entries only (ADR 0026). */
+    @Override
+    public Set<Entry.Kind> entries() {
+        return this == CONSENT ? Set.of(Entry.Kind.CONSENT) : EnumSet.allOf(Entry.Kind.class);
+    }
+
+    /** Registering a passkey is for the signed in subject, as {@code webauthn.register} is. */
+    @Override
+    public boolean requiresSubject(Map<String, Object> opts) {
+        return this == PASSKEY && Boolean.TRUE.equals(opts.get("register"));
     }
 
     /** The identifier screen only for passkey autofill; see {@link #prepare}. */

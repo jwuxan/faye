@@ -151,6 +151,15 @@ Faye is the IdP's frontend: it completes the sign in and reports what was proven
 * **The host decides the tenant and the preview flag.** `HostRequest` gains `tenant` (null for the default) and `preview`. The engine and the identity handlers read them, through `FlowState.preview` and `Invocation.tenant`/`preview`, never from `client.metadata`; `Previews.isPreview` is removed. Preview runs drafts and preview only accounts, so a host sets the flag only for clients its operator registered as such, never from caller input. The Hydra and mock hosts read `metadata.tenant` and `metadata.preview` of the client as before. `FlowState.preview` is absent in states saved earlier and reads as false, so the state format does not change. A preview flow in flight at the upgrade is no longer traced and no longer sees preview only accounts, so its sign in fails and the person starts it again (preview is a development tool; acceptable).
 * `client.*` remains readable by flows as display data (`client_id`, `client_name`, `first_party`, `metadata`); nothing in the engine decides anything from it. `BoundaryTest` fails the build if the core reads `"metadata"` or names a claim.
 
+### Consent and credential rules from the catalogs
+
+[ADR 0026](0026-consent-as-a-step.md) made consent a step, and its checker and compiler named the `consent` screen, the `consent.record` handler and the passkey `register` option. The rules stay; the names move to the catalogs, so the core names no screen but `method_picker`:
+
+* `ScreenSpec.entries()` and `HandlerMeta.entries` (`entries` in `conformance/handlers.yaml`) say which kinds of entry a screen or handler belongs in; the checker refuses one anywhere else. The built in `consent` screen and `consent.record` belong in consent entries only.
+* `ScreenSpec.requiresSubject(opts)` says an instance acts for the signed in subject (the passkey screen with `register`); the checker refuses a path that reaches it before a credential verified the subject.
+* The compiler takes the consent screens and handlers from its caller (`FlowCompiler.Options`), which the app derives from its catalogs: a step that shows or calls one starts the consent steps. Without them every step lowers to the authenticate entry, and the checker then refuses a consent screen there.
+* `BoundaryTest` refuses the built in screen, option and handler names in the core.
+
 ### What stays as it is
 
 * `HostKind` (`LOGIN`, `CONSENT`, `LOGOUT`) names kinds of request, not Hydra endpoints. It and `EntrySelector` are unchanged.
@@ -185,7 +194,6 @@ Faye is the IdP's frontend: it completes the sign in and reports what was proven
 
 Open gaps, which keep this record `in progress`:
 
-* Consent knowledge that [ADR 0026](0026-consent-as-a-step.md) brought into the core: the checker and the compiler name the `consent` screen and the `consent.record` handler, and the checker applies the passkey `register` rule by option name. They should become catalog metadata (a `ScreenSpec` or `HandlerMeta` flag) so the core names no screen but `method_picker`; that changes ADR 0026's design and is left to a record that amends it.
 * The latency an upstream issuer adds before a credential screen is unmeasured: there is no upstream issuer yet. Measure it with the first one, against its own deadline.
 
 ## Pros and Cons of the Options

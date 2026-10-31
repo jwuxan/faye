@@ -1,7 +1,10 @@
 package faye.engine;
 
+import faye.ir.Entry;
+import java.util.EnumSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * One typed screen: what the engine stores for it, the payload it sends for it and which answers it
@@ -44,6 +47,23 @@ public interface ScreenSpec {
      * screen's issuer presents, which the engine adds.
      */
     Map<String, Object> render(Env env, Map<String, Object> data);
+
+    /**
+     * The kinds of entry this screen belongs in; the checker refuses it in any other (a consent
+     * screen during the sign in would ask before anyone signed in). All kinds by default.
+     */
+    default Set<Entry.Kind> entries() {
+        return EnumSet.allOf(Entry.Kind.class);
+    }
+
+    /**
+     * Whether this instance of the screen, with these IR options, acts for the signed in subject
+     * (registering a credential for them); the checker refuses a path that reaches it before a
+     * credential verified the subject.
+     */
+    default boolean requiresSubject(Map<String, Object> opts) {
+        return false;
+    }
 
     /** Whether a submission is a well formed answer to this instance of the screen. */
     boolean accepts(Submission input, Map<String, Object> data);

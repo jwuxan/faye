@@ -221,7 +221,7 @@ A handler that binds a subject is a credential and must name a subject on succes
 
 ## Screen catalog
 
-A screen spec gives a screen type its options, the server data it issues (credential material through the issuer registered for it, never readable by predicates or hooks), how it renders, which answers it accepts, and which later screen an answer to it also answers (a hosted answer: a passkey chosen from autofill on `identifier` also answers the next `passkey` screen that uses, not registers, a passkey, once). The engine uses the `method_picker` screen for `choose`; the verifier refuses a `choose` of several options when the catalog has none. The built in types are those of `schema/screen.schema.json`. A screen whose issuer fails fails the step with `issuer_error`. Pinned by `passkey-autofill`, `EngineTest.hostedPasskeyAnswersOnlyOneScreen`.
+A screen spec gives a screen type its options, the kinds of entry it belongs in, whether an instance acts for the signed in subject (the checker refuses it before a credential verified one), the server data it issues (credential material through the issuer registered for it, never readable by predicates or hooks), how it renders, which answers it accepts, and which later screen an answer to it also answers (a hosted answer: a passkey chosen from autofill on `identifier` also answers the next `passkey` screen that uses, not registers, a passkey, once). The engine uses the `method_picker` screen for `choose`; the verifier refuses a `choose` of several options when the catalog has none. The built in types are those of `schema/screen.schema.json`. A screen whose issuer fails fails the step with `issuer_error`. Pinned by `passkey-autofill`, `EngineTest.hostedPasskeyAnswersOnlyOneScreen`.
 
 ## Checks
 

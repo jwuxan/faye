@@ -80,6 +80,10 @@ class FlowApiTest {
     @Autowired
     MockFlowHost host;
 
+    /** What the app derives from its catalogs for the compiler. */
+    @Autowired
+    FlowCompiler.Options dsl;
+
     final JsonSchema protocol = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
             .getSchema(read(ROOT.resolve("schema/screen.schema.json")));
 
@@ -88,8 +92,8 @@ class FlowApiTest {
     @ValueSource(strings = {"password-only", "passkey-totp", "partner-consent"})
     void tenantFlowsAreConformanceFlows(String name) throws Exception {
         var yaml = new ClassPathResource("flows/" + name + ".yaml");
-        var compiled =
-                FlowCompiler.compile(name + ".yaml", yaml.getContentAsString(java.nio.charset.StandardCharsets.UTF_8));
+        var compiled = FlowCompiler.compile(
+                name + ".yaml", yaml.getContentAsString(java.nio.charset.StandardCharsets.UTF_8), dsl);
         var expected = IrCodec.readFlow(Files.readString(ROOT.resolve("conformance/flows/" + name + ".json")));
         assertThat(IrCodec.hash(compiled)).isEqualTo(IrCodec.hash(expected));
     }

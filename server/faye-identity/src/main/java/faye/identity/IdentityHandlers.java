@@ -371,7 +371,15 @@ public final class IdentityHandlers {
 
         @Override
         public HandlerMeta meta() {
-            return declared(Set.of(), false, false, false, EffectKind.NONE);
+            // It records a grant: it belongs in consent entries only (ADR 0026)
+            return new HandlerMeta(
+                    Set.of(),
+                    false,
+                    false,
+                    false,
+                    EffectKind.NONE,
+                    HandlerMeta.NO_ARGS,
+                    Set.of(faye.ir.Entry.Kind.CONSENT));
         }
 
         @Override

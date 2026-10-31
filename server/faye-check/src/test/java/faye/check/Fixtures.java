@@ -88,8 +88,12 @@ final class Fixtures {
         return IrCodec.readFlow(read(CONFORMANCE.resolve("flows/" + name + ".json")));
     }
 
+    /** What the app tells the compiler about consent steps, as its catalogs say (ADR 0026). */
+    static final FlowCompiler.Options DSL =
+            new FlowCompiler.Options(Map.of(), java.util.Set.of("consent"), java.util.Set.of("consent.record"));
+
     static Flow yaml(String origin, String yaml) {
-        return FlowCompiler.compile(origin, yaml);
+        return FlowCompiler.compile(origin, yaml, DSL);
     }
 
     static String read(Path file) {

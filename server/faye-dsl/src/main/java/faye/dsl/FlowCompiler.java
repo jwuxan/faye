@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import org.jspecify.annotations.Nullable;
@@ -63,8 +64,8 @@ import org.jspecify.annotations.Nullable;
  * HookDef}). docs/roadmap/dsl-and-ir.md has the lowering table.
  *
  * <p>Consent is a step like any other (ADR 0026): the steps of {@code login} up to the first one
- * that shows the consent screen or calls {@value #CONSENT_HANDLER} lower to the {@code authenticate}
- * entry, and that step and
+ * that shows a consent screen or calls a consent handler ({@link Options}: the caller names them
+ * from its catalogs; the compiler knows none) lower to the {@code authenticate} entry, and that step and
  * every step after it to the {@code consent} entry, since they run on the host's consent challenge,
  * after the sign in was accepted. The IR keeps the two entries.
  */
@@ -76,11 +77,29 @@ public final class FlowCompiler {
     /** The YAML key of the steps, from the first one to consent. */
     private static final String LOGIN = "login";
 
-    /** The id of the entry the consent steps lower to. */
+    /** The id of the entry the consent steps lower to (the entry's name, not a screen's). */
     private static final String CONSENT = "consent";
 
-    /** The handler whose step starts the consent steps. */
-    static final String CONSENT_HANDLER = "consent.record";
+    /**
+     * What the compiler takes from its caller, since it knows no host and no catalog.
+     *
+     * @param aliases predicate path namespaces the YAML may use for an IR namespace (a host's legacy
+     *     spelling of {@code host})
+     * @param consentScreens screen types that belong to the consent entry: the first step showing
+     *     one starts the consent steps
+     * @param consentHandlers handlers that belong to the consent entry: the first step calling one
+     *     starts the consent steps
+     */
+    public record Options(Map<String, String> aliases, Set<String> consentScreens, Set<String> consentHandlers) {
+        /** No aliases and no consent steps: every step lowers to the authenticate entry. */
+        public static final Options NONE = new Options(Map.of(), Set.of(), Set.of());
+
+        public Options {
+            aliases = Map.copyOf(aliases);
+            consentScreens = Set.copyOf(consentScreens);
+            consentHandlers = Set.copyOf(consentHandlers);
+        }
+    }
 
     private static final JsonNodeFactory JSON = JsonNodeFactory.instance;
 
@@ -117,39 +136,51 @@ public final class FlowCompiler {
     /** Namespace aliases: a predicate path {@code <alias>.rest} lowers to {@code <namespace>.rest}. */
     private final Map<String, String> aliases;
 
-    private FlowCompiler(String origin, Function<String, Optional<String>> files, Map<String, String> aliases) {
+    private final Options options;
+
+    private FlowCompiler(String origin, Function<String, Optional<String>> files, Options options) {
         this.origin = origin;
         this.files = files;
-        this.aliases = Map.copyOf(aliases);
+        this.options = options;
+        this.aliases = options.aliases();
     }
 
     /** @param origin file name used in source refs and diagnostics */
     public static Flow compile(String origin, String yaml) {
-        return compileWithHooks(origin, yaml, name -> Optional.empty()).flow();
+        return compile(origin, yaml, Options.NONE);
+    }
+
+    /** @param origin file name used in source refs and diagnostics */
+    public static Flow compile(String origin, String yaml, Options options) {
+        return compileWithHooks(origin, yaml, name -> Optional.empty(), options).flow();
     }
 
     /**
      * @param files reads a hook's {@code file:} next to the flow; empty if there is no such file
      */
     public static Compiled compileWithHooks(String origin, String yaml, Function<String, Optional<String>> files) {
-        return compileWithHooks(origin, yaml, files, Map.of());
+        return compileWithHooks(origin, yaml, files, Options.NONE);
     }
 
     /**
      * @param files reads a hook's {@code file:} next to the flow; empty if there is no such file
-     * @param aliases predicate path namespaces the YAML may use for an IR namespace, e.g. {@code
-     *     legacy} for {@code host}
+     * @param options what the compiler takes from its caller
      */
     public static Compiled compileWithHooks(
-            String origin, String yaml, Function<String, Optional<String>> files, Map<String, String> aliases) {
-        FlowCompiler compiler = new FlowCompiler(origin, files, aliases);
+            String origin, String yaml, Function<String, Optional<String>> files, Options options) {
+        FlowCompiler compiler = new FlowCompiler(origin, files, options);
         Flow flow = compiler.compile(yaml);
         return new Compiled(flow, compiler.hooks);
     }
 
     /** The IR JSON the YAML lowers to, before any check; for golden tests and tools. */
     static JsonNode lower(String origin, String yaml) {
-        FlowCompiler compiler = new FlowCompiler(origin, name -> Optional.empty(), Map.of());
+        return lower(origin, yaml, Options.NONE);
+    }
+
+    /** As {@link #lower(String, String)}, with the caller's options. */
+    static JsonNode lower(String origin, String yaml, Options options) {
+        FlowCompiler compiler = new FlowCompiler(origin, name -> Optional.empty(), options);
         YamlReader.Read read = YamlReader.read(origin, yaml);
         compiler.errors.addAll(read.errors());
         ArrayNode json = compiler.lower(read.doc());
@@ -257,18 +288,24 @@ public final class FlowCompiler {
      * {@code steps}, shows the consent screen or calls the consent handler. Only those keys are
      * looked at, so a literal elsewhere (a {@code set} value) never moves the split.
      */
-    private static boolean recordsConsent(Doc doc) {
+    private boolean recordsConsent(Doc doc) {
         if (!(doc instanceof Doc.Map m)) return false;
         for (var e : m.entries().entrySet()) {
             Doc value = e.getValue().value();
             boolean asks = switch (e.getKey()) {
-                case "use" -> value instanceof Doc.Scalar s && CONSENT_HANDLER.equals(s.value());
+                case "use" ->
+                    value instanceof Doc.Scalar s
+                            && s.value() instanceof String h
+                            && options.consentHandlers().contains(h);
                 case "screen" ->
-                    (value instanceof Doc.Scalar s && CONSENT.equals(s.value()))
+                    (value instanceof Doc.Scalar s
+                                    && s.value() instanceof String named
+                                    && options.consentScreens().contains(named))
                             || (value instanceof Doc.Map screen
                                     && screen.entries().get("type") instanceof Doc.Entry type
                                     && type.value() instanceof Doc.Scalar t
-                                    && CONSENT.equals(t.value()));
+                                    && t.value() instanceof String name
+                                    && options.consentScreens().contains(name));
                 case "alternative", "steps" ->
                     value instanceof Doc.Map nested
                             && nested.entries().values().stream().anyMatch(n -> recordsConsent(n.value()));

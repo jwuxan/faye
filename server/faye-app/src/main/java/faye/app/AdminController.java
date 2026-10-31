@@ -221,6 +221,7 @@ class AdminController {
     private final SandboxedHooks hooks;
     private final AdminAuth auth;
     private final ClientDirectory clients;
+    private final FlowCompiler.Options dsl;
     private final UserStore users;
 
     AdminController(
@@ -234,7 +235,9 @@ class AdminController {
             SandboxedHooks hooks,
             AdminAuth auth,
             ClientDirectory clients,
-            UserStore users) {
+            UserStore users,
+            FlowCompiler.Options dsl) {
+        this.dsl = dsl;
         this.screens = screens;
         this.publisher = publisher;
         this.versions = versions;
@@ -542,7 +545,7 @@ class AdminController {
 
     /** A flow sent here carries hooks inline as {@code source}, or names a file next to the configured flow. */
     private FlowCompiler.Compiled compile(String tenant, String yaml) {
-        return EngineConfiguration.compileDraft(configured(tenant), tenant, yaml);
+        return EngineConfiguration.compileDraft(configured(tenant), tenant, yaml, dsl);
     }
 
     /** The hook files {@code yaml} names that exist next to the tenant's configured flow. */
@@ -557,7 +560,7 @@ class AdminController {
                         text.ifPresent(t -> files.put(name, t));
                         return text;
                     },
-                    EngineConfiguration.DSL_ALIASES);
+                    dsl);
         } catch (DslException e) {
             // Hooks compile before steps, so the files are known even when the flow has errors
         }

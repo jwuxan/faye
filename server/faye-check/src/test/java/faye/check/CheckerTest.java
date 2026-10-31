@@ -370,8 +370,8 @@ class CheckerTest {
                 + "[\"call\",\"consent.record\"]]],[\"succeed\"]]]]");
         assertThat(errors(check(flow)))
                 .containsExactly(
-                        ": the consent screen belongs on the consent challenge, not in the sign in",
-                        ": consent.record belongs on the consent challenge, not in the sign in");
+                        ": screen 'consent' belongs in a consent entry, not in this authenticate entry",
+                        ": consent.record belongs in a consent entry, not in this authenticate entry");
     }
 
     /** Found by EngineFuzzTest: the method picker shown by a step has no options and no answer. */
@@ -402,8 +402,8 @@ class CheckerTest {
                     add: { screen: { type: passkey, register: true }, use: webauthn.assert }
                 """);
         assertThat(errors(check(flow)))
-                .contains("tenant.yaml:6:20: screen 'passkey' registers a passkey, which needs a subject a credential"
-                        + " verified earlier in the flow, but shows first on a path");
+                .contains("tenant.yaml:6:20: screen 'passkey' acts for the signed in subject, which needs a subject a"
+                        + " credential verified earlier in the flow, but shows first on a path");
     }
 
     @Test
@@ -420,7 +420,8 @@ class CheckerTest {
         // Both the registration screen and the handler are refused
         assertThat(errors(check(flow)))
                 .hasSize(2)
-                .anySatisfy(e -> assertThat(e).startsWith("tenant.yaml:6:23: screen 'passkey' registers a passkey"))
+                .anySatisfy(e ->
+                        assertThat(e).startsWith("tenant.yaml:6:23: screen 'passkey' acts for the signed in subject"))
                 .anySatisfy(e -> assertThat(e)
                         .startsWith("tenant.yaml:6:63: webauthn.register needs a subject a credential verified"
                                 + " earlier in the flow, but runs first on the path"));

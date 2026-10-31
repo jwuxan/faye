@@ -30,6 +30,8 @@ final class DraftPreviews implements Previews {
     private final Tenants tenants;
     private final TraceStore traces;
 
+    private final FlowCompiler.Options dsl;
+
     DraftPreviews(
             FayeProperties props,
             TenantConfigStore store,
@@ -37,7 +39,9 @@ final class DraftPreviews implements Previews {
             HookStore hooks,
             Publisher publisher,
             Tenants tenants,
-            TraceStore traces) {
+            TraceStore traces,
+            FlowCompiler.Options dsl) {
+        this.dsl = dsl;
         this.props = props;
         this.store = store;
         this.versions = versions;
@@ -59,7 +63,7 @@ final class DraftPreviews implements Previews {
         FlowCompiler.Compiled compiled;
         try {
             compiled = EngineConfiguration.compileDraft(
-                    Objects.requireNonNull(props.tenants().get(tenantId)).flow(), tenantId, draft.get());
+                    Objects.requireNonNull(props.tenants().get(tenantId)).flow(), tenantId, draft.get(), dsl);
         } catch (DslException e) {
             return Optional.empty();
         }
