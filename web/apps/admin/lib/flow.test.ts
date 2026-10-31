@@ -128,7 +128,7 @@ test("risk hook routes to a second factor", () => {
 });
 
 test("shipped flows read into the editor and write back unchanged", () => {
-  for (const file of ["password-only.yaml", "passkey-totp.yaml", "partner-consent.yaml", "risk-totp.yaml", "admin.yaml"]) {
+  for (const file of ["password-only.yaml", "passkey-totp.yaml", "partner-consent.yaml", "risk-totp.yaml", "acme.yaml"]) {
     const text = shipped(file);
     assert.equal(canonical(toYaml(fromYaml(text))), canonical(text), file);
   }

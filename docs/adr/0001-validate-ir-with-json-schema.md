@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-30
+status: accepted
+date: 2026-10-31
 decision-makers: Josh Wu
 ---
 
@@ -38,9 +38,10 @@ Chosen option: **networknt `json-schema-validator` at runtime**. It enforces the
 2. Move `json-schema-validator` from `testImplementation` to `implementation` in `faye-ir`.
 3. `IrCodec.readFlow(JsonNode)` validates first. On failure it throws `IrException` carrying the error's instance location as the pointer.
 4. Reduce `readNode` to a switch on the form name that builds the records. Delete `arity`, the `ID` and `NAME` patterns, and the literal type checks.
-5. Keep in Java only what the schema cannot express: duplicate section names, and choosing `Integer` or `Long` for literals.
+5. Keep in Java only what the schema cannot express: duplicate section names, duplicate option ids, and choosing `Integer` or `Long` for literals. `IrCodec.readPredicate` is also called directly by the DSL compiler for `if:` predicates, outside any flow, so it validates against `#/$defs/predicate` of the same schema, then maps; `Predicate.NAMESPACES` and the path pattern are deleted.
 6. Leave `IrCodecTest` unchanged, including the `/3/1/2/0` pointer assertion.
 7. Later, when the Admin UI edits the IR, validate it in TypeScript with ajv against the same schema.
+8. The server image is built with `server/` as its Docker context, which does not contain `schema/`. Compose builds `faye` from the repo root instead (`context: ..`, `dockerfile: server/Dockerfile`), the Dockerfile copies `server/` and `schema/`, and `server/Dockerfile.dockerignore` sends nothing else.
 
 ### Consequences
 
@@ -77,6 +78,8 @@ Chosen option: **networknt `json-schema-validator` at runtime**. It enforces the
 
 ## More Information
 
-**Risk (unverified).** `$defs/node` is a `oneOf` over every form, so for an unknown form the validator reports errors from every branch. The reported pointer may be `/3/1/2` rather than `/3/1/2/0`. If so, either choose the most specific error, or change the schema to dispatch on the first element with an `if`/`then` chain. Changing the schema comes first, per AGENTS.md rule 1. Confirm this with a test before plan step 3.
+**Outcome of the risk.** It held, and worse: with `oneOf`, validation grew exponentially with nesting and ran out of memory on `passkey-totp.json`. [ADR 0005](0005-m2-flow-forms-and-screens.md) changed `$defs/node` to dispatch on the form name with `if`/`then`, and `IrCodec` reports the error with the deepest instance location, so the `/3/1/2/0` assertion holds. Predicates still use a small `oneOf`; an unknown operator there reports only the top level error (`must be valid to one and only one schema`), which `FlowCompilerTest` pins. The fallback was not needed.
+
+**Risk (as recorded before implementation).** `$defs/node` is a `oneOf` over every form, so for an unknown form the validator reports errors from every branch. The reported pointer may be `/3/1/2` rather than `/3/1/2/0`. If so, either choose the most specific error, or change the schema to dispatch on the first element with an `if`/`then` chain. Changing the schema comes first, per AGENTS.md rule 1. Confirm this with a test before plan step 3.
 
 **Fallback.** If the risk holds and neither fix is clean, keep the hand written checks until `choose`, `when` and `retry` land, then revisit.

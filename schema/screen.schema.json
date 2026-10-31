@@ -105,13 +105,19 @@
         "challenge": { "type": "string", "description": "base64url WebAuthn challenge." },
         "register": {
           "type": "object",
-          "required": ["userId", "userName", "displayName"],
+          "required": ["userId", "userName", "displayName", "algorithms"],
           "additionalProperties": false,
           "description": "Present when creating a passkey rather than using one. The user may skip.",
           "properties": {
             "userId": { "type": "string", "description": "base64url user handle." },
             "userName": { "type": "string" },
-            "displayName": { "type": "string" }
+            "displayName": { "type": "string" },
+            "algorithms": {
+              "type": "array",
+              "items": { "type": "integer" },
+              "minItems": 1,
+              "description": "COSE algorithm ids the server verifies, in order of preference."
+            }
           }
         },
         "errors": { "$ref": "#/$defs/errors" },

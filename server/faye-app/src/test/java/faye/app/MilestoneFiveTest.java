@@ -20,6 +20,9 @@ import faye.engine.InMemoryFlowStore;
 import faye.engine.InMemoryFlowVersions;
 import faye.engine.InMemoryHookStore;
 import faye.host.mock.MockFlowHost;
+import faye.identity.Passwords;
+import faye.identity.User;
+import faye.identity.UserStore;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -87,6 +90,9 @@ class MilestoneFiveTest {
     @Autowired
     MockFlowHost host;
 
+    @Autowired
+    UserStore userStore;
+
     final JsonSchema protocol = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
             .getSchema(read(Path.of(System.getProperty("faye.repoRoot")).resolve("schema/screen.schema.json")));
 
@@ -145,6 +151,51 @@ class MilestoneFiveTest {
         assertThat(find(tenants, "id", "editor").get("current").asText()).startsWith("sha256:");
         // The catalog is not per tenant, but needs the token all the same
         mvc.perform(get("/admin/catalog")).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void usersAndClientsAreListedReadOnlyWithoutSecrets() throws Exception {
+        // Each tenant's pool, as the deploy seed writes it; hashed at test time, so none is in the source
+        for (String tenant : List.of("editor", "settings")) {
+            userStore.save(new User(
+                    "s-" + tenant,
+                    "someone@" + tenant + ".example",
+                    "Someone",
+                    true,
+                    Passwords.hash("right"),
+                    null,
+                    -1,
+                    List.of(),
+                    false,
+                    false,
+                    tenant));
+        }
+        JsonNode users = admin(get("/admin/tenants/editor/users"), status().isOk());
+        JsonNode alice = find(users, "identifier", "alice@example.com");
+        assertThat(alice.get("subject").asText()).isEqualTo("user-alice");
+        assertThat(alice.get("tenant").isNull()).isTrue();
+        assertThat(alice.get("password").asBoolean()).isTrue();
+        assertThat(alice.get("totp").asBoolean()).isTrue();
+        assertThat(find(users, "identifier", "bob@example.com").get("totp").asBoolean())
+                .isFalse();
+        // The tenant's own account; not another tenant's
+        assertThat(find(users, "identifier", "someone@editor.example")
+                        .get("tenant")
+                        .asText())
+                .isEqualTo("editor");
+        assertThat(users.toString()).doesNotContain("someone@settings.example");
+        // Which credentials, never their values
+        assertThat(users.toString()).doesNotContain("JBSWY3DPEHPK3PXP").doesNotContain("argon2");
+
+        // The in memory host holds no clients
+        assertThat(admin(get("/admin/tenants/editor/clients"), status().isOk()).size())
+                .isZero();
+        admin(get("/admin/tenants/nobody/clients"), status().isNotFound());
+        admin(get("/admin/tenants/nobody/users"), status().isNotFound());
+        mvc.perform(get("/admin/tenants/editor/users")).andExpect(status().isUnauthorized());
+        // Nothing to write: users and clients belong to their directories
+        admin(post("/admin/tenants/editor/users"), status().isMethodNotAllowed());
+        admin(post("/admin/tenants/editor/clients"), status().isMethodNotAllowed());
     }
 
     @Test

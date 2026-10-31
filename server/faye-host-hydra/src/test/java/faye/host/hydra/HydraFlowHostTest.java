@@ -45,16 +45,26 @@ class HydraFlowHostTest {
                 body = "{\"error\":\"request_was_handled\"}";
             } else if (path.endsWith("/login")) {
                 body = """
-                        {"challenge":"c1","skip":false,"subject":"","requested_scope":["openid","email"],
+                        {"challenge":"c1","skip":false,"subject":"","request_url":"http://hydra.test/oauth2/auth?c1",
+                         "requested_scope":["openid","email"],
                          "requested_access_token_audience":[],
-                         "client":{"client_id":"demo","client_name":"Demo","metadata":{"tenant":"acme"}},
+                         "client":{"client_id":"demo","client_name":"Demo",
+                           "metadata":{"tenant":"acme","first_party":true,"tier":2,"ratio":0.5,"nested":{"n":3}}},
                          "oidc_context":{"acr_values":["faye:2fa"],"login_hint":"alice@example.com"}}
                         """;
             } else if (path.endsWith("/consent")) {
                 body = """
-                        {"challenge":"k1","skip":false,"subject":"user-alice","requested_scope":["openid","email"],
+                        {"challenge":"k1","skip":false,"subject":"user-alice","request_url":"http://hydra.test/oauth2/auth?k1",
+                         "login_challenge":"c1","login_session_id":"s-1",
+                         "requested_scope":["openid","email"],
                          "requested_access_token_audience":["api"],"client":{"client_id":"demo"},
                          "context":{"flowId":"f_1","versionHash":"sha256:ab"}}
+                        """;
+            } else if (path.endsWith("/logout") && "GET".equals(exchange.getRequestMethod())) {
+                body = """
+                        {"challenge":"l1","subject":"user-alice","sid":"s-1",
+                         "request_url":"http://hydra.test/oauth2/sessions/logout?l1",
+                         "client":{"client_id":"demo"}}
                         """;
             } else {
                 body = "{\"redirect_to\":\"http://hydra.test/next" + path.substring(path.lastIndexOf('/')) + "\"}";
@@ -84,8 +94,27 @@ class HydraFlowHostTest {
         assertThat(req.client())
                 .containsEntry("client_id", "demo")
                 .containsEntry("client_name", "Demo")
-                .containsEntry("metadata", Map.of("tenant", "acme"))
-                .containsEntry("first_party", false);
+                .containsEntry(
+                        "metadata",
+                        Map.of(
+                                "tenant",
+                                "acme",
+                                "first_party",
+                                true,
+                                "tier",
+                                2,
+                                "ratio",
+                                0.5,
+                                "nested",
+                                Map.of("n", 3)))
+                .containsEntry("first_party", true);
+        // Gson reads free form numbers as Double; the host maps them back to Integer or Long
+        Map<?, ?> metadata =
+                (Map<?, ?>) java.util.Objects.requireNonNull(req.client().get("metadata"));
+        assertThat(metadata.get("tier")).isInstanceOf(Integer.class);
+        assertThat(metadata.get("ratio")).isInstanceOf(Double.class);
+        Map<?, ?> nested = (Map<?, ?>) java.util.Objects.requireNonNull(metadata.get("nested"));
+        assertThat(nested.get("n")).isInstanceOf(Integer.class);
         assertThat(req.hydra())
                 .containsEntry("skip", false)
                 .containsEntry("requested_scope", List.of("openid", "email"))
@@ -148,9 +177,18 @@ class HydraFlowHostTest {
     }
 
     @Test
+    void loadsALogoutRequest() {
+        HostRequest req = host.load(HostKind.LOGOUT, "l1");
+
+        assertThat(req.kind()).isEqualTo(HostKind.LOGOUT);
+        assertThat(req.hydra()).containsEntry("subject", "user-alice");
+        assertThat(received).containsKey("GET /admin/oauth2/auth/requests/logout?logout_challenge=l1");
+    }
+
+    @Test
     void challengeIsUrlEncoded() {
-        host.load(HostKind.LOGIN, "a b&c");
-        assertThat(received).containsKey("GET /admin/oauth2/auth/requests/login?login_challenge=a+b%26c");
+        host.load(HostKind.LOGIN, "a&c");
+        assertThat(received).containsKey("GET /admin/oauth2/auth/requests/login?login_challenge=a%26c");
     }
 
     @Test

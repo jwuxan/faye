@@ -1,0 +1,5 @@
+#!/bin/sh
+# SECRETS/SECRETS_DIR are the demo seed's variables; exported to every service they would
+# collide with Hydra's secrets.* config namespace
+unset SECRETS SECRETS_DIR
+exec hydra serve all ${HYDRA_ARGS:-}

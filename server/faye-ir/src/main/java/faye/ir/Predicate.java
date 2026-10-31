@@ -2,16 +2,12 @@ package faye.ir;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 
 /**
  * A condition as data. Paths name a value in the flow environment ({@code user.has_totp});
  * comparisons always take a path on the left and a literal on the right.
  */
 public sealed interface Predicate {
-
-    /** Readable namespaces; the first segment of every path. */
-    Set<String> NAMESPACES = Set.of("request", "client", "hydra", "tenant", "user", "vars", "auth");
 
     /** Truthiness of the value at the path. */
     record Path(String path) implements Predicate {}

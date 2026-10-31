@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 /**
  * Demo relying party settings, read per request so one build runs against any Hydra.
  *
@@ -9,28 +13,51 @@ export function oidcConfig() {
   return {
     authorizeUrl: `${publicUrl}/oauth2/auth`,
     tokenUrl: `${process.env.HYDRA_INTERNAL_URL ?? publicUrl}/oauth2/token`,
-    clientId: process.env.DEMO_CLIENT_ID ?? "demo",
     baseUrl: process.env.DEMO_CLIENT_URL ?? "http://localhost:3001",
     scope: "openid profile email offline_access",
   };
 }
 
+/** @param secret null for a public client, which redeems codes with PKCE alone */
+export type Client = { id: string; label: string; tenant: string; secret: string | null };
+
+/** Where deploy/bootstrap.mjs appends Hydra's response for each application it registers. */
+function registrations(): string {
+  if (process.env.CLIENT_REGISTRATIONS) return process.env.CLIENT_REGISTRATIONS;
+  const state = process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state");
+  return join(state, "faye", "secrets", "clients.jsonl");
+}
+
 /**
- * Clients registered by deploy/bootstrap.sh, one per demo tenant, and a preview client per tenant
- * (metadata.preview = true) that runs the tenant's draft instead of its published flow. All are
- * public PKCE clients sharing this app's redirect URI; DEMO_CLIENT_ID picks the default.
+ * The clients deploy/bootstrap.mjs registers, all sharing this app's redirect URI: the preview
+ * client of each tenant (metadata.preview = true), which runs the tenant's draft, and the ten
+ * applications whose ids and secrets Hydra generated. This app is their relying party, so it reads
+ * their secrets from CLIENT_REGISTRATIONS (the secrets volume in compose); none is in the repo.
+ * Read per request, so applications registered after start appear.
  */
-export const CLIENTS = [
-  { id: "demo", label: "Password only", tenant: "default" },
-  { id: "demo-mfa", label: "Passkey, or password plus TOTP", tenant: "mfa" },
-  { id: "partner-app", label: "Third party app (asks for consent)", tenant: "partner" },
-  { id: "demo-risk", label: "Password, plus TOTP when the risk hook scores high", tenant: "risk" },
-  ...["default", "mfa", "partner", "risk", "admin"].map((tenant) => ({
+export function clients(): Client[] {
+  const previews: Client[] = ["acme", "bank"].map((tenant) => ({
     id: `preview-${tenant}`,
     label: `Preview: tenant ${tenant}'s draft`,
     tenant,
-  })),
-];
+    secret: null,
+  }));
+  let lines: string[] = [];
+  try {
+    lines = readFileSync(registrations(), "utf8").split("\n");
+  } catch {
+    // No applications registered yet
+  }
+  const apps = lines
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as { client_id: string; client_name: string; client_secret?: string; metadata?: { tenant?: string } })
+    .map((c) => ({ id: c.client_id, label: c.client_name, tenant: c.metadata?.tenant ?? "", secret: c.client_secret ?? null }));
+  return [...apps.sort((a, b) => a.tenant.localeCompare(b.tenant) || a.label.localeCompare(b.label)), ...previews];
+}
+
+export function client(id: string | null): Client | undefined {
+  return clients().find((c) => c.id === id);
+}
 
 export function redirectUri(): string {
   return `${oidcConfig().baseUrl}/callback`;

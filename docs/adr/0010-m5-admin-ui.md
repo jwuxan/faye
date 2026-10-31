@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-31
 decision-makers: Josh Wu
 ---
@@ -46,7 +46,7 @@ M3 left a token protected admin API that takes YAML ([ADR 0008](0008-m3-checks-v
 
 ## Decision Outcome
 
-1B, 2B, 3B, 4B, 5B, 6B. `acr` mapping (admin-ui.md, tenant settings) is not part of M5: renaming `faye:1fa`/`faye:2fa` per tenant touches `acr_values` enforcement in the engine and needs its own decision and conformance vectors.
+1B, 2B, 3B, 4B, 5B, 6B. 2B was later superseded by [ADR 0018](0018-two-tenants-and-an-open-local-console.md), and the Redis storage of 3B and of versions by [ADR 0017](0017-one-sqlite-database.md); see "Changes since this decision" below. `acr` mapping (admin-ui.md, tenant settings) is not part of M5: renaming `faye:1fa`/`faye:2fa` per tenant touches `acr_values` enforcement in the engine and needs its own decision and conformance vectors.
 
 **Document model (1B).** The flow is a YAML document. The block editor holds it as ordered data (sections, steps, options, bodies) and writes it back as YAML text; the YAML tab edits that text; both go to the server, which compiles it with `FlowCompiler`. Diagnostics carry the YAML line and column; the UI maps a position to the step or option whose range contains it. The IR stays the contract between compiler, checker and engine, and what versions are addressed by. admin-ui.md principle 1 changes to "the YAML document is the single source of truth for the editor".
 
@@ -69,25 +69,25 @@ PUT  /admin/tenants/{t}/settings              refused if the current version fai
 
 The engine, the publisher and the hook runner read tenant policy through a lookup (`TenantPolicies`) instead of a map fixed at startup, so a saved setting applies to the next flow that starts; a flow in progress keeps the settings it started with, as in M3.
 
-**Admin sign in (2B).** `web/apps/admin` (`:3002`) is an OIDC client of Hydra (`faye-admin`, tenant `admin`, first party). The admin tenant's flow is password plus TOTP and the tenant requires MFA; the app also sends `acr_values=faye:2fa` and accepts only an ID token with `acr` `faye:2fa` whose `sub` is in `FAYE_ADMIN_SUBJECTS`. It verifies the ID token's RS256 signature against Hydra's JWKS, keeps an HMAC signed session cookie (`ADMIN_SESSION_SECRET`), and proxies `/api/admin/*` to the server with the bearer token. State changing calls must carry `x-faye-admin: 1`, a header a cross site form cannot send and a cross site fetch cannot send without a CORS preflight the app never answers.
+**Admin sign in (2B; superseded by [ADR 0018](0018-two-tenants-and-an-open-local-console.md) 4A, which removed the sign in).** `web/apps/admin` (`:3002`) is an OIDC client of Hydra (`faye-admin`, tenant `admin`, first party). The admin tenant's flow is password plus TOTP and the tenant requires MFA; the app also sends `acr_values=faye:2fa` and accepts only an ID token with `acr` `faye:2fa` whose `sub` is in `FAYE_ADMIN_SUBJECTS`. It verifies the ID token's RS256 signature against Hydra's JWKS, keeps an HMAC signed session cookie (`ADMIN_SESSION_SECRET`), and proxies `/api/admin/*` to the server with the bearer token. State changing calls must carry `x-faye-admin: 1`, a header a cross site form cannot send and a cross site fetch cannot send without a CORS preflight the app never answers.
 
-**Tenant settings (3B).** `tenant:{id}:settings` holds JSON over the `faye.tenants.<id>` defaults: `mfaRequired`, `handlers`, `screens` (null for all), and `branding` (`name`; `logoUrl`, https only; `primaryColor`, `#rrggbb`; `radius`, 0 to 24 px). Egress grants decide which network services tenant code reaches, so they stay in operator config and are read only in the UI. A save runs the checker on the tenant's current version under the new settings and is refused if it fails; the configured flow at startup and every current version are checked under the effective settings.
+**Tenant settings (3B).** `tenant:{id}:settings` (now the `settings` column of `faye_tenant`, [ADR 0017](0017-one-sqlite-database.md)) holds JSON over the `faye.tenants.<id>` defaults: `mfaRequired`, `handlers`, `screens` (null for all), and `branding` (`name`; `logoUrl`, https only; `primaryColor`, `#rrggbb`; `radius`, 0 to 24 px). Egress grants decide which network services tenant code reaches, so they stay in operator config and are read only in the UI. A save runs the checker on the tenant's current version under the new settings and is refused if it fails; the configured flow at startup and every current version are checked under the effective settings.
 
 **Editor (4B).** CodeMirror 6 bundles as plain ES modules under Next.js; Monaco needs web workers and global CSS from `node_modules`, or a CDN loader at run time. The hook editor offers completions for `ctx` and `cap` from a hand written description of the hook contract rather than full TypeScript checking. The graph is a read only tree, so a layout is a few lines; React Flow would also need a layout library. Native drag and drop covers palette to tree and moves within the tree; every drag has a keyboard alternative (arrows select, ⌘ arrows move, ⌫ deletes; the palette adds on click). Icons are `lucide-react` (pinned 1.57.0), the icon set shadcn/ui uses, so blocks, tabs and actions share one visual language; it tree shakes to the icons used. The visual design (one accent, rails rather than nested cards, property panel inspector, status bar) follows a researched spec drawn from the Vercel Geist guidelines and Linear's redesign notes.
 
 **Hooks (5B).** `hooks.<id>.source` holds the JavaScript inline, so a hook is versioned and diffed with its flow. The test endpoint runs a definition through the same `QuickJsRuntime` and egress checks a published hook gets (the tenant's grants), and reports the raw result, whether the engine would accept it (`HookOutput`, made public for this), and the hook's log lines.
 
-**Versions.** `version:{hash}:source` keeps the YAML of the first publish of each hash. The Versions tab diffs YAML (a line diff in the browser), falling back to the canonical IR for versions without source.
+**Versions.** `version:{hash}:source` (now the `faye_version_source` table, [ADR 0017](0017-one-sqlite-database.md)) keeps the YAML of the first publish of each hash. The Versions tab diffs YAML (a line diff in the browser), falling back to the canonical IR for versions without source.
 
 **Branding (6B).** `ScreenResponse` gains an optional `branding` (schema first, then Java, then generated TS); the screen API adds it from the flow's tenant. The Login UI shows the name and logo, and maps the color and radius onto the theme tokens.
 
 ### Consequences
 
 * Good, because there is one compiler and one checker, and every diagnostic points at a YAML line the author can see in the YAML tab and at the block it came from.
-* Good, because the bearer token never reaches a browser, and the admin sign in exercises Faye's own MFA flow.
+* Good, because the bearer token never reaches a browser. (The admin sign in also exercised Faye's own MFA flow until [ADR 0018](0018-two-tenants-and-an-open-local-console.md) removed it; the console is now reachable only on localhost.)
 * Good, because the dependencies added are `yaml`, the CodeMirror packages and `lucide-react`; nothing needs a worker, a CDN or a native binary.
 * Bad, because block edits rewrite the YAML text: comments inside the flow are lost on the first block edit (the leading comment is kept). Edits in the YAML tab keep them.
-* Bad, because the admin app is one more place that holds the admin token, and every signed in operator can edit every tenant. Per tenant admin roles are later work.
+* Bad, because the admin app is one more place that holds the admin token, and every operator who can reach it can edit every tenant. Per tenant admin roles are later work.
 * Bad, because settings saved at run time can drift from `application.yaml`; the UI marks which values come from config and which are saved.
 * Bad, because the hook editor does not type check hook code. Mistakes show in the test run.
 * Neutral: drafts are unchecked and unversioned; one draft per tenant, last write wins.
@@ -96,6 +96,18 @@ The engine, the publisher and the hook runner read tenant policy through a looku
 
 ### Confirmation
 
-* `cd server && FAYE_REQUIRE_REDIS=1 ./gradlew build`: `MilestoneFiveTest` (drafts, versions with source, catalog, settings refused when the current version would fail, branding on screens, hook test runs for good and malicious hooks).
+* `cd server && ./gradlew build`: `MilestoneFiveTest` (drafts, versions with source, catalog, settings refused when the current version would fail, branding on screens, hook test runs for good and malicious hooks).
 * `cd web && pnpm test`: `apps/admin` builds the password only, passkey plus TOTP, partner consent and risk flows from palette blocks and inspector edits alone, and each serializes to a document equal to the shipped YAML.
-* `deploy/smoke.sh` step 10 against the compose stack: an operator signs in to the Admin UI through Hydra with password and TOTP, then saves a draft, validates and publishes through the Admin UI's proxy.
+* `deploy/smoke.sh` step 10 against the compose stack: the Admin UI answers without sign in ([ADR 0018](0018-two-tenants-and-an-open-local-console.md)), refuses a write without `x-faye-admin`, then saves a draft, validates, publishes, rolls back and brands a tenant through its proxy, and the next screen carries the branding.
+
+Run on 2026-10-31, after [ADR 0017](0017-one-sqlite-database.md) and [ADR 0018](0018-two-tenants-and-an-open-local-console.md): `./gradlew build` passes (`MilestoneFiveTest` 8 tests); `pnpm test` passes (12 tests, the four rebuilt flows among them); `deploy/smoke.sh` passes all 13 steps on a fresh compose stack, step 10 included.
+
+## More Information
+
+**Changes since this decision.**
+
+* Admin sign in (2B) is gone: [ADR 0018](0018-two-tenants-and-an-open-local-console.md) removed the `admin` tenant, its flow, the `faye-admin` client, `FAYE_ADMIN_SUBJECTS` and `ADMIN_SESSION_SECRET`. The console listens on 127.0.0.1 only; the proxy still keeps the token server side and still requires `x-faye-admin: 1` on writes.
+* Drafts, settings, scenarios and version sources moved from Redis to SQLite (`faye_tenant`, `faye_version_source`; [ADR 0017](0017-one-sqlite-database.md)). The API and behaviour are unchanged.
+* The palette column and dragging from it were replaced by a searchable "Add block" command list, and the tabs by a sidebar console with a flow workspace ([ADR 0013](0013-admin-console-shell-and-flow-workspace.md)). Moving blocks by drag and drop and by keyboard is unchanged.
+* The admin API gained read only `GET /admin/tenants/{t}/clients` and `GET /admin/tenants/{t}/users` ([ADR 0015](0015-oauth2-client-management.md), [ADR 0018](0018-two-tenants-and-an-open-local-console.md)) and the preview endpoints ([ADR 0011](0011-m6-preview-loop.md)).
+* The configured tenants are now `acme` and `bank` ([ADR 0018](0018-two-tenants-and-an-open-local-console.md)). The exit run above used the five earlier tenants (among them `risk`); the four flow files it rebuilt still ship in `server/faye-app/src/main/resources/flows/` and the web test still rebuilds them.

@@ -25,7 +25,7 @@ import {
   screenErrorMessage,
   terminalErrorMessage,
 } from "../../../lib/messages";
-import { autofillAvailable, createPasskey, getPasskey } from "../../../lib/webauthn";
+import { autofillAvailable, cancelPasskeyCeremony, createPasskey, getPasskey } from "../../../lib/webauthn";
 
 type Payload = SubmitRequest["payload"];
 type Send = (payload: Payload) => Promise<void>;
@@ -232,26 +232,23 @@ function CodeField(props: FieldProps) {
  */
 function Identifier({ screen, ...props }: FieldProps & { screen: IdentifierScreen }) {
   const { send } = props;
-  const autofill = useRef<AbortController | null>(null);
   const challenge = screen.passkey?.challenge;
   // Not a dependency: the autofill request must survive re-renders, or the browser drops it.
   const onPasskey = useEffectEvent((passkey: Record<string, unknown>) => send({ passkey }));
 
   useEffect(() => {
     if (!challenge) return;
-    const controller = new AbortController();
-    autofill.current = controller;
     void (async () => {
       if (!(await autofillAvailable())) return;
-      const passkey = await getPasskey(challenge, { conditional: true, signal: controller.signal });
+      const passkey = await getPasskey(challenge, { conditional: true });
       if (passkey) await onPasskey(passkey);
     })();
-    return () => controller.abort();
+    return () => cancelPasskeyCeremony();
   }, [challenge]);
 
   async function askForPasskey() {
     if (!challenge) return;
-    autofill.current?.abort(); // one WebAuthn request at a time
+    cancelPasskeyCeremony(); // one WebAuthn request at a time
     const passkey = await getPasskey(challenge);
     if (passkey) await send({ passkey });
   }

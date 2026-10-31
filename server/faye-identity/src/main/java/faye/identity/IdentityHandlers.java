@@ -21,10 +21,12 @@ import com.webauthn4j.data.client.challenge.DefaultChallenge;
 import com.webauthn4j.server.ServerProperty;
 import com.webauthn4j.verifier.exception.VerificationException;
 import faye.engine.Base32;
+import faye.engine.Engine;
 import faye.engine.Env;
 import faye.engine.Handler;
 import faye.engine.Outcome;
 import faye.engine.Previews;
+import faye.engine.ScreenType;
 import faye.engine.Submission;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
@@ -58,10 +60,11 @@ public final class IdentityHandlers {
     private static final AttestedCredentialDataConverter CREDENTIAL_DATA =
             new AttestedCredentialDataConverter(CONVERTER);
     private static final WebAuthnManager WEBAUTHN = WebAuthnManager.createNonStrictWebAuthnManager(CONVERTER);
-    /** The algorithms the Login UI offers at registration: ES256, then RS256. */
-    private static final List<PublicKeyCredentialParameters> ALGORITHMS = List.of(
-            new PublicKeyCredentialParameters(PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.ES256),
-            new PublicKeyCredentialParameters(PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.RS256));
+    /** The algorithms the Login UI offers at registration, from the one list the engine keeps. */
+    private static final List<PublicKeyCredentialParameters> ALGORITHMS = ScreenType.PASSKEY_ALGORITHMS.stream()
+            .map(alg -> new PublicKeyCredentialParameters(
+                    PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.create(alg)))
+            .toList();
 
     private IdentityHandlers() {}
 
@@ -385,9 +388,19 @@ public final class IdentityHandlers {
         return user.filter(u -> visible(u, env));
     }
 
-    /** A preview test account exists only for preview clients. */
+    /**
+     * A preview test account exists only for preview clients, and an account of one tenant only for
+     * that tenant's clients (a client without {@code metadata.tenant} runs the default tenant).
+     */
     private static boolean visible(User user, Env env) {
-        return !user.preview() || Previews.isPreview(env.client());
+        return (!user.preview() || Previews.isPreview(env.client()))
+                && (user.tenant() == null || user.tenant().equals(tenantOf(env.client())));
+    }
+
+    private static String tenantOf(Map<String, Object> client) {
+        return client.get("metadata") instanceof Map<?, ?> meta && meta.get("tenant") instanceof String t
+                ? t
+                : Engine.DEFAULT_TENANT;
     }
 
     /** The subject a passkey response names; user handles are the subject's UTF-8 bytes. */

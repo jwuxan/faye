@@ -1,0 +1,7 @@
+#!/command/with-contenv execlineb
+backtick -n token { cat /var/lib/faye/secrets/admin-token }
+importas -u token token
+export FAYE_ADMIN_TOKEN $token
+fdmove -c 2 1
+s6-setuidgid 102:102
+/etc/s6-overlay/scripts/admin

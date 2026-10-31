@@ -1,0 +1,3 @@
+#!/bin/sh
+export HOST=127.0.0.1
+exec node --max-semi-space-size=1 /opt/faye/deploy/ip-reputation.mjs

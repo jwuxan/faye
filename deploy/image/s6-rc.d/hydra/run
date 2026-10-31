@@ -1,0 +1,8 @@
+#!/command/with-contenv execlineb
+backtick -n secret { cat /var/lib/faye/secrets/hydra-system-secret }
+importas -u secret secret
+export SECRETS_SYSTEM $secret
+fdmove -c 2 1
+umask 007
+s6-setuidgid 100:101
+/etc/s6-overlay/scripts/hydra

@@ -143,7 +143,7 @@ class PreviewController {
         return ResponseEntity.ok(body);
     }
 
-    /** Seeds a fresh preview only account, with TOTP enrolled if asked. */
+    /** Seeds a fresh preview only account in the tenant's user pool, with TOTP enrolled if asked. */
     @PostMapping("/admin/tenants/{tenant}/preview/users")
     ResponseEntity<Seeded> seed(
             @PathVariable String tenant,
@@ -164,7 +164,8 @@ class PreviewController {
                 -1,
                 List.of(),
                 false,
-                true));
+                true,
+                tenant));
         return ResponseEntity.status(HttpStatus.CREATED).body(new Seeded(identifier, password, totpSecret));
     }
 

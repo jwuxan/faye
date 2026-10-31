@@ -11,37 +11,40 @@ The Admin UI lets someone who is not an engineer compose a login flow from block
 
 ## Layout
 
+A console with a collapsible sidebar (⌘B); each capability is a route under `/tenants/{t}/` ([ADR 0013](../adr/0013-admin-console-shell-and-flow-workspace.md)).
+
 ```
-┌──────────────┬───────────────────────────────────┬──────────────────────┐
-│ Block        │  Flow: default-login   [Draft]     │ Inspector            │
-│ palette      │                                   │                      │
-│              │  ▸ login                           │ step: credential     │
-│ Steps        │    ├ identify   identifier screen │ form: choose         │
-│  Identifier  │    ├ risk       hook risk.js      │ options:             │
-│  Password    │    ├ credential choose            │  passkey  if …       │
-│  Passkey     │    │   ├ passkey                  │  password retry 3    │
-│  TOTP        │    │   └ password                 │                      │
-│  Consent     │    └ mfa        when …            │ Condition builder    │
-│ Logic        │  ▸ consent                         │ [any ▾] of           │
-│  Choose      │                                   │  vars.risk = high    │
-│  When        │  ───────────────────────────────  │  acr_values has mfa  │
-│  Retry       │  ✓ 7 success paths  min amr: pwd  │                      │
-│  Hook        │  ⚠ 1 warning                       │ [Test in preview]    │
-└──────────────┴───────────────────────────────────┴──────────────────────┘
-          Tabs:  Blocks │ YAML │ Graph │ Paths │ Versions
+┌────────────┬──────────────────────────────────────────────────────────────────────┐
+│ f Faye     │ ☰ │ risk › Login flow           ● Draft saved  live 6a4cb91c  ▷ Preview  Publish │
+│   risk   ⇅ ├──────────────────────┬──────────────────────┬────────────────────────┤
+│            │ [Blocks|YAML]  + Add │ Graph  live          │ Block │ Paths │ Preview │
+│ Build      │                      │                      │                        │
+│ ▸ Login flow│ ▸ identify          │  [identify]          │ second-factor          │
+│   Hooks    │   risk   hook risk   │  [risk]              │ Condition              │
+│   Versions │   credential         │  [credential]        │  all of vars.risk = …  │
+│            │   second-factor      │  [second-factor]─┬─[totp]                     │
+│ Settings   │     ├ totp           │                  └─[enroll]                   │
+│   General  │     └ enroll         │  (signed in)         │ Interaction · Logic    │
+│   Branding │                      │              − 91% + ⤢                        │
+│            ├──────────────────────┴──────────────────────┴────────────────────────┤
+│            │ 0 errors · 0 warnings   33 paths · 21 succeed · 12 fail                │
+└────────────┴──────────────────────────────────────────────────────────────────────┘
 ```
+
+The flow workspace keeps the blocks (or the YAML) and the graph of the same document side by side: every edit redraws the graph, flashes the blocks it changed, and is checked by the server. Selecting a block in either selects it in both. Hooks, Versions, General and Branding are their own sections, and share the tenant's draft with the flow workspace.
 
 ## Features
 
-1. **Block palette**: high level blocks ("Password", "Passkey", "TOTP") expand to IR fragments (`screen` + `call` + `retry`) with sensible defaults. Logic blocks expose `choose`, `when`, `retry`, `hook`.
+1. **Block palette** (the "Add block" command list, `/`): high level blocks ("Password", "Passkey", "TOTP") expand to IR fragments (`screen` + `call` + `retry`) with sensible defaults. Logic blocks expose `choose`, `when`, `retry`, `hook`.
 2. **Tree editor** (native drag and drop, with keyboard moves): drag to reorder or nest, with drop targets only where the grammar allows. Each block shows its step id, a one line summary and validation badges.
 3. **Inspector**: forms per block type; a condition builder for predicates (namespace aware path picker, operator dropdown, typed value); hook picker with capability summary.
-4. **YAML tab** (CodeMirror 6, Geist Mono): editable; parse errors and check errors shown inline via source maps. Round trips to the same IR.
-5. **Graph tab** (SVG drawn by the app, read only): visual overview of branching, highlighting the path currently selected in the Paths tab.
-6. **Paths tab**: enumerated success and failure paths with the `amr` / `acr` each yields. Selecting a path highlights it in the tree and graph.
-7. **Hooks**: list, CodeMirror editor with completions for `ctx` and `cap`, server side test run, capability grants.
+4. **YAML view** (CodeMirror 6, Geist Mono; a switch in the editor panel): editable; parse errors and check errors shown inline via source maps. Round trips to the same IR.
+5. **Graph** (SVG drawn by the app, read only, beside the blocks): branching, the selected block, the highlighted path or preview run, and the blocks the last edit changed; zoom and fit.
+6. **Paths** (side panel): enumerated success and failure paths with the `amr` / `acr` each yields. Selecting a path highlights it in the tree and graph.
+7. **Hooks** (own section): list, CodeMirror editor with completions for `ctx` and `cap`, server side test run, capability grants.
 8. **Versions**: history, side by side IR diff, publish, roll back (moves the current pointer to an older immutable version).
 9. **Tenant settings**: enabled handlers and screens, MFA policy, branding. (`acr` mapping is later work; see ADR 0010.)
+10. **Applications and Users** (read only): the tenant's OAuth clients from the authorization server, and the accounts in the user directory with the credentials each has enrolled. Both are managed outside Faye ([ADR 0015](../adr/0015-oauth2-client-management.md), [ADR 0014](../adr/0014-tenant-user-directory.md), [ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)). The console never creates or edits either; that would cross the charter.
 
 ## Admin API (server)
 
@@ -60,6 +63,8 @@ POST /admin/tenants/{t}/current               { versionHash }
 POST /admin/tenants/{t}/hooks/test            { source, http, timeoutMs, ctx, options } → result, accepted, effect, logs
 GET  /admin/tenants/{t}/settings              settings, configured, saved, egress
 PUT  /admin/tenants/{t}/settings              { mfaRequired, handlers, screens, branding }
+GET  /admin/tenants/{t}/clients               the tenant's OAuth clients, read only, no secrets
+GET  /admin/users                             accounts and which credentials they have, read only
 ```
 
-Admin authentication: the Admin UI signs operators in through Hydra with the fixed `admin` tenant flow (password plus TOTP; dogfooding), accepts only `acr` `faye:2fa` from subjects in `FAYE_ADMIN_SUBJECTS`, and calls the API from its own server with the token, which never reaches the browser.
+Admin authentication: none, for local use only ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)); the Admin UI listens on localhost and calls the API from its own server with the token, which never reaches the browser.

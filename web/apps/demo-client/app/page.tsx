@@ -2,14 +2,14 @@ import { Alert, AlertDescription, AlertTitle } from "@faye/ui/components/alert";
 import { Button } from "@faye/ui/components/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@faye/ui/components/card";
 import { cookies } from "next/headers";
-import { CLIENTS, decodeJwt, ID_TOKEN_COOKIE } from "../lib/oidc";
+import { clients, decodeJwt, ID_TOKEN_COOKIE } from "../lib/oidc";
 import { describe, matching, previewRun } from "../lib/preview";
 
 /** Claims worth reading first: who signed in, and how. */
 const HIGHLIGHTS = ["sub", "amr", "acr", "auth_time"];
 
 export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
-  const { error, error_description: description } = await searchParams;
+  const { error, error_description: description, client: selected } = await searchParams;
   const idToken = (await cookies()).get(ID_TOKEN_COOKIE)?.value;
   const token = idToken ? decodeJwt(idToken) : null;
   const flowId = token?.claims.faye_flow_id;
@@ -26,9 +26,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
           {/* A plain GET form: /login is a route handler that redirects to Hydra. */}
           <form action="/login" method="get" className="grid gap-4">
             <Field label="Client" htmlFor="client">
-              <select id="client" name="client" className={SELECT}>
-                {CLIENTS.map((c) => (
-                  <option key={c.id} value={c.id}>{`${c.label} · ${c.id}`}</option>
+              <select id="client" name="client" defaultValue={selected} className={SELECT}>
+                {clients().map((c) => (
+                  <option key={c.id} value={c.id}>{`${c.label} · tenant ${c.tenant} · ${c.id}`}</option>
                 ))}
               </select>
             </Field>
@@ -40,7 +40,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
               </select>
             </Field>
             <Field label="login_hint" htmlFor="login_hint">
-              <input id="login_hint" name="login_hint" type="email" placeholder="alice@example.com"
+              <input id="login_hint" name="login_hint" type="email" placeholder="ava.park.0001@acme.example"
                 className={SELECT} />
             </Field>
             <Field label="prompt" htmlFor="prompt">

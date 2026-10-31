@@ -116,6 +116,9 @@ class IdentityFlowTest {
         assertThat(s.screen()).containsEntry("type", "passkey").containsKey("register");
         assertThat(s.step()).isEqualTo("add-passkey");
         assertThat(submit(s, Map.of("passkey", register(s)))).isInstanceOf(Redirect.class);
+        // register carries the algorithms the server verifies
+        assertThat(((Map<?, ?>) Objects.requireNonNull(s.screen().get("register"))).get("algorithms"))
+                .isEqualTo(List.of(-7L, -257L));
 
         var first = host.accepted().get(0).outcome();
         assertThat(first.subject()).isEqualTo("user-alice");
@@ -130,6 +133,20 @@ class IdentityFlowTest {
         assertThat(second.subject()).isEqualTo("user-alice");
         assertThat(second.amr()).contains("hwk");
         assertThat(host.rejected()).isEmpty();
+    }
+
+    @Test
+    void theJsonSimpleWebAuthnPostsVerifies() {
+        // @simplewebauthn/browser posts more than our own serializer did: a top level
+        // authenticatorAttachment, and on registration response.transports, response.publicKey,
+        // response.publicKeyAlgorithm and response.authenticatorData (ADR 0022). register() and
+        // assertion() produce that shape; this test proves webauthn4j accepts it end to end.
+        signInWithPasswordTotpAndRegister();
+
+        assertThat(users.bySubject("user-alice").orElseThrow().passkeys()).hasSize(1);
+        ScreenView s = start(Map.of());
+        assertThat(submit(s, Map.of("passkey", assertion(s, challenge(s))))).isInstanceOf(Redirect.class);
+        assertThat(host.accepted().getLast().outcome().subject()).isEqualTo("user-alice");
     }
 
     @Test
@@ -197,6 +214,44 @@ class IdentityFlowTest {
         for (String key : List.of("has_password", "has_totp", "has_passkey", "mfa_required", "identified_by")) {
             assertThat(unknown.user().get(key)).as(key).isEqualTo(bob.user().get(key));
         }
+    }
+
+    @Test
+    void anAccountOfOneTenantIsUnknownToTheClientsOfAnother() {
+        users.save(new User(
+                "user-carol",
+                "carol@acme.example",
+                "Carol",
+                true,
+                Passwords.hash("right"),
+                null,
+                -1,
+                List.of(),
+                false,
+                false,
+                "acme"));
+        var resolve = new HandlerRegistry(
+                        IdentityHandlers.create(users, new WebAuthnSettings("localhost", Set.of()), Clock.systemUTC()))
+                .find("identity.resolve")
+                .orElseThrow();
+        var input = new Submission(Map.of("identifier", "carol@acme.example"));
+        for (var c : List.of(Map.entry("acme", true), Map.entry("other", false), Map.entry("", false))) {
+            Map<String, Object> client = c.getKey().isEmpty()
+                    ? Map.of("client_id", "demo")
+                    : Map.of("client_id", "app", "metadata", Map.of("tenant", c.getKey()));
+            var env = new faye.engine.Env(
+                    Map.of(), client, Map.of(), Map.of(), Map.of(), Map.of(), faye.engine.Env.Auth.NONE);
+            var resolved = (faye.engine.Outcome.Ok) resolve.invoke(env, input, Map.of());
+            assertThat(resolved.user().get("exists")).as(c.getKey()).isEqualTo(c.getValue());
+        }
+
+        // Through the engine with the default tenant's client, the right password fails as for anyone unknown
+        ScreenView s = screen(submit(start(Map.of()), Map.of("identifier", "carol@acme.example")));
+        s = screen(submit(s, Map.of("password", "right")));
+        assertThat(s.screen()).containsEntry("errors", List.of(Map.of("code", "invalid_credentials")));
+        // Accounts every tenant shares still sign in
+        assertThat(users.byIdentifier("alice@example.com").orElseThrow().tenant())
+                .isNull();
     }
 
     @Test
@@ -284,7 +339,10 @@ class IdentityFlowTest {
                 (Map<String, Object>) Objects.requireNonNull(identifier.screen().get("passkey")), "challenge");
     }
 
-    /** What the Login UI posts after navigator.credentials.create with the screen's options. */
+    /**
+     * What the Login UI posts after navigator.credentials.create with the screen's options, in the
+     * shape {@code @simplewebauthn/browser} 13 serializes it.
+     */
     @SuppressWarnings("unchecked")
     Map<String, Object> register(ScreenView s) {
         var reg = (Map<String, Object>) Objects.requireNonNull(s.screen().get("register"));
@@ -293,8 +351,12 @@ class IdentityFlowTest {
                 new PublicKeyCredentialUserEntity(
                         decode(text(reg, "userId")), text(reg, "userName"), text(reg, "displayName")),
                 new DefaultChallenge(decode(text(s.screen(), "challenge"))),
-                List.of(new PublicKeyCredentialParameters(
-                        PublicKeyCredentialType.PUBLIC_KEY, COSEAlgorithmIdentifier.ES256)),
+                ((List<?>) Objects.requireNonNull(reg.get("algorithms")))
+                        .stream()
+                                .map(alg -> new PublicKeyCredentialParameters(
+                                        PublicKeyCredentialType.PUBLIC_KEY,
+                                        COSEAlgorithmIdentifier.create(((Number) alg).longValue())))
+                                .toList(),
                 null,
                 List.of(),
                 new AuthenticatorSelectionCriteria(
@@ -306,7 +368,11 @@ class IdentityFlowTest {
         Map<String, Object> responseJson = new LinkedHashMap<>();
         responseJson.put("clientDataJSON", encode(response.getClientDataJSON()));
         responseJson.put("attestationObject", encode(response.getAttestationObject()));
-        responseJson.put("transports", List.of());
+        responseJson.put("transports", List.of("internal"));
+        // SimpleWebAuthn also sends these attestation details
+        responseJson.put("authenticatorData", encode(new byte[37]));
+        responseJson.put("publicKey", encode(new byte[77]));
+        responseJson.put("publicKeyAlgorithm", -7);
         return credentialJson(credential.getRawId(), responseJson);
     }
 
@@ -335,6 +401,7 @@ class IdentityFlowTest {
         out.put("rawId", encode(rawId));
         out.put("type", "public-key");
         out.put("response", response);
+        out.put("authenticatorAttachment", "platform");
         out.put("clientExtensionResults", Map.of());
         return out;
     }

@@ -155,13 +155,15 @@ class HydraWiringTest {
                 String body;
                 if (path.endsWith("/login")) {
                     body = """
-                            {"skip":false,"subject":"","requested_scope":["openid","email"],
+                            {"challenge":"c1","skip":false,"subject":"","request_url":"http://hydra.test/oauth2/auth?c1",
+                             "requested_scope":["openid","email"],
                              "client":{"client_id":"demo","metadata":{"tenant":"default"}},
                              "oidc_context":{"login_hint":"alice@example.com"}}
                             """;
                 } else if (path.endsWith("/consent")) {
                     body = """
-                            {"skip":false,"subject":"user-alice","requested_scope":["openid","email"],
+                            {"challenge":"k1","skip":false,"subject":"user-alice","request_url":"http://hydra.test/oauth2/auth?k1",
+                             "requested_scope":["openid","email"],
                              "requested_access_token_audience":[],"client":{"client_id":"demo"}}
                             """;
                 } else {

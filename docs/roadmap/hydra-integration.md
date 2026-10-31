@@ -54,7 +54,7 @@ Requested `acr_values` that the completed flow does not satisfy cause a `reject`
 
 `deploy/compose.yaml`:
 
-1. Postgres (Hydra and Faye schemas), Redis.
+1. One SQLite database for Hydra's tables and Faye's ([ADR 0017](../adr/0017-one-sqlite-database.md)).
 2. `hydra migrate sql` then `hydra serve all` with `urls.login`, `urls.consent`, `urls.logout` pointing at Faye, `urls.self.issuer` at the public port.
 3. Faye server, Login UI, Admin UI, Demo client.
 4. A bootstrap job that creates the demo client in Hydra (`authorization_code` + `refresh_token`, PKCE, redirect URI of the demo client) and seeds a demo tenant and users.

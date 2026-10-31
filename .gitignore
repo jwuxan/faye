@@ -6,3 +6,8 @@ out/
 *.iml
 .DS_Store
 deploy/.bin/
+# SQLite databases (faye.db, and the WAL files beside it) made by local runs
+*.db
+*.db-wal
+*.db-shm
+deploy/.data/

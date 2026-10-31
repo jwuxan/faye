@@ -1,0 +1,3 @@
+#!/command/execlineb
+s6-setuidgid nobody
+/etc/s6-overlay/scripts/log-prefix hydra

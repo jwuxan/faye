@@ -5,13 +5,11 @@ import { ListPlus, Plus, X } from "lucide-react";
 import { createContext, useContext, useId } from "react";
 import type { Literal, Predicate } from "../../../lib/flow";
 import { children, comparison, compare, describe, KNOWN_PATHS, KNOWN_VALUES, kindOf, PATH } from "../../../lib/predicate";
-import { field, IconButton, Segmented, Select } from "../../ui";
+import { Input } from "@faye/ui/components/input";
+import { Choice, denseMono, IconButton, Segmented } from "../../ui";
 
 /** Names and values the flow's own set blocks write to vars, for suggestions. */
 export const FlowVars = createContext<Map<string, string[]>>(new Map());
-
-/** Kept for the panels that still use the plain field style. */
-export const FIELD = field;
 
 /**
  * Leaf operators as a person reads them. Negations of a test are offered as operators of their
@@ -157,21 +155,17 @@ function Row({ leaf, onChange, onRemove }: { leaf: Leaf; onChange: (l: Leaf) => 
         <div className="col-span-2">
           <PathInput value={leaf.path} onChange={(path) => onChange({ ...leaf, path })} label="Path" />
         </div>
-        <Select
-          aria-label="Operator"
+        <Choice
+          label="Operator"
           value={leaf.op}
-          className="w-[112px] text-xs"
-          onChange={(e) => {
-            const op = e.target.value as LeafOp;
+          mono={false}
+          className="w-[112px]"
+          options={LEAF_OPS.map((o) => ({ value: o.op, label: o.label }))}
+          onChange={(v) => {
+            const op = v as LeafOp;
             onChange({ ...leaf, op, value: op === "gt" || op === "lt" ? Number(leaf.value) || 0 : leaf.value });
           }}
-        >
-          {LEAF_OPS.map((o) => (
-            <option key={o.op} value={o.op}>
-              {o.label}
-            </option>
-          ))}
-        </Select>
+        />
         {!unary && (
           <div>
             <ValueInput value={leaf.value} numeric={numeric} path={leaf.path} onChange={(value) => onChange({ ...leaf, value })} />
@@ -189,12 +183,12 @@ export function PathInput({ value, onChange, label }: { value: string; onChange:
   const vars = useContext(FlowVars);
   return (
     <>
-      <input
+      <Input
         aria-label={label}
         aria-invalid={!PATH.test(value)}
         spellCheck={false}
         title={value}
-        className={cn(field, "w-full font-mono text-xs [&::-webkit-calendar-picker-indicator]:hidden")}
+        className={cn(denseMono, "w-full [&::-webkit-calendar-picker-indicator]:hidden")}
         list={list}
         value={value}
         placeholder="user.has_totp"
@@ -232,9 +226,9 @@ function ValueInput({ value, onChange, numeric, path }: { value: Literal; onChan
   }
   return (
     <>
-      <input
+      <Input
         aria-label="Value"
-        className={cn(field, "w-full font-mono text-xs")}
+        className={cn(denseMono, "w-full")}
         type={numeric ? "number" : "text"}
         list={list}
         spellCheck={false}

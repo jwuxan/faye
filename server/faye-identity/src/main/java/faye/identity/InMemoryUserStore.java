@@ -1,5 +1,7 @@
 package faye.identity;
 
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,6 +22,13 @@ public final class InMemoryUserStore implements UserStore {
     @Override
     public Optional<User> bySubject(String subject) {
         return Optional.ofNullable(bySubject.get(subject));
+    }
+
+    @Override
+    public List<User> all() {
+        return bySubject.values().stream()
+                .sorted(Comparator.comparing(User::identifier))
+                .toList();
     }
 
     @Override

@@ -22,6 +22,12 @@ public enum ScreenType {
     ERROR("error");
 
     private static final SecureRandom RANDOM = new SecureRandom();
+    /**
+     * The COSE algorithm ids {@code webauthn.register} verifies, in order of preference: ES256,
+     * then RS256. The passkey screen's {@code register} carries them so the Login UI offers exactly
+     * what the server accepts.
+     */
+    public static final List<Long> PASSKEY_ALGORITHMS = List.of(-7L, -257L);
     /** Account label prefix in authenticator apps. */
     private static final String ISSUER = "Faye";
 
@@ -103,7 +109,9 @@ public enum ScreenType {
                                     "userName",
                                     name,
                                     "displayName",
-                                    env.user().get("name") instanceof String n ? n : name));
+                                    env.user().get("name") instanceof String n ? n : name,
+                                    "algorithms",
+                                    PASSKEY_ALGORITHMS));
                 }
             }
             case OTP_ENROLL -> {

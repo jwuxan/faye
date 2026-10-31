@@ -45,13 +45,28 @@
   ::selection {
     background: color-mix(in oklch, var(--accent-ui) 22%, transparent);
   }
-  kbd {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    border: 1px solid var(--border);
-    border-bottom-width: 2px;
-    border-radius: 4px;
-    padding: 0 4px;
-    color: var(--muted-foreground);
+}
+
+/* A graph node whose block the last edit changed. */
+@keyframes graph-flash {
+  0% {
+    opacity: 0;
+    stroke-width: 6;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    stroke-width: 2;
+  }
+}
+.graph-flash {
+  animation: graph-flash 1.4s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-flash {
+    animation: none;
+    opacity: 0;
   }
 }

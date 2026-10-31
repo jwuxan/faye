@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-31
 decision-makers: Josh Wu
 ---
@@ -53,7 +53,7 @@ Until M5 a login always ran the tenant's current version, the engine reported no
 
 ## Decision Outcome
 
-1B, 2B, 3B, 4B, 5B, 6B, 7B, 8B.
+1B, 2B, 3B, 4B, 5B, 6B, 7B, 8B. The storage of 4B moved from Redis lists to the `faye_trace` table of the one SQLite database ([ADR 0017](0017-one-sqlite-database.md)): events are numbered per tenant, the latest 200 make the feed, and the feed still polls every 250 ms (`PreviewFeed`).
 
 **Engine.** `Previews` (in `faye-engine`) has three methods: `version(tenant)` (empty refuses the sign in with `preview_unavailable`), `request(tenant)` (overrides of `request.*`), and `trace(state, event)`. A client is a preview client when its `metadata.preview` is `true`; that is client metadata from `FlowHost`, like `metadata.tenant`, so nothing Hydra specific enters the engine. Only preview flows are traced; the events of a run are emitted after its state is saved, so a submit that loses a race traces nothing. `FlowVersions.store` keeps a version without publishing it, so a preview flow can pin its draft and the consent that follows runs the same version. Conformance vectors gain `preview`, `draft`, `scenario` and `expect_trace`.
 
@@ -69,7 +69,7 @@ GET  /admin/tenants/{t}/preview/flows/{id}    a preview run: events, visits, res
 GET  /api/preview/flows/{id}                  the same, without the token; the flow id is the capability
 ```
 
-**Preview only accounts.** `User.preview` marks seeded accounts. `identity.resolve` and every credential handler treat them as unknown unless the client is a preview client, so an account an operator seeded can never sign in to a production client.
+**Preview only accounts.** `User.preview` marks seeded accounts. `identity.resolve` and every credential handler treat them as unknown unless the client is a preview client, so an account an operator seeded can never sign in to a production client. Since [ADR 0018](0018-two-tenants-and-an-open-local-console.md) a seeded account also carries the tenant it was seeded for, and is unknown to other tenants' clients, preview clients included.
 
 **Web.** The Admin UI's Preview panel replaces the inspector beside the block tree: presets (New user, User with TOTP, High risk IP, Client requests MFA), launch parameters, a TOTP code for the seeded account, and the live trace; the tree highlights the blocks the run visited and the one waiting on a screen. Launch opens the demo client in a popup window (embedding would need passkey permissions and third party cookie care for little gain). The demo client gains the preview clients, `max_age` and `ui_locales`, and a result view with the trace and the expectation check.
 
@@ -80,18 +80,20 @@ GET  /api/preview/flows/{id}                  the same, without the token; the f
 * Good, because the expectation check reuses path enumeration, so a mismatch is a real disagreement between checker and engine.
 * Bad, because preview clients get one extra ID token claim, `faye_flow_id`. Production clients' tokens are unchanged.
 * Bad, because every previewed draft stays in the version store (content addressed, a few KiB each), like published versions.
-* Bad, because the SSE feed polls Redis; at 250 ms per open editor this is cheap at prototype scale but not free.
+* Bad, because the SSE feed polls the trace store (SQLite since [ADR 0017](0017-one-sqlite-database.md)); at 250 ms per open editor this is cheap at prototype scale but not free.
 * Bad, because a "user with passkey" preset is not offered: a passkey needs an authenticator in the operator's browser. Passkey paths are previewed by registering one during a preview run.
 * Neutral: one scenario per tenant, last write wins, like drafts.
 * Known limits, from an independent review, not fixed in M6:
   * A preview only account is refused by every handler for production clients, but the engine's remembered session shortcut (`skip`) does not consult the user store. That is safe only while the host never remembers sessions (`HydraFlowHost` sends `remember: false`).
-  * Seeded accounts are global, so they work with every tenant's preview client, not only the tenant they were seeded for.
+  * ~~Seeded accounts are global, so they work with every tenant's preview client, not only the tenant they were seeded for.~~ Fixed by [ADR 0018](0018-two-tenants-and-an-open-local-console.md): a seeded account carries its tenant, and `IdentityHandlers` treats it as unknown to other tenants' clients.
   * The feed's single polling thread writes to every follower. A client that stops reading can stall the others until the servlet write timeout.
   * Expected paths are enumerated under the tenant's settings when the run is read, not when it ran. A settings change in between can show a correct run as a mismatch.
   * The checker models `subject_mismatch` as a retryable failure, while the engine ends the section. A run that hits it on an attempt other than the last matches no path.
 
 ### Confirmation
 
-* `cd server && ./gradlew build`: conformance vectors `preview-*.yaml`; `MilestoneSixTest` (draft runs for the preview client and not for the production client, a draft failing the checker is refused, previews off refuses, scenario overrides, preview only accounts, trace, run summary with expected paths, SSE feed); `IdentityFlowTest` for preview only accounts.
+* `cd server && ./gradlew build`: conformance vectors `preview-*.yaml`; `MilestoneSixTest` (draft runs for the preview client and not for the production client, a draft failing the checker is refused, scenario overrides, preview only accounts, trace, run summary with expected paths, SSE feed); `PreviewsOffTest` (with previews off, a preview client's sign in is refused and the preview API is absent); `IdentityFlowTest` for preview only accounts.
 * `cd web && pnpm test`: the TOTP helper against RFC 6238, and trace visit keys.
-* `deploy/smoke.sh` step 11: through the Admin UI's proxy, save a draft, set a scenario, seed an account, sign in with the tenant's preview client, read the token and the expectation check from the demo client, see the events on the SSE feed, and confirm the tenant's current version did not change; the step fails if one iteration takes a minute or more.
+* `deploy/smoke.sh` step 11 (tenant `acme`, client `preview-acme`): through the Admin UI's proxy, save a draft, set a scenario, seed an account, sign in with the tenant's preview client, read the token and the expectation check from the demo client, see the events on the SSE feed, and confirm the tenant's current version did not change; the step fails if one iteration takes a minute or more. Then the seeded account fails on the tenant's production application.
+
+Run on 2026-10-31, after [ADR 0017](0017-one-sqlite-database.md) and [ADR 0018](0018-two-tenants-and-an-open-local-console.md): `./gradlew build` passes (`MilestoneSixTest` 6, `PreviewsOffTest` 1, `IdentityFlowTest` 8, and the 9 `preview-*.yaml` vectors among 280 conformance cases); `pnpm test` passes (12 tests); `deploy/smoke.sh` passes all 13 steps on a fresh compose stack, and step 11's iteration took 2 s.

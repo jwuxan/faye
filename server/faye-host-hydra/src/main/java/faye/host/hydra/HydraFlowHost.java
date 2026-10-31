@@ -1,156 +1,206 @@
 package faye.host.hydra;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import faye.engine.Authenticated;
 import faye.engine.Consented;
 import faye.engine.FlowHost;
 import faye.engine.HostKind;
 import faye.engine.HostRequest;
 import faye.engine.Redirect;
-import java.io.IOException;
 import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
+import sh.ory.hydra.ApiClient;
+import sh.ory.hydra.ApiException;
+import sh.ory.hydra.api.OAuth2Api;
+import sh.ory.hydra.model.AcceptOAuth2ConsentRequest;
+import sh.ory.hydra.model.AcceptOAuth2ConsentRequestSession;
+import sh.ory.hydra.model.AcceptOAuth2LoginRequest;
+import sh.ory.hydra.model.OAuth2Client;
+import sh.ory.hydra.model.OAuth2ConsentRequestOpenIDConnectContext;
+import sh.ory.hydra.model.OAuth2RedirectTo;
+import sh.ory.hydra.model.RejectOAuth2Request;
 
 /**
- * FlowHost over the Ory Hydra v2 admin API ({@code /admin/oauth2/auth/requests/...}). Login, consent
- * and logout challenges share one URL scheme: {@code {kind}?{kind}_challenge=...}, then
- * {@code {kind}/accept} or {@code {kind}/reject}.
+ * FlowHost over the Ory Hydra v2 admin API ({@code /admin/oauth2/auth/requests/...}), through Ory's
+ * generated Java client (ADR 0021). Generated getters are unannotated, so every value used is null
+ * checked.
  */
 public final class HydraFlowHost implements FlowHost {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Duration TIMEOUT = Duration.ofSeconds(10);
+    private static final int TIMEOUT_MS = 10_000;
 
-    private final URI adminUrl;
-    private final HttpClient http;
+    private final OAuth2Api api;
 
     /** @param adminUrl Hydra admin base URL, e.g. {@code http://hydra:4445} */
     public HydraFlowHost(URI adminUrl) {
-        this.adminUrl = adminUrl;
-        this.http = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
+        ApiClient client = new ApiClient();
+        client.setBasePath(adminUrl.toString());
+        client.setConnectTimeout(TIMEOUT_MS);
+        client.setReadTimeout(TIMEOUT_MS);
+        client.setWriteTimeout(TIMEOUT_MS);
+        this.api = new OAuth2Api(client);
     }
 
     @Override
     public HostRequest load(HostKind kind, String challenge) {
-        JsonNode body = send(kind, challenge, "", "GET", null);
-        Map<String, Object> client = new LinkedHashMap<>();
-        JsonNode c = body.path("client");
-        if (c.path("client_id").isTextual()) {
-            client.put("client_id", c.get("client_id").textValue());
+        try {
+            Map<String, Object> hydra = new LinkedHashMap<>();
+            OAuth2Client client;
+            switch (kind) {
+                case LOGIN -> {
+                    var r = api.getOAuth2LoginRequest(challenge);
+                    client = r.getClient();
+                    put(r.getSkip(), "skip", hydra);
+                    put(r.getSubject(), "subject", hydra);
+                    put(r.getRequestedScope(), "requested_scope", hydra);
+                    put(r.getRequestedAccessTokenAudience(), "requested_access_token_audience", hydra);
+                    oidc(r.getOidcContext(), hydra);
+                }
+                case CONSENT -> {
+                    var r = api.getOAuth2ConsentRequest(challenge);
+                    client = r.getClient();
+                    put(r.getSkip(), "skip", hydra);
+                    put(r.getSubject(), "subject", hydra);
+                    put(r.getRequestedScope(), "requested_scope", hydra);
+                    put(r.getRequestedAccessTokenAudience(), "requested_access_token_audience", hydra);
+                    oidc(r.getOidcContext(), hydra);
+                    // Set by our login accept; links a consent to the login flow that preceded it.
+                    if (r.getContext() instanceof Map<?, ?> context) hydra.put("context", plain(context));
+                }
+                case LOGOUT -> {
+                    var r = api.getOAuth2LogoutRequest(challenge);
+                    client = r.getClient();
+                    put(r.getSubject(), "subject", hydra);
+                }
+                default -> throw new IllegalStateException("unknown kind " + kind);
+            }
+            return new HostRequest(kind, challenge, client(client), hydra);
+        } catch (ApiException e) {
+            throw failure("GET", kind.section(), e);
         }
-        if (!c.path("client_name").asText().isEmpty()) {
-            client.put("client_name", c.get("client_name").textValue());
-        }
-        if (c.path("metadata").isObject()) client.put("metadata", plain(c.get("metadata")));
-        // Only clients registered with metadata.first_party = true are first party.
-        client.put("first_party", c.path("metadata").path("first_party").asBoolean(false));
-
-        Map<String, Object> hydra = new LinkedHashMap<>();
-        if (body.path("skip").isBoolean()) hydra.put("skip", body.get("skip").booleanValue());
-        if (!body.path("subject").asText().isEmpty()) {
-            hydra.put("subject", body.get("subject").textValue());
-        }
-        copyList(body, "requested_scope", hydra);
-        copyList(body, "requested_access_token_audience", hydra);
-        JsonNode oidc = body.path("oidc_context");
-        copyList(oidc, "acr_values", hydra);
-        copyList(oidc, "ui_locales", hydra);
-        if (!oidc.path("login_hint").asText().isEmpty()) {
-            hydra.put("login_hint", oidc.get("login_hint").textValue());
-        }
-        // Set by our login accept; links a consent to the login flow that preceded it.
-        if (body.path("context").isObject()) hydra.put("context", plain(body.get("context")));
-        return new HostRequest(kind, challenge, client, hydra);
     }
 
     @Override
     public Redirect accept(HostRequest request, Authenticated outcome) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("subject", outcome.subject());
-        body.put("amr", outcome.amr());
-        if (outcome.acr() != null) body.put("acr", outcome.acr());
-        body.put("remember", false);
-        body.put("context", outcome.context());
-        return redirect(send(request.kind(), request.challenge(), "/accept", "PUT", body));
+        AcceptOAuth2LoginRequest body = new AcceptOAuth2LoginRequest()
+                .subject(outcome.subject())
+                .amr(outcome.amr())
+                .remember(false)
+                .context(outcome.context());
+        if (outcome.acr() != null) body.acr(outcome.acr());
+        try {
+            return redirect(api.acceptOAuth2LoginRequest(request.challenge(), body));
+        } catch (ApiException e) {
+            throw failure("PUT", "login/accept", e);
+        }
     }
 
     @Override
     public Redirect accept(HostRequest request, Consented outcome) {
-        Map<String, Object> body = Map.of(
-                "grant_scope", outcome.grantScope(),
-                "grant_access_token_audience", outcome.grantAudience(),
-                "remember", false,
-                "session", Map.of("id_token", outcome.idTokenClaims()));
-        return redirect(send(request.kind(), request.challenge(), "/accept", "PUT", body));
+        AcceptOAuth2ConsentRequest body = new AcceptOAuth2ConsentRequest()
+                .grantScope(outcome.grantScope())
+                .grantAccessTokenAudience(outcome.grantAudience())
+                .remember(false)
+                .session(new AcceptOAuth2ConsentRequestSession().idToken(outcome.idTokenClaims()));
+        try {
+            return redirect(api.acceptOAuth2ConsentRequest(request.challenge(), body));
+        } catch (ApiException e) {
+            throw failure("PUT", "consent/accept", e);
+        }
     }
 
     @Override
     public Redirect reject(HostRequest request, String error, String description) {
-        Map<String, Object> body = Map.of("error", error, "error_description", description);
-        return redirect(send(request.kind(), request.challenge(), "/reject", "PUT", body));
-    }
-
-    private JsonNode send(HostKind kind, String challenge, String action, String method, @Nullable Object body) {
-        String section = kind.section();
-        URI uri = adminUrl.resolve("/admin/oauth2/auth/requests/" + section + action + "?" + section + "_challenge="
-                + URLEncoder.encode(challenge, StandardCharsets.UTF_8));
-        HttpRequest.Builder req = HttpRequest.newBuilder(uri).timeout(TIMEOUT).header("Accept", "application/json");
-        if (body == null) {
-            req.method(method, HttpRequest.BodyPublishers.noBody());
-        } else {
-            req.header("Content-Type", "application/json")
-                    .method(method, HttpRequest.BodyPublishers.ofString(json(body)));
-        }
-        HttpResponse<String> res;
         try {
-            res = http.send(req.build(), HttpResponse.BodyHandlers.ofString());
-        } catch (IOException e) {
-            throw new IllegalStateException("hydra " + method + " " + uri.getPath() + " failed", e);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted", e);
-        }
-        if (res.statusCode() / 100 != 2) {
-            throw new IllegalStateException(
-                    "hydra " + method + " " + uri.getPath() + ": " + res.statusCode() + " " + res.body());
-        }
-        try {
-            return MAPPER.readTree(res.body());
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("hydra returned non JSON for " + uri.getPath(), e);
+            return switch (request.kind()) {
+                case LOGIN ->
+                    redirect(api.rejectOAuth2LoginRequest(
+                            request.challenge(),
+                            new RejectOAuth2Request().error(error).errorDescription(description)));
+                case CONSENT ->
+                    redirect(api.rejectOAuth2ConsentRequest(
+                            request.challenge(),
+                            new RejectOAuth2Request().error(error).errorDescription(description)));
+                case LOGOUT -> {
+                    // The generated logout reject carries no body and Hydra answers with no redirect
+                    api.rejectOAuth2LogoutRequest(request.challenge());
+                    throw new IllegalStateException("hydra response has no redirect_to");
+                }
+            };
+        } catch (ApiException e) {
+            throw failure("PUT", request.kind().section() + "/reject", e);
         }
     }
 
-    private static Redirect redirect(JsonNode body) {
-        if (!body.path("redirect_to").isTextual()) {
-            throw new IllegalStateException("hydra response has no redirect_to");
+    private static IllegalStateException failure(String method, String path, ApiException e) {
+        return new IllegalStateException(
+                "hydra " + method + " /admin/oauth2/auth/requests/" + path + ": " + e.getCode() + " "
+                        + e.getResponseBody(),
+                e);
+    }
+
+    private static Map<String, Object> client(@Nullable OAuth2Client c) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (c == null) {
+            out.put("first_party", false);
+            return out;
         }
-        return new Redirect(body.get("redirect_to").textValue());
+        if (c.getClientId() != null) out.put("client_id", c.getClientId());
+        String name = c.getClientName();
+        if (name != null && !name.isEmpty()) out.put("client_name", name);
+        Map<?, ?> metadata = c.getMetadata() instanceof Map<?, ?> m ? m : Map.of();
+        if (!metadata.isEmpty()) out.put("metadata", plain(metadata));
+        // Only clients registered with metadata.first_party = true are first party.
+        out.put("first_party", Boolean.TRUE.equals(metadata.get("first_party")));
+        return out;
     }
 
-    private static void copyList(JsonNode from, String field, Map<String, Object> to) {
-        if (from.path(field).isArray()) to.put(field, plain(from.get(field)));
+    private static void oidc(@Nullable OAuth2ConsentRequestOpenIDConnectContext oidc, Map<String, Object> hydra) {
+        if (oidc == null) return;
+        put(oidc.getAcrValues(), "acr_values", hydra);
+        put(oidc.getUiLocales(), "ui_locales", hydra);
+        put(oidc.getLoginHint(), "login_hint", hydra);
     }
 
-    private static Object plain(JsonNode node) {
-        return MAPPER.convertValue(node, Object.class);
+    private static void put(@Nullable Boolean value, String field, Map<String, Object> to) {
+        if (value != null) to.put(field, value);
     }
 
-    private static String json(Object body) {
-        try {
-            return MAPPER.writeValueAsString(body);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException(e);
+    private static void put(@Nullable String value, String field, Map<String, Object> to) {
+        if (value != null && !value.isEmpty()) to.put(field, value);
+    }
+
+    private static void put(@Nullable List<String> value, String field, Map<String, Object> to) {
+        if (value != null) to.put(field, List.copyOf(value));
+    }
+
+    private static Redirect redirect(@Nullable OAuth2RedirectTo body) {
+        String url = body == null ? null : body.getRedirectTo();
+        if (url == null) throw new IllegalStateException("hydra response has no redirect_to");
+        return new Redirect(url);
+    }
+
+    /**
+     * Gson reads free form objects into maps whose numbers are all {@code Double}; converts them
+     * back to the plain Java values Jackson produced: integral numbers as {@code Integer} or
+     * {@code Long} (ADR 0021).
+     */
+    @Nullable
+    static Object plain(@Nullable Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            map.forEach((k, v) -> out.put(String.valueOf(k), plain(v)));
+            return out;
         }
+        if (value instanceof List<?> list) {
+            return list.stream().map(HydraFlowHost::plain).toList();
+        }
+        if (value instanceof Double d && d == Math.rint(d) && Math.abs(d) < 9.0e18) {
+            long l = d.longValue();
+            return l == (int) l ? (Object) (int) l : l;
+        }
+        return value;
     }
 }

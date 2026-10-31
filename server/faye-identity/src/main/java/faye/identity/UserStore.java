@@ -1,5 +1,6 @@
 package faye.identity;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.function.UnaryOperator;
 
@@ -9,6 +10,9 @@ public interface UserStore {
     Optional<User> byIdentifier(String identifier);
 
     Optional<User> bySubject(String subject);
+
+    /** Every account, for the Admin UI's read only list. */
+    List<User> all();
 
     /** Adds or replaces the account with this subject. */
     void save(User user);

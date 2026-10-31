@@ -1,11 +1,53 @@
 "use client";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@faye/ui/components/alert-dialog";
+import { Badge } from "@faye/ui/components/badge";
 import { Button } from "@faye/ui/components/button";
 import { cn } from "@faye/ui/lib/utils";
 import { GitCompareArrows, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api, type Validation, type VersionView, type Versions as VersionList } from "../../../lib/api";
 import { diffLines } from "../../../lib/diff";
+import { PageHeader } from "../../shell";
+import { DraftActions, useDraft } from "./draft";
+
+export function VersionsPage() {
+  const d = useDraft();
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <PageHeader tenant={d.tenant} title="Versions">
+        <DraftActions />
+      </PageHeader>
+      <div className="min-h-0 flex-1">
+        {d.yaml === null ? (
+          <div className="p-6 text-muted-foreground">Loading…</div>
+        ) : (
+          <Versions
+            tenant={d.tenant}
+            draft={d.yaml}
+            onLoad={(y) => {
+              d.commit(y);
+              d.notify("ok", "Loaded into the draft", true);
+            }}
+            refresh={d.published}
+            notify={d.notify}
+            onRollback={d.refreshLive}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
 
 /** Published versions: what changed against the draft, roll back, or start a draft from one. */
 export function Versions({
@@ -26,13 +68,11 @@ export function Versions({
 }) {
   const [list, setList] = useState<VersionList | null>(null);
   const [selected, setSelected] = useState<VersionView | null>(null);
-  const [confirm, setConfirm] = useState(false);
 
   const open = useCallback(
     async (hash: string) => {
       const { body } = await api<VersionView>(`tenants/${tenant}/versions/${hash}`);
       setSelected(body);
-      setConfirm(false);
     },
     [tenant],
   );
@@ -87,10 +127,10 @@ export function Versions({
               <span className="font-mono text-xs">{short(hash)}</span>
               <span className="text-xs text-muted-foreground">#{versions.length - i}</span>
               {hash === list.current && (
-                <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Badge variant="outline" className="ml-auto gap-1.5 font-normal text-muted-foreground">
                   <span className="size-1.5 rounded-full bg-success" />
                   live
-                </span>
+                </Badge>
               )}
             </button>
           </li>
@@ -105,26 +145,31 @@ export function Versions({
             <span className="font-mono text-xs text-success">+{added}</span>
             <span className="font-mono text-xs text-danger">−{removed}</span>
             <div className="ml-auto flex items-center gap-2">
-              <Button variant="outline" className="h-7 px-2.5 text-xs" disabled={!selected.yaml} onClick={() => onLoad(selected.yaml)}>
+              <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" disabled={!selected.yaml} onClick={() => onLoad(selected.yaml)}>
                 Load into draft
               </Button>
-              {selected.hash !== list.current &&
-                (confirm ? (
-                  <>
-                    <span className="text-xs text-muted-foreground">Make {short(selected.hash)} live?</span>
-                    <Button className="h-7 px-2.5 text-xs" onClick={() => rollback(selected.hash)}>
-                      Roll back
+              {selected.hash !== list.current && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs">
+                      <RotateCcw />
+                      Roll back to this
                     </Button>
-                    <Button variant="outline" className="h-7 px-2.5 text-xs" onClick={() => setConfirm(false)}>
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
-                  <Button variant="outline" className="h-7 px-2.5 text-xs" onClick={() => setConfirm(true)}>
-                    <RotateCcw className="size-3.5" />
-                    Roll back to this
-                  </Button>
-                ))}
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Make {short(selected.hash)} live?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        New sign ins run this version as soon as you confirm. Sign ins already in progress finish on the version they started with. The draft is not changed.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => rollback(selected.hash)}>Roll back</AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">

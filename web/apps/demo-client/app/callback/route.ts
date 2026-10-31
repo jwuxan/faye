@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { decodeJwt, ID_TOKEN_COOKIE, oidcConfig, type Pending, PENDING_COOKIE, redirectUri } from "../../lib/oidc";
+import { client, decodeJwt, ID_TOKEN_COOKIE, oidcConfig, type Pending, PENDING_COOKIE, redirectUri } from "../../lib/oidc";
 
 /** Exchanges the code for tokens, checks state and nonce, and keeps the ID token for display. */
 export async function GET(request: Request) {
@@ -20,9 +20,16 @@ export async function GET(request: Request) {
   const error = params.get("error");
   if (error) return done({ error, error_description: params.get("error_description") ?? "" });
 
+  // A confidential application authenticates with its secret (client_secret_basic); a public one with PKCE alone
+  const secret = client(pending.clientId)?.secret;
+  const headers: Record<string, string> = { "content-type": "application/x-www-form-urlencoded" };
+  if (secret) {
+    const basic = `${encodeURIComponent(pending.clientId)}:${encodeURIComponent(secret)}`;
+    headers.authorization = `Basic ${Buffer.from(basic).toString("base64")}`;
+  }
   const tokenRes = await fetch(config.tokenUrl, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+    headers,
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code: params.get("code") ?? "",

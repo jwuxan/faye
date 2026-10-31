@@ -1,0 +1,10 @@
+#!/command/with-contenv sh
+set -o pipefail
+s6-setuidgid 100:101 sh -c '
+  umask 007
+  hydra migrate sql -e --yes
+  # hydra creates the database 0640; WAL mode means faye and the seed also write it (group 101)
+  db=${DSN#sqlite://}
+  db=${db%%\?*}
+  chmod 660 "$db" "$db-shm" "$db-wal" 2>/dev/null || chmod 660 "$db"
+' 2>&1 | /etc/s6-overlay/scripts/log-prefix hydra-migrate

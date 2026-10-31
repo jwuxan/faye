@@ -1,0 +1,4 @@
+#!/command/with-contenv execlineb
+fdmove -c 2 1
+s6-setuidgid 103:101
+/etc/s6-overlay/scripts/demo-client
