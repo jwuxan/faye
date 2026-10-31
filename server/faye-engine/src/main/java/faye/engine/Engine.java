@@ -947,7 +947,14 @@ public final class Engine {
                                 auth.amr(),
                                 Objects.requireNonNull(auth.acr()),
                                 Map.of("flowId", s.flowId(), "versionHash", s.versionHash())));
-            case CONSENT -> host.accept(req, consented(req, s.env().user(), Objects.requireNonNull(auth.subject())));
+            case CONSENT -> {
+                String subject = Objects.requireNonNull(auth.subject());
+                // Only what the login that proved this subject learned: user.* filled inside the
+                // consent entry (an identifying handler) may describe someone else (O16)
+                Map<String, Object> user =
+                        linkedLogin(req, subject).map(l -> l.env().user()).orElse(Map.of());
+                yield host.accept(req, consented(req, user, subject));
+            }
             case LOGOUT -> throw new IllegalStateException("logout runs no flow entry");
         });
         emit(
@@ -986,8 +993,9 @@ public final class Engine {
     }
 
     /**
-     * Grants every requested scope and audience, with what the login learned about the person;
-     * the host decides which of it becomes claims.
+     * Grants every requested scope and audience, with what the login that proved {@code subject}
+     * learned about the person (empty when the host links no such login); the host decides which of
+     * it becomes claims.
      */
     private static Consented consented(HostRequest req, Map<String, Object> user, String subject) {
         return new Consented(

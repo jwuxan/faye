@@ -1,0 +1,16 @@
+name: a consent hands the host only what the login that proved its subject learned, never what the consent entry resolved about someone (O16)
+ir: flows/consent-resolves.json
+host:
+  kind: consent
+  client: { client_id: partner-app, first_party: false }
+  params: { subject: bob, requested_scope: [openid, email] }
+handlers:
+  identity.resolve: [{ ok: { user: { email: alice@example.com, exists: true } } }]
+  consent.record: [ok]
+events:
+  - expect_screen: identifier
+    expect_step: who
+  - submit: { identifier: alice@example.com }
+  - expect_screen: consent
+  - submit: { decision: allow }
+  - expect_result: { succeed: true, subject: bob, grant_scope: [openid, email], user: {} }

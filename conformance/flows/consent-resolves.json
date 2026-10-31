@@ -1,0 +1,11 @@
+["flow", 1, "consent-resolves", 1,
+  ["entry", "login", "authenticate",
+    ["seq",
+      ["step", "identify", ["seq", ["screen", "identifier"], ["call", "identity.resolve"]]],
+      ["step", "credential", ["seq", ["screen", "password"], ["call", "password.verify"]]],
+      ["succeed"]]],
+  ["entry", "consent", "consent",
+    ["seq",
+      ["step", "who", ["seq", ["screen", "identifier"], ["call", "identity.resolve"]]],
+      ["step", "grant", ["seq", ["screen", "consent"], ["call", "consent.record"]]],
+      ["succeed"]]]]
