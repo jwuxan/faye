@@ -67,7 +67,7 @@ record HostParams(@Nullable String subject, boolean skip, List<String> acrValues
 * Adding a field is a change to this contract, made through an ADR.
 * Each `FlowHost` maps its protocol into `HostParams`. For example, Hydra's `oidc_context.login_hint` becomes `loginHint`. An adapter cannot add a key.
 * `HostParams.toEnv()` is what the engine keeps as `host.*` in the flow state, so the state format does not change. Absent strings (`subject`, `login_hint`) are left out and read as null; `skip`, the lists and `context` are always present, a list possibly empty. A predicate's truthiness is the same either way; `exists host.<list>` is now always true, and no shipped flow or vector uses it.
-* `HostParams.fromMap` reads the wire form (conformance vectors, tests) and refuses a key that is not a field.
+* `HostParams.fromMap` reads the wire form (conformance vectors, tests) and refuses a key that is not a field. A list field may also be given as OIDC's space separated string (`acr_values: "faye:2fa faye:1fa"`), so a host that relays the string does not drop the requirement ([ADR 0007](0007-fuzz-and-adversarial-testing.md), F4).
 * 1C was rejected because each host would then define its own namespace, which is the leak itself: a flow could still depend on one host's keys.
 
 ### Credential issuers (2B)
@@ -91,6 +91,8 @@ interface CredentialIssuer {
 * The engine merges what the spec prepares with what the issuer issues into the one stored map, and what the spec renders with what the issuer presents into the one payload. A key both write is a bug and throws.
 * A failing `issue` fails the step with `issuer_error`, like a handler failure: an enclosing `retry` reruns it, else the entry fails and the host rejects. `present` runs on every view, so it must be local and deterministic. One behavior changes with it: a passkey registration reached without a signed in subject (which the checker already refuses at publish) used to throw a server error, and now fails the step closed with `issuer_error`.
 * `method_picker` cannot declare an issuer: the engine fills it with the options of the `choose`.
+* The engine's check that a stored state fits its version (ADR 0007, F7) asks the screen whether a waiting instance can resume (`ScreenSpec.resumable(env, data)`) instead of knowing screens itself: the passkey screen refuses a registration with no signed in subject.
+* An issuer that calls an upstream service holds its own deadline and throws when it passes; the engine sets none, so a slow upstream slows the screen and a dead one fails it closed.
 * Requirements for an upstream issuer:
   * The upstream service creates the challenge or secret.
   * The issuer returns an opaque reference the upstream can verify (for example `{ "challenge": ..., "upstream_ref": ... }`).
@@ -174,6 +176,8 @@ Faye is the IdP's frontend: it completes the sign in and reports what was proven
   * `faye-screens`: `BuiltinScreenTest`, the built in screens equal the protocol's, a declaring screen without its issuer and an issuer for a screen that declares none are refused when the registry is built, and `password` and `consent` need none.
   * `faye-identity`: `IdentityIssuersTest`, the TOTP secret survives a retry, the otpauth label uses the tenant's display name, and a passkey registration without a subject fails to issue.
   * `faye-dsl`: `FlowCompilerTest.theCompilerKnowsNoHostSpelling` and `aliasedNamespacesLowerToTheirNamespace`.
+  * `faye-app`: `HandoffApiTest`, a host that hands off: a flow started through `Engine.start` and answered over HTTP finishes with `{result}`, valid against the screen protocol, with its cookie expired; the Hydra routes refuse to render a handoff.
+  * `faye-engine`: `StoredStateFuzzTest.corruptStatesAreNotFound`, a passkey registration for nobody is refused through the screen's `resumable`.
   * `faye-host-hydra`: `HydraFlowHostTest`, the Hydra host's redirects are unchanged, it maps Hydra's request into the host contract, takes the tenant and preview flag from the client's metadata, and maps `user` to ID token claims by scope, with `faye_flow_id` for preview clients only.
 * `cd web && pnpm generate && pnpm typecheck && pnpm lint && pnpm test`, and the contract diff check in CI.
 * `deploy/smoke.sh` passes on a fresh stack, which proves the Hydra behavior is unchanged.
@@ -181,8 +185,7 @@ Faye is the IdP's frontend: it completes the sign in and reports what was proven
 Open gaps, which keep this record `in progress`:
 
 * `deploy/smoke.sh` has not been run against this change (it needs the compose stack).
-* No `FlowApiTest` drives a `Handoff` through HTTP: the app ships only the Hydra and mock hosts, both redirecting. An embedding host's start route and its test come with the first such host.
-* The cost of an upstream issuer's network call before a credential screen is unmeasured.
+* The latency an upstream issuer adds before a credential screen is unmeasured: there is no upstream issuer yet. Measure it with the first one, against its own deadline.
 
 ## Pros and Cons of the Options
 
