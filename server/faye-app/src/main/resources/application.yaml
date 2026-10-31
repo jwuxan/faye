@@ -1,10 +1,21 @@
 spring:
   application:
     name: faye
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
+  # One SQLite database holds every store: flows, versions, hooks, settings, traces and each tenant's
+  # user pool. In the compose stack Hydra keeps its tables in the same file (ADR 0017). Flyway
+  # migrates it at startup from db/migration (ADR 0020).
+  datasource:
+    url: jdbc:sqlite:${FAYE_DATABASE:faye.db}?journal_mode=WAL&busy_timeout=10000&transaction_mode=IMMEDIATE
+    driver-class-name: org.sqlite.JDBC
+  flyway:
+    # Faye's history table carries Faye's prefix beside Hydra's tables
+    table: faye_schema_history
+    # A database that already has tables (Hydra's, or Faye's from before migrations) baselines at 0,
+    # then V1 and later run
+    baseline-on-migrate: true
+    baseline-version: 0
+    # clean would drop Hydra's tables in the shared database
+    clean-disabled: true
 
 faye:
   login-ui-url: ${FAYE_LOGIN_UI_URL:http://localhost:3000}
@@ -18,34 +29,20 @@ faye:
   # Each tenant's flow is checked against its settings, then published at startup. Settings saved
   # through the admin API override these, except egress.
   tenants:
-    # The Admin UI's own sign in (client faye-admin)
-    admin:
-      flow: classpath:flows/admin.yaml
-      mfa-required: true
-    default:
-      flow: classpath:flows/password-only.yaml
-    mfa:
-      flow: classpath:flows/passkey-totp.yaml
-    partner:
-      flow: classpath:flows/partner-consent.yaml
-    risk:
-      flow: classpath:flows/risk-totp.yaml
+    # Acme's applications: password, TOTP when the risk hook scores a sign in high, consent for
+    # third party applications
+    acme:
+      flow: classpath:flows/acme.yaml
       # Hooks of this tenant may call these named targets, and no others
       egress: [ip-reputation]
+    # Bank's applications: passkey, or password plus a second factor
+    bank:
+      flow: classpath:flows/passkey-totp.yaml
   # Named HTTP targets for hooks. Unset, the risk hook cannot reach its service and scores high.
   egress:
     ip-reputation: ${FAYE_IP_REPUTATION_URL:}
   webauthn:
     rp-id: ${FAYE_WEBAUTHN_RP_ID:localhost}
     origins: ${FAYE_WEBAUTHN_ORIGINS:http://localhost:3000}
-  # Local demo accounts only. Alice has TOTP enrolled with this well known secret; Bob has none.
-  demo-users:
-    - subject: user-alice
-      identifier: alice@example.com
-      name: Alice
-      password: correct horse battery staple
-      totp-secret: JBSWY3DPEHPK3PXP
-    - subject: user-bob
-      identifier: bob@example.com
-      name: Bob
-      password: correct horse battery staple
+  # No accounts here: each tenant's user pool is in the database, written by deploy/directory/seed.mjs
+  demo-users: []

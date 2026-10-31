@@ -23,7 +23,8 @@ import {
   updateBody,
 } from "../../../lib/flow";
 import { kindOf } from "../../../lib/kinds";
-import { field, IconButton, Prop, Segmented, Select, Switch, Tile } from "../../ui";
+import { Input } from "@faye/ui/components/input";
+import { Choice, denseMono, IconButton, Overline, Prop, Segmented, Switch, Tile } from "../../ui";
 import { ConditionBuilder, FlowVars } from "./condition";
 
 const OPTION_LABELS: Record<string, string> = { passkey: "Passkey autofill", register: "Create passkey" };
@@ -105,22 +106,22 @@ export function Inspector({
 
       <Group title="Interaction">
         <Prop label="Screen">
-          <Select aria-label="Screen" className="flex-1 font-mono text-xs" value={b.screen?.type ?? ""} onChange={(e) => patch({ screen: e.target.value ? { type: e.target.value, opts: {} } : undefined })}>
-            <option value="">none</option>
-            {catalog?.screens.map((s) => (
-              <option key={s.type} value={s.type}>
-                {s.type}
-              </option>
-            ))}
-          </Select>
+          <Choice
+            label="Screen"
+            className="flex-1"
+            none="none"
+            value={b.screen?.type ?? ""}
+            options={catalog?.screens.map((s) => ({ value: s.type })) ?? []}
+            onChange={(v) => patch({ screen: v ? { type: v, opts: {} } : undefined })}
+          />
         </Prop>
         {b.screen &&
           screenOptions.map((opt) => (
             <Prop key={opt} label={OPTION_LABELS[opt] ?? opt}>
               {opt === "code" ? (
-                <input
+                <Input
                   aria-label={opt}
-                  className={cn(field, "flex-1 font-mono text-xs")}
+                  className={cn(denseMono, "flex-1")}
                   value={String(b.screen!.opts[opt] ?? "")}
                   onChange={(e) => patch({ screen: { ...b.screen!, opts: withOpt(b.screen!.opts, opt, e.target.value || undefined) } })}
                 />
@@ -134,14 +135,14 @@ export function Inspector({
             </Prop>
           ))}
         <Prop label="Handler">
-          <Select aria-label="Handler" className="flex-1 font-mono text-xs" value={b.use ?? ""} onChange={(e) => patch({ use: e.target.value || undefined })}>
-            <option value="">none</option>
-            {catalog?.handlers.map((h) => (
-              <option key={h.name} value={h.name}>
-                {h.name}
-              </option>
-            ))}
-          </Select>
+          <Choice
+            label="Handler"
+            className="flex-1"
+            none="none"
+            value={b.use ?? ""}
+            options={catalog?.handlers.map((h) => ({ value: h.name })) ?? []}
+            onChange={(v) => patch({ use: v || undefined })}
+          />
         </Prop>
         {b.use && (
           <Prop label="Proves">
@@ -153,12 +154,12 @@ export function Inspector({
         <Prop label="Attempts">
           <Switch label="Retry" checked={b.retry !== undefined} onChange={(on) => patch({ retry: on ? 3 : undefined })} />
           {b.retry !== undefined && (
-            <input
+            <Input
               aria-label="Attempts"
               type="number"
               min={1}
               max={10}
-              className={cn(field, "w-16")}
+              className={cn(denseMono, "w-16")}
               value={b.retry}
               onChange={(e) => patch({ retry: Math.min(10, Math.max(1, Number(e.target.value) || 1)) })}
             />
@@ -168,15 +169,14 @@ export function Inspector({
 
       <Group title="Logic">
         <Prop label="Hook">
-          <Select aria-label="Hook" className="flex-1 font-mono text-xs" value={b.hook ?? ""} onChange={(e) => patch({ hook: e.target.value || undefined })}>
-            <option value="">none</option>
-            {b.hook && !doc.hooks.some((h) => h.id === b.hook) && <option value={b.hook}>{b.hook || "(choose)"}</option>}
-            {doc.hooks.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.id}
-              </option>
-            ))}
-          </Select>
+          <Choice
+            label="Hook"
+            className="flex-1"
+            none="none"
+            value={b.hook ?? ""}
+            options={[...(b.hook && !doc.hooks.some((h) => h.id === b.hook) ? [{ value: b.hook }] : []), ...doc.hooks.map((h) => ({ value: h.id }))]}
+            onChange={(v) => patch({ hook: v || undefined })}
+          />
         </Prop>
         <Prop label="Options">
           <Switch label="Has options" checked={b.alternative !== undefined} onChange={(on) => patch({ alternative: on ? [] : undefined, pick: on ? b.pick : undefined })} />
@@ -194,14 +194,14 @@ export function Inspector({
         </Prop>
         {b.pick !== undefined && (
           <Prop label="Picker">
-            <Select aria-label="Picking hook" className="flex-1 font-mono text-xs" value={b.pick} onChange={(e) => patch({ pick: e.target.value })}>
-              {!doc.hooks.some((h) => h.id === b.pick) && <option value={b.pick}>{b.pick || "(choose)"}</option>}
-              {doc.hooks.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.id}
-                </option>
-              ))}
-            </Select>
+            <Choice
+              label="Picking hook"
+              className="flex-1"
+              none={b.pick === "" ? "(choose)" : undefined}
+              value={b.pick}
+              options={[...(b.pick && !doc.hooks.some((h) => h.id === b.pick) ? [{ value: b.pick }] : []), ...doc.hooks.map((h) => ({ value: h.id }))]}
+              onChange={(v) => patch({ pick: v })}
+            />
           </Prop>
         )}
         <Prop label="Nested steps">
@@ -213,7 +213,7 @@ export function Inspector({
         <Prop label="Fail">
           <Switch label="Fails" checked={b.fail !== undefined} onChange={(on) => patch({ fail: on ? "denied" : undefined })} />
           {b.fail !== undefined && (
-            <input aria-label="Failure reason" aria-invalid={!ID.test(b.fail)} className={cn(field, "flex-1 font-mono text-xs")} value={b.fail} onChange={(e) => patch({ fail: e.target.value })} />
+            <Input aria-label="Failure reason" aria-invalid={!ID.test(b.fail)} className={cn(denseMono, "flex-1")} value={b.fail} onChange={(e) => patch({ fail: e.target.value })} />
           )}
         </Prop>
       </Group>
@@ -262,7 +262,7 @@ function withOpt(opts: Record<string, Literal>, key: string, value: Literal | un
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="grid gap-2.5 border-b px-3 pt-3 pb-4">
-      <h4 className="text-[11px] font-medium tracking-[0.04em] text-muted-foreground uppercase">{title}</h4>
+      <Overline>{title}</Overline>
       {children}
     </section>
   );
@@ -276,12 +276,12 @@ function IdField({ id, label, taken, onRename }: { id: string; label: string; ta
   };
   return (
     <span className="relative min-w-0 flex-1">
-      <input
+      <Input
         aria-label={label}
         aria-invalid={problem !== null}
         title={problem ?? label}
         spellCheck={false}
-        className="h-7 w-full rounded-md border border-transparent bg-transparent px-1.5 font-mono text-[13px] font-medium hover:border-input focus:border-ring focus:outline-none aria-invalid:border-danger"
+        className="h-7 w-full border-transparent bg-transparent px-1.5 font-mono text-[13px] font-medium shadow-none hover:border-input md:text-[13px] dark:bg-transparent"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={commit}
@@ -299,11 +299,11 @@ function SetVars({ value, onChange }: { value: [string, Literal][] | undefined; 
     <div className="grid w-full gap-1">
       {rows.map(([name, v], i) => (
         <div key={i} className="flex items-center gap-1">
-          <input aria-label="Name" aria-invalid={!KEY.test(name)} className={cn(field, "w-24 font-mono text-xs")} value={name} onChange={(e) => update(i, [e.target.value, v])} />
+          <Input aria-label="Name" aria-invalid={!KEY.test(name)} className={cn(denseMono, "w-24")} value={name} onChange={(e) => update(i, [e.target.value, v])} />
           <span className="text-muted-foreground">=</span>
-          <input
+          <Input
             aria-label="Value"
-            className={cn(field, "w-20 flex-1 font-mono text-xs")}
+            className={cn(denseMono, "w-20 flex-1")}
             value={String(v)}
             onChange={(e) => {
               const t = e.target.value;

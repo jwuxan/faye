@@ -1,0 +1,2 @@
+#!/bin/sh
+exec java ${FAYE_JAVA_OPTS:--XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Xmx128m -XX:+ExitOnOutOfMemoryError} -jar /opt/faye/faye.jar

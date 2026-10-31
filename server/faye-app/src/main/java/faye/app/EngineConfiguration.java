@@ -4,6 +4,7 @@ import faye.check.CheckFailed;
 import faye.check.Publisher;
 import faye.check.Report;
 import faye.dsl.FlowCompiler;
+import faye.engine.ClientDirectory;
 import faye.engine.Engine;
 import faye.engine.FlowHost;
 import faye.engine.FlowStore;
@@ -15,10 +16,10 @@ import faye.engine.HookStore;
 import faye.hooks.HttpEgress;
 import faye.hooks.QuickJsRuntime;
 import faye.hooks.SandboxedHooks;
+import faye.host.hydra.HydraClientDirectory;
 import faye.host.hydra.HydraFlowHost;
 import faye.host.mock.MockFlowHost;
 import faye.identity.IdentityHandlers;
-import faye.identity.InMemoryUserStore;
 import faye.identity.Passwords;
 import faye.identity.User;
 import faye.identity.UserStore;
@@ -39,24 +40,25 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.io.Resource;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Configuration(proxyBeanMethods = false)
 class EngineConfiguration {
 
     @Bean
-    FlowVersions flowVersions(StringRedisTemplate redis) {
-        return new RedisFlowVersions(redis);
+    FlowVersions flowVersions(JdbcClient db, TransactionTemplate tx) {
+        return new SqliteFlowVersions(db, tx);
     }
 
     @Bean
-    HookStore hookStore(StringRedisTemplate redis) {
-        return new RedisHookStore(redis);
+    HookStore hookStore(JdbcClient db) {
+        return new SqliteHookStore(db);
     }
 
     @Bean
-    TenantConfigStore tenantConfigStore(StringRedisTemplate redis) {
-        return new RedisTenantConfigStore(redis);
+    TenantConfigStore tenantConfigStore(JdbcClient db) {
+        return new SqliteTenantConfigStore(db);
     }
 
     @Bean
@@ -142,10 +144,13 @@ class EngineConfiguration {
         }
     }
 
-    /** The prototype's identity store: seeded demo accounts, enrollments kept in memory. */
+    /**
+     * Each tenant's user pool, in the database the deploy seed writes accounts to. Configured demo
+     * accounts (tests only; none in the shipped config) are written over at startup.
+     */
     @Bean
-    UserStore userStore(FayeProperties props) {
-        UserStore users = new InMemoryUserStore();
+    UserStore userStore(JdbcClient db, TransactionTemplate tx, FayeProperties props) {
+        UserStore users = new SqliteUserStore(db, tx);
         props.demoUsers()
                 .forEach(u -> users.save(new User(
                         u.subject(),
@@ -156,7 +161,9 @@ class EngineConfiguration {
                         u.totpSecret(),
                         -1,
                         List.of(),
-                        false)));
+                        false,
+                        false,
+                        u.tenant())));
         return users;
     }
 
@@ -168,13 +175,13 @@ class EngineConfiguration {
     }
 
     @Bean
-    FlowStore flowStore(StringRedisTemplate redis, FayeProperties props) {
-        return new RedisFlowStore(redis, props.flowTtl());
+    FlowStore flowStore(JdbcClient db, FayeProperties props) {
+        return new SqliteFlowStore(db, props.flowTtl(), Clock.systemUTC());
     }
 
     @Bean
-    TraceStore traceStore(StringRedisTemplate redis, FayeProperties props) {
-        return new RedisTraceStore(redis, props.flowTtl());
+    TraceStore traceStore(JdbcClient db, TransactionTemplate tx, FayeProperties props) {
+        return new SqliteTraceStore(db, tx, props.flowTtl(), Clock.systemUTC());
     }
 
     @Bean
@@ -195,11 +202,30 @@ class EngineConfiguration {
         return new HydraFlowHost(URI.create(props.hydraAdminUrl()));
     }
 
-    /** Without Hydra, challenges are served by the in memory host. */
+    @Bean
+    @ConditionalOnExpression("!'${faye.hydra-admin-url:}'.isEmpty()")
+    ClientDirectory hydraClientDirectory(FayeProperties props) {
+        return new HydraClientDirectory(URI.create(props.hydraAdminUrl()));
+    }
+
+    /** The in memory host has no registered clients: any challenge loads as client {@code demo}. */
     @Bean
     @ConditionalOnExpression("'${faye.hydra-admin-url:}'.isEmpty()")
-    FlowHost mockFlowHost() {
-        return new MockFlowHost();
+    ClientDirectory mockClientDirectory() {
+        return List::of;
+    }
+
+    /**
+     * Without Hydra, challenges are served by the in memory host, as client {@code demo} of the
+     * default tenant, or of the first configured tenant when there is no default one.
+     */
+    @Bean
+    @ConditionalOnExpression("'${faye.hydra-admin-url:}'.isEmpty()")
+    FlowHost mockFlowHost(FayeProperties props) {
+        String tenant = props.tenants().containsKey(Engine.DEFAULT_TENANT)
+                ? null
+                : props.tenants().keySet().stream().findFirst().orElse(null);
+        return new MockFlowHost("mock://callback", tenant);
     }
 
     /** Starts once the publisher has published and checked every tenant's flow. */

@@ -1,9 +1,10 @@
 #!/bin/sh
-# Runs Ory Hydra without Docker, configured like deploy/compose.yaml but on SQLite.
+# Runs Ory Hydra without Docker, configured like deploy/compose.yaml: its tables go in the one SQLite
+# database it shares with Faye, $FAYE_DATABASE (default deploy/.data/faye.db, git ignored).
 # The release binary is downloaded on first use into deploy/.bin/ (git ignored), checked against
-# the pinned checksum below, and never committed. State lives in deploy/.bin/hydra.sqlite.
+# the pinned checksum below, and never committed.
 #
-#   deploy/hydra-local.sh      # then: deploy/bootstrap.sh, Faye with FAYE_HYDRA_ADMIN_URL=http://localhost:4445
+#   deploy/hydra-local.sh      # then: node deploy/bootstrap.mjs, Faye with FAYE_HYDRA_ADMIN_URL=http://localhost:4445
 set -eu
 version=2.2.0   # keep in step with the image digest in deploy/compose.yaml
 dir=$(cd "$(dirname "$0")" && pwd)/.bin
@@ -27,7 +28,9 @@ if [ ! -x "$bin" ]; then
   rm -f "$tgz"
 fi
 
-export DSN="sqlite://$dir/hydra.sqlite?_fk=true"
+database=${FAYE_DATABASE:-$(cd "$dir/.." && pwd)/.data/faye.db}
+mkdir -p "$(dirname "$database")"
+export DSN="sqlite://$database?_fk=true&_journal_mode=WAL&_busy_timeout=10000"
 "$bin" migrate sql -e --yes >/dev/null
 URLS_SELF_ISSUER=http://localhost:4444 \
 URLS_LOGIN=http://localhost:8080/login \

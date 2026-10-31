@@ -1,0 +1,90 @@
+#!/command/with-contenv sh
+set -o pipefail
+main() {
+# First boot setup, as root: the data directory's owners and modes, the generated secrets,
+# and the derived configuration shared through /run/s6/container_environment (which
+# /command/with-contenv then exports to every service).
+set -eu
+envdir=/run/s6/container_environment
+data=/var/lib/faye
+secrets=$data/secrets
+
+services=,${FAYE_SERVICES:-hydra,faye,login,admin},
+enabled() { case "$services" in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
+demo=false
+[ "${FAYE_DEMO:-false}" = "true" ] && demo=true
+
+mkdir -p "$secrets"
+chown 100:101 "$data"          # hydra, faye and the demo's uid share group 101
+chmod 2770 "$data"             # setgid: the journal and WAL files stay group 101
+chmod 700 "$secrets"           # root only; run scripts read the files before dropping uid
+if [ "$demo" = true ]; then
+  mkdir -p "$data/demo"
+  chown 103:101 "$data/demo"
+  chmod 700 "$data/demo"       # generated passwords and client secrets, out of Faye's reach
+fi
+
+# secret NAME ENVVAR: resolves to $ENVVAR if set, else the file's current contents, else a
+# fresh 32 byte secret; the resolved value is (re)written to the file, never to the log.
+secret() {
+  eval "value=\${$2:-}"
+  if [ -z "$value" ] && [ -f "$secrets/$1" ]; then value=$(cat "$secrets/$1"); fi
+  if [ -z "$value" ]; then
+    value=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')
+    echo "generated $secrets/$1"
+  fi
+  printf %s "$value" > "$secrets/$1"
+  chmod 600 "$secrets/$1"
+}
+secret hydra-system-secret SECRETS_SYSTEM
+secret admin-token FAYE_ADMIN_TOKEN
+echo "admin API token: $secrets/admin-token"
+
+# putenv NAME VALUE: defaults a variable every service sees, unless it is already set.
+putenv() {
+  eval "cur=\${$1:-}"
+  [ -n "$cur" ] || printf %s "$2" > "$envdir/$1"
+}
+host=${FAYE_PUBLIC_HOST:-localhost}
+putenv URLS_SELF_ISSUER "http://$host:4444"
+putenv URLS_LOGIN "http://$host:8080/login"
+putenv URLS_CONSENT "http://$host:8080/consent"
+putenv FAYE_LOGIN_UI_URL "http://$host:3000"
+putenv FAYE_WEBAUTHN_RP_ID "$host"
+putenv FAYE_WEBAUTHN_ORIGINS "http://$host:3000"
+putenv DEMO_CLIENT_URL "http://$host:3001"
+putenv DEMO_REDIRECT_URI "http://$host:3001/callback"
+putenv HYDRA_PUBLIC_URL "http://$host:4444"
+# Internal URLs stay on the container's loopback
+putenv FAYE_SERVER_URL "http://127.0.0.1:8080"
+putenv FAYE_DATABASE "$data/faye.db"
+putenv DSN "sqlite://$data/faye.db?_fk=true&_journal_mode=WAL&_busy_timeout=10000"
+if enabled hydra; then
+  putenv FAYE_HYDRA_ADMIN_URL "http://127.0.0.1:4445"
+  putenv HYDRA_ADMIN_URL "http://127.0.0.1:4445"
+  putenv HYDRA_INTERNAL_URL "http://127.0.0.1:4444"
+fi
+if [ "$demo" = true ]; then
+  putenv FAYE_IP_REPUTATION_URL "http://127.0.0.1:8000/score"
+  putenv FAYE_PREVIEW_ENABLED "true"
+  putenv SECRETS "$data/demo"
+  putenv SECRETS_DIR "$data/demo"
+  putenv DATABASE "$data/faye.db"
+  putenv CLIENT_REGISTRATIONS "$data/demo/clients.jsonl"
+fi
+
+# Hydra's --dev allows a plain http issuer; pass it only for loopback issuers. Only
+# relevant when hydra itself runs here.
+if enabled hydra; then
+  issuer=${URLS_SELF_ISSUER:-$(cat "$envdir/URLS_SELF_ISSUER")}
+  case "$issuer" in
+    http://localhost | http://localhost:* | http://127.0.0.1 | http://127.0.0.1:*)
+      putenv HYDRA_ARGS "--dev" ;;
+    http://*)
+      echo "refusing plain http issuer $issuer; use an https URLS_SELF_ISSUER" >&2
+      exit 1 ;;
+  esac
+fi
+
+}
+main 2>&1 | /etc/s6-overlay/scripts/log-prefix init

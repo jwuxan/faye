@@ -44,8 +44,6 @@ export type PreviewRun = {
   matches: boolean | null;
 };
 
-export class SignedOut extends Error {}
-
 /** Calls the admin API; resolves with the status and JSON body for 2xx, 400 and 422 alike. */
 export async function api<T>(
   path: string,
@@ -62,7 +60,6 @@ export async function api<T>(
   }
   if ((init.method ?? "GET") !== "GET") headers["x-faye-admin"] = "1";
   const res = await fetch(`/api/admin/${path}`, { method: init.method ?? "GET", headers, body, cache: "no-store" });
-  if (res.status === 401) throw new SignedOut();
   const text = await res.text();
   const parsed = text ? (JSON.parse(text) as T) : ({} as T);
   if (res.status >= 500 || res.status === 403 || res.status === 404 || res.status === 413) {
@@ -70,3 +67,29 @@ export async function api<T>(
   }
   return { status: res.status, body: parsed };
 }
+/** GET tenants/{t}/clients: an OAuth client as the authorization server holds it. Read only; no secret. */
+export type Client = {
+  id: string;
+  name: string;
+  tenant: string | null;
+  firstParty: boolean;
+  preview: boolean;
+  redirectUris: string[];
+  grantTypes: string[];
+  /** "none" for a public client, which has no secret. */
+  authMethod: string;
+  createdAt: string | null;
+};
+/** GET tenants/{t}/users: an account the tenant's flows can sign in, without its secrets. */
+export type UserView = {
+  subject: string;
+  /** The tenant it belongs to; null for an account every tenant shares. */
+  tenant: string | null;
+  identifier: string;
+  name: string | null;
+  emailVerified: boolean;
+  password: boolean;
+  totp: boolean;
+  passkeys: number;
+  mfaRequired: boolean;
+};

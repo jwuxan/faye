@@ -1,0 +1,47 @@
+# Acme's applications: a password, plus a second factor when a risk hook scores the sign in as high
+# risk, and a consent screen for third party applications.
+#
+# The risk hook asks the ip-reputation service (a named egress target the tenant grants) about the
+# request and sets vars.risk. A hook can only set vars, fail, or pick; it cannot sign anyone in, so
+# the checker still sees a password on every path and TOTP on the high risk ones. First party
+# applications (registered with metadata.first_party = true) are not asked for consent.
+flow: acme
+version: 1
+
+hooks:
+  risk:
+    file: risk.js
+    capabilities: { http: [ip-reputation] }
+    timeout_ms: 500
+
+login:
+  steps:
+    identify:
+      screen: identifier
+      use: identity.resolve
+    risk:
+      hook: risk
+    credential:
+      retry: 3
+      screen: password
+      use: password.verify
+    second-factor:
+      if: { eq: [vars.risk, high] }
+      alternative:
+        totp:
+          if: user.has_totp
+          retry: 3
+          screen: otp
+          use: totp.verify
+        enroll:
+          if: { not: user.has_totp }
+          retry: 3
+          screen: otp_enroll
+          use: totp.enroll
+
+consent:
+  steps:
+    grant:
+      if: { not: client.first_party }
+      screen: consent
+      use: consent.record

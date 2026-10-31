@@ -12,7 +12,8 @@ import org.springframework.core.io.Resource;
  * @param loginUiUrl base URL of the Login UI; flows are rendered at {@code /flow/{flowId}}
  * @param flowTtl lifetime of a suspended flow; matches Hydra's challenge lifetime
  * @param tenants settings and YAML flow per tenant id; each flow is checked and published at startup
- * @param demoUsers accounts seeded into the in memory identity store at startup
+ * @param demoUsers accounts written into the user store at startup; tests use them, the shipped
+ *     config has none (accounts come from the deploy seed)
  * @param hydraAdminUrl Hydra admin API base URL; when empty, challenges come from the in memory mock host
  * @param webauthn passkey relying party
  * @param adminToken bearer token for the admin API; when empty, the admin API is off
@@ -48,13 +49,17 @@ public record FayeProperties(
             @Nullable Set<String> screens,
             @Nullable Set<String> egress) {}
 
-    /** @param totpSecret base32 TOTP secret already enrolled, or null */
+    /**
+     * @param totpSecret base32 TOTP secret already enrolled, or null
+     * @param tenant the tenant whose user pool it is in; shared by every tenant when null
+     */
     public record DemoUser(
             String subject,
             String identifier,
             @Nullable String name,
             String password,
-            @Nullable String totpSecret) {}
+            @Nullable String totpSecret,
+            @Nullable String tenant) {}
 
     /**
      * @param rpId passkey scope, the Login UI's registrable domain

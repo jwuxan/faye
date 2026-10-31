@@ -1,12 +1,14 @@
 #!/bin/sh
-# Runs the whole stack locally without Docker, like deploy/compose.yaml: Redis (reused if one is
-# already up), Hydra (deploy/hydra-local.sh), the demo client registrations, the ip-reputation stub,
-# Faye, and the Login UI, demo client and Admin UI in dev mode. Ctrl-C stops everything this script started.
+# Runs the whole stack locally without Docker, like deploy/compose.yaml: Hydra
+# (deploy/hydra-local.sh), the client registrations, the ip-reputation stub, the seed (each
+# tenant's user pool, once Faye has migrated the schema),
+# Faye, and the Login UI, demo client and Admin UI in dev mode, all on one SQLite database,
+# deploy/.data/faye.db. Generated passwords and client secrets go to $XDG_STATE_HOME/faye/secrets
+# (default ~/.local/state/faye/secrets), outside the repo. Ctrl-C stops everything this script started.
 #
 #   make dev        # then open http://localhost:3001, or run deploy/smoke.sh
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
-java=${JAVA_HOME:+$JAVA_HOME/bin/}java
 
 set -m   # each job gets its own process group, so stop() can kill its whole tree
 stop() {
@@ -23,26 +25,24 @@ run() {
   { "$@" </dev/null 2>&1 | awk -v p="[$name] " '{ print p $0; fflush() }'; } &
 }
 
-if redis-cli ping >/dev/null 2>&1; then
-  echo "[dev] reusing the Redis on :6379"
-else
-  run redis redis-server --save "" --appendonly no
-fi
+export FAYE_DATABASE="${FAYE_DATABASE:-$root/deploy/.data/faye.db}"
+secrets=${XDG_STATE_HOME:-$HOME/.local/state}/faye/secrets
 run hydra "$root/deploy/hydra-local.sh"
-run bootstrap "$root/deploy/bootstrap.sh"
-run ip-reputation "$java" "$root/deploy/ip-reputation/IpReputation.java"
+run bootstrap node "$root/deploy/bootstrap.mjs"
+run ip-reputation node "$root/deploy/ip-reputation.mjs"
 run faye env \
   FAYE_HYDRA_ADMIN_URL=http://localhost:4445 \
   FAYE_ADMIN_TOKEN="${FAYE_ADMIN_TOKEN:-dev-admin-token}" \
   FAYE_IP_REPUTATION_URL=http://localhost:8000/score \
   FAYE_PREVIEW_ENABLED=true \
   "$root/server/gradlew" -p "$root/server" --console=plain :faye-app:bootRun
+# Writes each tenant's user pool once Faye has migrated the schema it polls for
+run seed env DATABASE="$FAYE_DATABASE" SECRETS="$secrets" node "$root/deploy/directory/seed.mjs"
 run login pnpm -C "$root/web" --filter @faye/login dev
 run demo-client pnpm -C "$root/web" --filter @faye/demo-client dev
 run admin env \
   FAYE_ADMIN_TOKEN="${FAYE_ADMIN_TOKEN:-dev-admin-token}" \
-  FAYE_ADMIN_SUBJECTS=user-alice \
   pnpm -C "$root/web" --filter @faye/admin dev
 
-echo "[dev] demo client http://localhost:3001, Admin UI http://localhost:3002 (alice@example.com / correct horse battery staple, TOTP JBSWY3DPEHPK3PXP); Ctrl-C stops"
+echo "[dev] Admin UI http://localhost:3002 (Try sign in on any application), demo client http://localhost:3001; accounts and passwords in $secrets/users.csv; Ctrl-C stops"
 wait

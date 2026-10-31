@@ -1,8 +1,9 @@
 "use client";
 
 import { cn } from "@faye/ui/lib/utils";
-import { CircleX, GripVertical, Plus, Search, TriangleAlert, X } from "lucide-react";
-import { type DragEvent, type KeyboardEvent, type ReactNode, useState } from "react";
+import { Button } from "@faye/ui/components/button";
+import { CircleX, GripVertical, Plus, TriangleAlert, X } from "lucide-react";
+import { type DragEvent, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   type Address,
   addressKey,
@@ -18,16 +19,15 @@ import {
   listKey,
   listOf,
   move,
-  PALETTE,
   parentOf,
   parseAddress,
   parseListKey,
   remove,
   type Section,
 } from "../../../lib/flow";
-import { BLOCK_ICONS, kindOf } from "../../../lib/kinds";
+import { kindOf } from "../../../lib/kinds";
 import { describe } from "../../../lib/predicate";
-import { Chip, Tile } from "../../ui";
+import { Chip, IconButton, Tile } from "../../ui";
 
 /** What is being dragged: a palette block, or an entry already in the tree. */
 type Dragging = { palette: string } | { entry: string } | null;
@@ -53,61 +53,6 @@ export function addTarget(doc: FlowDoc, selected: string | null): { list: ListRe
   }
   const [kind, index] = a.path[a.path.length - 1];
   return { list: { section: a.section, owner: a.path.slice(0, -1), kind }, index: index + 1 };
-}
-
-export function Palette({ onAdd, setDragging }: { onAdd: (name: string) => void; setDragging: (d: Dragging) => void }) {
-  const [filter, setFilter] = useState("");
-  const shown = PALETTE.filter((b) => b.name.toLowerCase().includes(filter.toLowerCase()));
-  return (
-    <nav aria-label="Block palette" className="flex min-h-0 flex-col border-r bg-surface-2">
-      <div className="p-2">
-        <label className="flex h-7 items-center gap-1.5 rounded-md border bg-background px-2 focus-within:border-ring">
-          <Search className="size-3.5 text-muted-foreground" />
-          <input
-            aria-label="Filter blocks"
-            placeholder="Filter blocks"
-            className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-        </label>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto px-2 pb-3">
-        {(["Steps", "Logic"] as const).map((group) => {
-          const blocks = shown.filter((b) => b.group === group);
-          if (blocks.length === 0) return null;
-          return (
-            <section key={group} className="mt-2 grid gap-px">
-              <h3 className="px-2 pb-1 text-[11px] font-medium tracking-[0.04em] text-muted-foreground uppercase">{group}</h3>
-              {blocks.map((b) => {
-                const look = BLOCK_ICONS[b.name];
-                return (
-                  <button
-                    key={b.name}
-                    type="button"
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData("text/plain", b.name);
-                      e.dataTransfer.effectAllowed = "copy";
-                      setDragging({ palette: b.name });
-                    }}
-                    onDragEnd={() => setDragging(null)}
-                    onClick={() => onAdd(b.name)}
-                    title={b.description}
-                    className="group flex h-8 cursor-grab items-center gap-2 rounded-md px-1.5 text-left text-[13px] hover:bg-accent active:cursor-grabbing"
-                  >
-                    <Tile icon={look.icon} category={look.category} size="sm" />
-                    {b.name}
-                    <Plus className="ml-auto size-3.5 text-muted-foreground opacity-0 group-hover:opacity-100" />
-                  </button>
-                );
-              })}
-            </section>
-          );
-        })}
-      </div>
-    </nav>
-  );
 }
 
 export function useDragging() {
@@ -193,7 +138,7 @@ export function Tree({
       onKeyDown={onKeyDown}
       onClick={(e) => e.target === e.currentTarget && onSelect(null)}
     >
-      <div className="mx-auto grid max-w-3xl gap-6 px-6 pt-2 pb-16" onClick={(e) => e.target === e.currentTarget && onSelect(null)}>
+      <div className="mx-auto grid max-w-3xl gap-6 px-5 pt-3 pb-16" onClick={(e) => e.target === e.currentTarget && onSelect(null)}>
         <textarea
           aria-label="Flow description"
           placeholder="Describe this flow"
@@ -207,14 +152,10 @@ export function Tree({
         {doc.consent ? (
           <SectionView section="consent" title="Consent" onRemove={() => onEdit({ ...doc, consent: undefined })} {...ctx} />
         ) : (
-          <button
-            type="button"
-            onClick={() => onEdit({ ...doc, consent: [] })}
-            className="flex h-8 items-center gap-2 rounded-md px-2 text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <Plus className="size-4" />
+          <Button variant="ghost" size="sm" className="justify-self-start text-[13px] font-normal text-muted-foreground" onClick={() => onEdit({ ...doc, consent: [] })}>
+            <Plus />
             Add consent section
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -245,11 +186,7 @@ function SectionView({ section, title, onRemove, ...ctx }: { section: Section; t
         </ListLabel>
         <span className="font-mono text-xs text-muted-foreground">{section}</span>
         <span className="text-xs text-muted-foreground">· {entries.length} {entries.length === 1 ? "step" : "steps"}</span>
-        {onRemove && (
-          <button type="button" onClick={onRemove} aria-label={`Remove ${section} section`} title="Remove section (⌘Z undoes)" className="ml-auto text-muted-foreground hover:text-foreground">
-            <X className="size-3.5" />
-          </button>
-        )}
+        {onRemove && <IconButton icon={X} label="Remove section (⌘Z undoes)" className="ml-auto" onClick={onRemove} />}
       </header>
       <ListView list={{ section, owner: [], kind: "steps" }} entries={entries} depth={0} {...ctx} />
     </section>
@@ -338,9 +275,14 @@ function EntryView({ address, entry, kind, depth, ...ctx }: { address: Address; 
   const isDragged = ctx.dragging && "entry" in ctx.dragging && ctx.dragging.entry === key;
   const b = entry.body;
   const look = kindOf(b);
+  const row = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (isSelected) row.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [isSelected]);
   return (
     <div className={cn(ctx.visited && !onPath && "opacity-45", isDragged && "opacity-40")}>
       <div
+        ref={row}
         role="treeitem"
         aria-selected={isSelected}
         aria-label={`${kind === "steps" ? "Step" : "Option"} ${entry.id}`}

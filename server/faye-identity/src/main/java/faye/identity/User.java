@@ -12,6 +12,8 @@ import org.jspecify.annotations.Nullable;
  * @param totpLastStep last TOTP time step accepted, so a code is never accepted twice
  * @param preview a test account seeded for previews; preview clients' flows are the only ones that
  *     find it
+ * @param tenant the only tenant whose clients' flows find this account; null for an account every
+ *     tenant shares
  */
 public record User(
         String subject,
@@ -23,7 +25,8 @@ public record User(
         long totpLastStep,
         List<Passkey> passkeys,
         boolean mfaRequired,
-        boolean preview) {
+        boolean preview,
+        @Nullable String tenant) {
 
     /**
      * A registered WebAuthn credential.
@@ -37,7 +40,33 @@ public record User(
         passkeys = List.copyOf(passkeys);
     }
 
-    /** An account that is not a preview test account. */
+    /** An account every tenant shares. */
+    public User(
+            String subject,
+            String identifier,
+            @Nullable String name,
+            boolean emailVerified,
+            @Nullable String passwordHash,
+            @Nullable String totpSecret,
+            long totpLastStep,
+            List<Passkey> passkeys,
+            boolean mfaRequired,
+            boolean preview) {
+        this(
+                subject,
+                identifier,
+                name,
+                emailVerified,
+                passwordHash,
+                totpSecret,
+                totpLastStep,
+                passkeys,
+                mfaRequired,
+                preview,
+                null);
+    }
+
+    /** An account every tenant shares that is not a preview test account. */
     public User(
             String subject,
             String identifier,
@@ -72,7 +101,8 @@ public record User(
                 lastStep,
                 passkeys,
                 mfaRequired,
-                preview);
+                preview,
+                tenant);
     }
 
     User withPasskeys(List<Passkey> passkeys) {
@@ -86,6 +116,7 @@ public record User(
                 totpLastStep,
                 passkeys,
                 mfaRequired,
-                preview);
+                preview,
+                tenant);
     }
 }

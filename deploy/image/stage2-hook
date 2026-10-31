@@ -1,0 +1,46 @@
+#!/bin/sh
+# Runs before s6-rc compiles the service database (S6_STAGE2_HOOK): removes every service
+# not selected by FAYE_SERVICES / FAYE_DEMO from the user bundle and from every
+# dependencies.d, or s6-rc would pull it back as another service's dependency. The hook's
+# environment is sanitized, so read the settings from /run/s6/container_environment.
+# Only long running services have a <service>-log pair; one shots prefix in their script.
+rc=/etc/s6-overlay/s6-rc.d
+bundles=/etc/s6-overlay/user-bundles.d
+val() {
+  if [ -f "/run/s6/container_environment/$1" ]; then
+    cat "/run/s6/container_environment/$1"
+  else
+    printf %s "$2"
+  fi
+}
+enabled=" init "
+for s in $(val FAYE_SERVICES "hydra,faye,login,admin" | tr ',' ' '); do
+  enabled="$enabled$s "
+  [ -d "$rc/$s-log" ] && enabled="$enabled$s-log "
+done
+# hydra-migrate goes with hydra
+case "$enabled" in *" hydra "*) enabled="${enabled}hydra-migrate " ;; esac
+if [ "$(val FAYE_DEMO false)" = "true" ]; then
+  for s in ip-reputation bootstrap seed demo-client; do
+    enabled="$enabled$s "
+    [ -d "$rc/$s-log" ] && enabled="$enabled$s-log "
+  done
+fi
+echo "services:$enabled"
+for dir in "$rc"/*; do
+  s=${dir##*/}
+  [ -d "$dir" ] || continue
+  case "$s" in user*) continue ;; esac
+  case "$enabled" in
+    *" $s "*) ;;
+    *)
+      rm -f "$bundles"/*/contents.d/"$s"
+      for d in "$rc"/*/dependencies.d; do rm -f "$d/$s"; done
+      rm -f "$rc/$s/producer-for" "$rc/$s/consumer-for"
+      for c in "$rc"/*/producer-for; do
+        [ -f "$c" ] && [ "$(cat "$c")" = "$s" ] && rm -f "$c"
+      done
+      ;;
+  esac
+done
+exit 0

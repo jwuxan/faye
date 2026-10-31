@@ -1,0 +1,3 @@
+#!/command/with-contenv sh
+set -o pipefail
+s6-setuidgid 103:101 sh -c 'umask 007; exec node /opt/faye/deploy/directory/seed.mjs' 2>&1 | /etc/s6-overlay/scripts/log-prefix seed

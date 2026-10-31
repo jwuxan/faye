@@ -12,6 +12,9 @@ spotless-plugin = "8.10.4"
 palantir-java-format = "2.103.0"
 checkstyle = "14.3.0"
 quickjs4j = "0.1.1"
+sqlite-jdbc = "3.53.4.0"
+hydra-client = "2.2.0"
+jakarta-annotation = "2.1.1"
 
 [libraries]
 spring-boot-bom = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
@@ -30,12 +33,19 @@ webauthn4j-core = { module = "com.webauthn4j:webauthn4j-core", version.ref = "we
 jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref = "jetbrains-annotations" }
 webauthn4j-test = { module = "com.webauthn4j:webauthn4j-test", version.ref = "webauthn4j" }
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
-spring-boot-starter-data-redis = { module = "org.springframework.boot:spring-boot-starter-data-redis" }
+spring-boot-starter-jdbc = { module = "org.springframework.boot:spring-boot-starter-jdbc" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+# Versioned schema migrations, Boot managed (ADR 0020)
+flyway-core = { module = "org.flywaydb:flyway-core" }
 jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 errorprone-core = { module = "com.google.errorprone:error_prone_core", version.ref = "errorprone" }
 quickjs4j = { module = "io.roastedroot:quickjs4j", version.ref = "quickjs4j" }
 nullaway = { module = "com.uber.nullaway:nullaway", version.ref = "nullaway" }
+# Ory's generated admin client, matching the pinned Hydra (ADR 0021)
+hydra-client = { module = "sh.ory.hydra:hydra-client", version.ref = "hydra-client" }
+# The generated classes carry these annotations; javac needs them to read the classes (compile only)
+jakarta-annotation-api = { module = "jakarta.annotation:jakarta.annotation-api", version.ref = "jakarta-annotation" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }

@@ -7,7 +7,9 @@ import { useEffect, useState } from "react";
 import { api, type PreviewRun, type PreviewView, type Seeded } from "../../../lib/api";
 import { remaining, totp } from "../../../lib/totp";
 import { describe, type LiveRun, type Recorded } from "../../../lib/trace";
-import { field, Select } from "../../ui";
+import { Input } from "@faye/ui/components/input";
+import { Toggle } from "@faye/ui/components/toggle";
+import { Choice, denseMono, IconButton, Overline } from "../../ui";
 
 /** An IP in TEST-NET-3, which the local ip-reputation stub scores as high risk. */
 const RISKY_IP = "203.0.113.7";
@@ -134,7 +136,7 @@ export function Preview({
       </header>
 
       <section className="grid gap-2" aria-label="Scenario">
-        <h3 className="text-xs font-medium text-muted-foreground">Scenario</h3>
+        <Overline>Scenario</Overline>
         <div className="flex flex-wrap gap-1.5">
           <Preset onClick={() => seed(false)} disabled={seeding}>
             New user
@@ -148,19 +150,15 @@ export function Preview({
           <Preset onClick={() => set({ acrValues: "faye:2fa" })} active={launch.acrValues === "faye:2fa"}>
             Client requests MFA
           </Preset>
-          <button
-            type="button"
-            aria-label="Reset scenario"
-            title="Reset scenario"
+          <IconButton
+            icon={RotateCcw}
+            label="Reset scenario"
             onClick={() => {
               setLaunch(EMPTY);
               setAccount(null);
               setSecret("");
             }}
-            className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            <RotateCcw className="size-3.5" />
-          </button>
+          />
         </div>
         {account && (
           <dl className="grid grid-cols-[max-content_1fr_auto] items-center gap-x-2 gap-y-1 rounded-md border p-2 text-xs">
@@ -178,29 +176,21 @@ export function Preview({
       </section>
 
       <section className="grid gap-2" aria-label="Launch">
-        <h3 className="text-xs font-medium text-muted-foreground">Launch</h3>
+        <Overline>Launch</Overline>
         <Row label="login_hint">
-          <input className={cn(field, "w-full font-mono")} value={launch.loginHint} onChange={(e) => set({ loginHint: e.target.value })} placeholder="alice@example.com" />
+          <Input className={cn(denseMono, "w-full")} value={launch.loginHint} onChange={(e) => set({ loginHint: e.target.value })} placeholder="alice@example.com" />
         </Row>
         <Row label="acr_values">
-          <Select className="w-full font-mono" value={launch.acrValues} onChange={(e) => set({ acrValues: e.target.value })}>
-            <option value="">none</option>
-            <option value="faye:1fa">faye:1fa</option>
-            <option value="faye:2fa">faye:2fa</option>
-          </Select>
+          <Choice label="acr_values" className="w-full" none="none" value={launch.acrValues} options={[{ value: "faye:1fa" }, { value: "faye:2fa" }]} onChange={(acrValues) => set({ acrValues })} />
         </Row>
         <Row label="prompt">
-          <Select className="w-full font-mono" value={launch.prompt} onChange={(e) => set({ prompt: e.target.value })}>
-            <option value="">default</option>
-            <option value="login">login</option>
-            <option value="consent">consent</option>
-          </Select>
+          <Choice label="prompt" className="w-full" none="default" value={launch.prompt} options={[{ value: "login" }, { value: "consent" }]} onChange={(prompt) => set({ prompt })} />
         </Row>
         <Row label="request.ip">
-          <input className={cn(field, "w-full font-mono")} value={launch.ip} onChange={(e) => set({ ip: e.target.value })} placeholder="the browser's" />
+          <Input className={cn(denseMono, "w-full")} value={launch.ip} onChange={(e) => set({ ip: e.target.value })} placeholder="the browser's" />
         </Row>
         <span title={blocked ?? "Open the demo client with this draft"}>
-          <Button onClick={start} disabled={blocked !== null} className="h-8 w-full gap-1.5">
+          <Button size="sm" onClick={start} disabled={blocked !== null} className="w-full">
             <ExternalLink className="size-3.5" />
             {blocked ?? "Launch preview"}
           </Button>
@@ -209,10 +199,10 @@ export function Preview({
       </section>
 
       <section className="grid gap-2" aria-label="Trace">
-        <h3 className="flex items-center text-xs font-medium text-muted-foreground">
-          Trace
-          {run && <span className="ml-auto font-mono font-normal">{run.flowId.slice(0, 10)}</span>}
-        </h3>
+        <div className="flex items-center">
+          <Overline>Trace</Overline>
+          {run && <span className="ml-auto font-mono text-xs text-muted-foreground">{run.flowId.slice(0, 10)}</span>}
+        </div>
         {!run ? (
           <p className="text-xs text-muted-foreground">Launch a preview: each step appears here and lights up in the tree as it runs.</p>
         ) : (
@@ -298,8 +288,8 @@ function TotpField({ secret, onChange }: { secret: string; onChange: (s: string)
   return (
     <Row label="TOTP secret">
       <div className="grid gap-1">
-        <input
-          className={cn(field, "w-full font-mono")}
+        <Input
+          className={cn(denseMono, "w-full")}
           value={secret}
           onChange={(e) => onChange(e.target.value.trim())}
           placeholder="paste from otp_enroll"
@@ -321,18 +311,16 @@ function TotpField({ secret, onChange }: { secret: string; onChange: (s: string)
 
 function Preset({ children, onClick, active, disabled }: { children: string; onClick: () => void; active?: boolean; disabled?: boolean }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <Toggle
+      variant="outline"
+      size="sm"
+      pressed={!!active}
+      onPressedChange={onClick}
       disabled={disabled}
-      aria-pressed={active}
-      className={cn(
-        "h-7 rounded-md border px-2 text-xs transition-colors hover:bg-accent disabled:opacity-50",
-        active && "border-accent-ui bg-accent-ui/8 text-accent-ui",
-      )}
+      className="h-7 px-2 text-xs font-normal data-[state=on]:border-accent-ui data-[state=on]:bg-accent-ui/8 data-[state=on]:text-accent-ui"
     >
       {children}
-    </button>
+    </Toggle>
   );
 }
 
@@ -346,15 +334,5 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 function CopyButton({ text, label }: { text: string; label: string }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={() => navigator.clipboard?.writeText(text)}
-      className="grid size-6 place-items-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-    >
-      <Copy className="size-3.5" />
-    </button>
-  );
+  return <IconButton icon={Copy} label={label} className="size-6" onClick={() => navigator.clipboard?.writeText(text)} />;
 }

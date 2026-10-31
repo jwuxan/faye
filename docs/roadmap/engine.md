@@ -63,7 +63,7 @@ Only handlers marked as credentials may add to `auth.verified`. `amr` and `acr` 
 
 ## Flow state store
 
-Redis with TTL equal to Hydra's challenge lifetime. Keys: `flow:{flowId}`. Optimistic concurrency via a version counter to reject double submits. An in memory store implements the same interface for tests.
+SQLite ([ADR 0017](../adr/0017-one-sqlite-database.md)), table `faye_flow`, with an expiry equal to Hydra's challenge lifetime. Optimistic concurrency via a version counter to reject double submits. An in memory store implements the same interface for tests.
 
 ## Conformance suite
 

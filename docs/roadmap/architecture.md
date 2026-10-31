@@ -43,13 +43,13 @@ The control plane and the runtime share exactly one thing: **an immutable flow v
 | Hooks | QuickJS on WebAssembly (quickjs4j) behind a `HookRuntime` interface | Same language as authors expect; hard memory cap, pure Java; swappable (see [hooks.md](hooks.md), [ADR 0009](../adr/0009-m4-javascript-hooks-on-quickjs-wasm.md)) |
 | WebAuthn | webauthn4j | Mature, used by Spring Security |
 | Passwords / OTP | Argon2 (Spring Security), a TOTP library | Standard |
-| Flow state | Redis (in memory map for tests) | TTL aligned to challenge lifetime |
-| Identity / config store | PostgreSQL (shared with Hydra in compose) | One database to run locally |
+| Flow state | SQLite in the demo and local stacks, one database with every other store ([ADR 0017](../adr/0017-one-sqlite-database.md)); in memory map for engine tests; a production deployment plugs its own database behind `FlowStore` | Expiry aligned to challenge lifetime |
+| Identity / config store | SQLite in the same file, behind `UserStore`, `FlowVersions`, `HookStore`; demo only. Faye verifies passwords but never writes one; the identity module saves only passkey enrollments and TOTP state | One database to run locally |
 | Web apps | TypeScript, Next.js (App Router), pnpm workspace | Shared UI package across three apps |
 | UI kit | shadcn/ui on Tailwind CSS | Owned components, consistent design system |
 | Typography | Geist (UI) and Geist Mono (IR, YAML, tokens, codes) via the `geist` package | Clean and legible; mono for anything machine shaped |
 | Editor | Native drag and drop (tree editor), CodeMirror 6 (YAML and hooks), an SVG tree (read only graph), lucide icons | See [admin-ui.md](admin-ui.md), [ADR 0010](../adr/0010-m5-admin-ui.md) |
-| Local env | Docker Compose | Hydra, Postgres, Redis, Faye server, three web apps |
+| Local env | Docker Compose | Hydra and Faye on one SQLite file, Faye server, three web apps |
 
 ## Repository layout
 
@@ -78,7 +78,11 @@ faye/
 │   └── packages/
 │       ├── ui/                   shadcn components, Geist tokens, theme
 │       └── contract/             TS types generated from schema/
-└── deploy/compose.yaml
+├── Dockerfile                    one image, every process under s6-overlay (ADR 0023):
+│                                 server build, jlink JRE, web standalone, s6 runtime
+└── deploy/
+    ├── image/                      s6-rc service tree, scripts, stage2-hook, healthcheck
+    └── compose.yaml                one faye service on the root image
 ```
 
 ## Request lifecycle (login)

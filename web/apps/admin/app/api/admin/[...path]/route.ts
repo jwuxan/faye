@@ -1,14 +1,13 @@
 import { adminFetch } from "../../../../lib/faye";
-import { currentSession } from "../../../../lib/session";
 
 /**
- * Same origin proxy to the Faye admin API for a signed in operator. A state changing call must
+ * Same origin proxy to the Faye admin API; the console has no sign in, so whoever reaches it can use
+ * the admin API (keep it on localhost, as compose does). A state changing call must
  * carry x-faye-admin: 1, which a cross site form cannot send and a cross site fetch cannot send
  * without a CORS preflight this app never answers. Server sent events (the preview trace) stream
  * through, and the upstream request ends when the browser disconnects.
  */
 async function forward(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
-  if (!(await currentSession())) return Response.json({ error: "signed_out" }, { status: 401 });
   if (request.method !== "GET" && request.headers.get("x-faye-admin") !== "1") {
     return Response.json({ error: "missing x-faye-admin header" }, { status: 403 });
   }

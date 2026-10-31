@@ -1,0 +1,5 @@
+#!/bin/sh
+export PORT=3000 HOSTNAME=0.0.0.0
+# --max-semi-space-size=1: a smaller young generation cuts each Next server ~25 MB RSS (ADR 0023)
+cd /opt/faye/web/login
+exec node --max-semi-space-size=1 apps/login/server.js

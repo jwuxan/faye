@@ -1,0 +1,49 @@
+# Test configuration. It replaces src/main/resources/application.yaml on the test classpath: the
+# tenants the tests sign in to, and fixed test accounts that the shipped config does not have.
+spring:
+  application:
+    name: faye
+  # A fresh database per Spring context, under build/
+  datasource:
+    url: jdbc:sqlite:build/faye-test-${random.uuid}.db?journal_mode=WAL&busy_timeout=10000&transaction_mode=IMMEDIATE
+    driver-class-name: org.sqlite.JDBC
+  flyway:
+    # Same settings as production: Faye's own history table, baseline a non empty schema at 0, and
+    # clean disabled because the database is shared
+    table: faye_schema_history
+    baseline-on-migrate: true
+    baseline-version: 0
+    clean-disabled: true
+
+faye:
+  login-ui-url: http://localhost:3000
+  hydra-admin-url: ""
+  flow-ttl: 30m
+  admin-token: ""
+  preview-enabled: false
+  tenants:
+    default:
+      flow: classpath:flows/password-only.yaml
+    mfa:
+      flow: classpath:flows/passkey-totp.yaml
+    partner:
+      flow: classpath:flows/partner-consent.yaml
+    risk:
+      flow: classpath:flows/risk-totp.yaml
+      egress: [ip-reputation]
+  egress:
+    ip-reputation: ""
+  webauthn:
+    rp-id: localhost
+    origins: http://localhost:3000
+  # Test fixtures, shared by every tenant. Alice has TOTP enrolled with this well known secret.
+  demo-users:
+    - subject: user-alice
+      identifier: alice@example.com
+      name: Alice
+      password: correct horse battery staple
+      totp-secret: JBSWY3DPEHPK3PXP
+    - subject: user-bob
+      identifier: bob@example.com
+      name: Bob
+      password: correct horse battery staple

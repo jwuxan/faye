@@ -1,39 +1,19 @@
-/** WebAuthn ceremonies for the passkey screens. Credentials are posted as JSON with base64url fields. */
+/** WebAuthn ceremonies for the passkey screens, driven by @simplewebauthn/browser (ADR 0022). */
+import {
+  browserSupportsWebAuthnAutofill,
+  startAuthentication,
+  startRegistration,
+  WebAuthnAbortService,
+} from "@simplewebauthn/browser";
 
-const encode = (buffer: ArrayBuffer): string =>
-  btoa(String.fromCharCode(...new Uint8Array(buffer))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
-const decode = (text: string): ArrayBuffer => {
-  const binary = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
-  return Uint8Array.from(binary, (c) => c.charCodeAt(0)).buffer;
-};
-
+/** The credential as JSON, posted to the server (the library's own return type). */
 export type CredentialJson = Record<string, unknown>;
 
-function toJson(credential: PublicKeyCredential): CredentialJson {
-  const r = credential.response;
-  const response: Record<string, unknown> = { clientDataJSON: encode(r.clientDataJSON) };
-  if (r instanceof AuthenticatorAttestationResponse) {
-    response.attestationObject = encode(r.attestationObject);
-    response.transports = r.getTransports?.() ?? [];
-  } else if (r instanceof AuthenticatorAssertionResponse) {
-    response.authenticatorData = encode(r.authenticatorData);
-    response.signature = encode(r.signature);
-    if (r.userHandle) response.userHandle = encode(r.userHandle);
-  }
-  return {
-    id: credential.id,
-    rawId: encode(credential.rawId),
-    type: credential.type,
-    response,
-    clientExtensionResults: credential.getClientExtensionResults(),
-  };
-}
+const asJson = (credential: object): CredentialJson => credential as CredentialJson;
 
 /** Whether the browser offers passkeys in the identifier field's autofill. */
 export async function autofillAvailable(): Promise<boolean> {
-  return typeof PublicKeyCredential !== "undefined"
-    && (await PublicKeyCredential.isConditionalMediationAvailable?.()) === true;
+  return browserSupportsWebAuthnAutofill();
 }
 
 /**
@@ -42,41 +22,39 @@ export async function autofillAvailable(): Promise<boolean> {
  */
 export async function getPasskey(
   challenge: string,
-  options: { conditional?: boolean; signal?: AbortSignal } = {},
+  options: { conditional?: boolean } = {},
 ): Promise<CredentialJson | null> {
   try {
-    const credential = await navigator.credentials.get({
-      mediation: options.conditional ? "conditional" : "optional",
-      signal: options.signal,
-      publicKey: { challenge: decode(challenge), userVerification: "preferred" },
-    });
-    return credential instanceof PublicKeyCredential ? toJson(credential) : null;
+    return asJson(await startAuthentication({
+      optionsJSON: { challenge, userVerification: "preferred" },
+      useBrowserAutofill: options.conditional === true,
+    }));
   } catch {
     return null;
   }
 }
 
+/** Cancels the pending ceremony: the silent autofill request on unmount, or before another starts. */
+export function cancelPasskeyCeremony(): void {
+  WebAuthnAbortService.cancelCeremony();
+}
+
 /** Creates a discoverable passkey for the signed in account. Resolves null if dismissed. */
 export async function createPasskey(
   challenge: string,
-  user: { userId: string; userName: string; displayName: string },
+  register: { userId: string; userName: string; displayName: string; algorithms: number[] },
 ): Promise<CredentialJson | null> {
   try {
-    const credential = await navigator.credentials.create({
-      publicKey: {
-        challenge: decode(challenge),
+    return asJson(await startRegistration({
+      optionsJSON: {
+        challenge,
         rp: { name: "Faye" },
-        user: { id: decode(user.userId), name: user.userName, displayName: user.displayName },
-        // ES256, then RS256: what the server accepts
-        pubKeyCredParams: [
-          { type: "public-key", alg: -7 },
-          { type: "public-key", alg: -257 },
-        ],
+        user: { id: register.userId, name: register.userName, displayName: register.displayName },
+        pubKeyCredParams: register.algorithms.map((alg) => ({ type: "public-key" as const, alg })),
         authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
         attestation: "none",
       },
-    });
-    return credential instanceof PublicKeyCredential ? toJson(credential) : null;
+    }));
   } catch {
     return null;
   }

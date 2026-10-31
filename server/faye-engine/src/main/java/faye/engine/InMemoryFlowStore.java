@@ -4,7 +4,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Test store. Keeps the JSON form, like Redis does, so nothing survives that would not survive a restart. */
+/**
+ * Test store. Keeps the JSON form, like the SQLite store does, so nothing survives that would not
+ * survive a restart.
+ */
 public final class InMemoryFlowStore implements FlowStore {
 
     private final Map<String, String> states = new ConcurrentHashMap<>();

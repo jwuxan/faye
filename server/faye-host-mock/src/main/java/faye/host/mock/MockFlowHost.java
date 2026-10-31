@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import org.jspecify.annotations.Nullable;
 
 /** In memory authorization server for tests and the conformance suite. Records every decision. */
 public final class MockFlowHost implements FlowHost {
@@ -25,10 +26,22 @@ public final class MockFlowHost implements FlowHost {
     private final List<ConsentAccepted> consented = new CopyOnWriteArrayList<>();
     private final List<Rejected> rejected = new CopyOnWriteArrayList<>();
     private final String callbackUrl;
+    private final Map<String, Object> client;
+
+    /**
+     * @param callbackUrl where accept and reject redirect, with the challenge and result appended
+     * @param tenant the tenant of client {@code demo}; none when null, so its flows run the default tenant's
+     */
+    public MockFlowHost(String callbackUrl, @Nullable String tenant) {
+        this.callbackUrl = callbackUrl;
+        this.client = tenant == null
+                ? Map.of("client_id", "demo")
+                : Map.of("client_id", "demo", "metadata", Map.of("tenant", tenant));
+    }
 
     /** @param callbackUrl where accept and reject redirect, with the challenge and result appended */
     public MockFlowHost(String callbackUrl) {
-        this.callbackUrl = callbackUrl;
+        this(callbackUrl, null);
     }
 
     public MockFlowHost() {
@@ -44,7 +57,7 @@ public final class MockFlowHost implements FlowHost {
     public HostRequest load(HostKind kind, String challenge) {
         HostRequest req = requests.get(challenge);
         if (req != null && req.kind() == kind) return req;
-        return new HostRequest(kind, challenge, Map.of("client_id", "demo"), Map.of());
+        return new HostRequest(kind, challenge, client, Map.of());
     }
 
     @Override

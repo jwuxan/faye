@@ -8,10 +8,6 @@ on:
 jobs:
   server:
     runs-on: ubuntu-latest
-    services:
-      redis:
-        image: redis:7
-        ports: ["6379:6379"]
     defaults:
       run:
         working-directory: server
@@ -23,8 +19,6 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew build
-        env:
-          FAYE_REQUIRE_REDIS: "1"
 
   web:
     runs-on: ubuntu-latest
@@ -49,17 +43,18 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-  # M2 to M5 checks: the compose stack signs in through every demo tenant and the Admin UI (deploy/smoke.sh).
+  # M2 to M6 checks: the compose stack signs in through every tenant and application and the Admin UI (deploy/smoke.sh).
   e2e:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: docker compose -f deploy/compose.yaml up -d --build
-      - name: Wait for the stack and the demo client registrations
+      - name: Wait for the stack and the client registrations
         run: |
-          for i in $(seq 1 120); do
-            # faye-admin is the last client bootstrap registers; Faye and the Login UI only need to accept connections.
-            if curl -fs -o /dev/null http://localhost:4445/admin/clients/faye-admin \
+          for i in $(seq 1 180); do
+            # Bank Investments is the last client bootstrap registers. Hydra's admin API is not
+            # published (ADR 0022), so read it inside the container.
+            if docker exec faye wget -qO- 'http://127.0.0.1:4445/admin/clients?client_name=Bank%20Investments' | grep -q client_id \
               && curl -fs -o /dev/null http://localhost:3001 \
               && curl -fs -o /dev/null http://localhost:3002 \
               && curl -s -o /dev/null http://localhost:8080 \
@@ -68,5 +63,8 @@ jobs:
           done
           exit 1
       - run: deploy/smoke.sh
+      - name: Hydra's admin API is not published
+        run: |
+          curl -fs -m 5 -o /dev/null http://localhost:4445/health/ready && exit 1 || exit 0
       - if: failure()
-        run: docker compose -f deploy/compose.yaml logs
+        run: docker logs faye

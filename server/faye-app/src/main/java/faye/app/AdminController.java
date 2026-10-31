@@ -7,6 +7,7 @@ import faye.check.Publisher;
 import faye.check.Report;
 import faye.dsl.DslException;
 import faye.dsl.FlowCompiler;
+import faye.engine.ClientDirectory;
 import faye.engine.FlowVersion;
 import faye.engine.FlowVersions;
 import faye.engine.Handler;
@@ -15,6 +16,8 @@ import faye.engine.HookException;
 import faye.engine.HookOutput;
 import faye.engine.ScreenType;
 import faye.hooks.SandboxedHooks;
+import faye.identity.User;
+import faye.identity.UserStore;
 import faye.ir.Flow;
 import faye.ir.HookDef;
 import faye.ir.IrCodec;
@@ -185,6 +188,36 @@ class AdminController {
 
     record Refusal(String error) {}
 
+    /**
+     * An account, without its secrets: which credentials it has, never their values.
+     *
+     * @param passkeys how many passkeys are registered
+     * @param tenant the tenant the account belongs to, or null for an account every tenant shares
+     */
+    record UserView(
+            String subject,
+            @Nullable String tenant,
+            String identifier,
+            @Nullable String name,
+            boolean emailVerified,
+            boolean password,
+            boolean totp,
+            int passkeys,
+            boolean mfaRequired) {
+        static UserView of(User u) {
+            return new UserView(
+                    u.subject(),
+                    u.tenant(),
+                    u.identifier(),
+                    u.name(),
+                    u.emailVerified(),
+                    u.passwordHash() != null,
+                    u.totpSecret() != null,
+                    u.passkeys().size(),
+                    u.mfaRequired());
+        }
+    }
+
     private final Publisher publisher;
     private final FlowVersions versions;
     private final FayeProperties props;
@@ -193,6 +226,8 @@ class AdminController {
     private final HandlerRegistry handlers;
     private final SandboxedHooks hooks;
     private final AdminAuth auth;
+    private final ClientDirectory clients;
+    private final UserStore users;
 
     AdminController(
             Publisher publisher,
@@ -202,7 +237,9 @@ class AdminController {
             Tenants tenants,
             HandlerRegistry handlers,
             SandboxedHooks hooks,
-            AdminAuth auth) {
+            AdminAuth auth,
+            ClientDirectory clients,
+            UserStore users) {
         this.publisher = publisher;
         this.versions = versions;
         this.props = props;
@@ -211,6 +248,8 @@ class AdminController {
         this.handlers = handlers;
         this.hooks = hooks;
         this.auth = auth;
+        this.clients = clients;
+        this.users = users;
     }
 
     @GetMapping("/admin/catalog")
@@ -236,6 +275,38 @@ class AdminController {
                 .sorted()
                 .map(id -> new TenantView(
                         id, versions.current(id).map(FlowVersion::hash).orElse(null)))
+                .toList();
+    }
+
+    /** The tenant's OAuth clients, as the authorization server holds them. Read only. */
+    @GetMapping("/admin/tenants/{tenant}/clients")
+    List<ClientDirectory.Client> clients(
+            @PathVariable String tenant,
+            @RequestHeader(name = "Authorization", required = false) @Nullable String authorization) {
+        authorize(authorization, tenant);
+        try {
+            return clients.clients().stream()
+                    .filter(c -> tenant.equals(c.tenant()))
+                    .sorted(Comparator.comparing(ClientDirectory.Client::id))
+                    .toList();
+        } catch (IllegalStateException e) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY, "the authorization server did not list its clients", e);
+        }
+    }
+
+    /**
+     * The accounts the tenant's flows can sign in: its own and those every tenant shares. Read only;
+     * preview test accounts are left out.
+     */
+    @GetMapping("/admin/tenants/{tenant}/users")
+    List<UserView> users(
+            @PathVariable String tenant,
+            @RequestHeader(name = "Authorization", required = false) @Nullable String authorization) {
+        authorize(authorization, tenant);
+        return users.all().stream()
+                .filter(u -> !u.preview() && (u.tenant() == null || tenant.equals(u.tenant())))
+                .map(UserView::of)
                 .toList();
     }
 

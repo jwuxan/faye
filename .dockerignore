@@ -1,0 +1,13 @@
+.git
+**/node_modules
+**/.next
+**/build
+**/.gradle
+**/dist
+server/dump.rdb
+deploy/.bin
+deploy/.data
+*.db
+docs
+conformance
+*.md

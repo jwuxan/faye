@@ -162,7 +162,8 @@ class FlowCompilerTest {
                         e -> assertThat(e.diagnostics())
                                 .extracting(Diagnostic::toString)
                                 .containsExactly(
-                                        "bad.yaml:6:11: invalid predicate: /xor: unknown operator xor",
+                                        "bad.yaml:6:11: invalid predicate: : $: must be valid to one and only one "
+                                                + "schema, but 0 are valid",
                                         "bad.yaml:7:14: retry must be an integer from 1 to 10",
                                         "bad.yaml:10:20: 'alternative' must be a non empty mapping",
                                         "bad.yaml:9:5: step needs one of 'set', 'hook', 'screen', 'use', "

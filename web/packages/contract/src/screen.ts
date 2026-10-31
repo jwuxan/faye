@@ -122,6 +122,12 @@ export interface PasskeyScreen {
     userId: string;
     userName: string;
     displayName: string;
+    /**
+     * COSE algorithm ids the server verifies, in order of preference.
+     *
+     * @minItems 1
+     */
+    algorithms: [number, ...number[]];
   };
   errors?: Errors;
   attemptsLeft?: AttemptsLeft;

@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
-import { CLIENTS, oidcConfig, type Pending, PENDING_COOKIE, redirectUri } from "../../lib/oidc";
+import { client, clients, oidcConfig, type Pending, PENDING_COOKIE, redirectUri } from "../../lib/oidc";
 
 const random = () => randomBytes(32).toString("base64url");
 
@@ -11,8 +11,7 @@ const PASSTHROUGH = ["acr_values", "login_hint", "prompt", "max_age", "ui_locale
 export function GET(request: Request) {
   const config = oidcConfig();
   const query = new URL(request.url).searchParams;
-  const requested = query.get("client");
-  const clientId = CLIENTS.some((c) => c.id === requested) ? requested! : config.clientId;
+  const clientId = (client(query.get("client")) ?? clients()[0]).id;
   const pending: Pending = { state: random(), nonce: random(), verifier: random(), clientId };
   const params = new URLSearchParams({
     response_type: "code",
