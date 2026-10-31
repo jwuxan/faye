@@ -1,6 +1,6 @@
 package faye.host.hydra;
 
-import faye.engine.ClientDirectory;
+import faye.clients.ClientDirectory;
 import java.net.URI;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;

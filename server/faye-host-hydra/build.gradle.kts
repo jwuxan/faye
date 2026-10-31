@@ -1,5 +1,6 @@
 dependencies {
     api(project(":faye-engine"))
+    api(project(":faye-clients"))
     testImplementation(libs.jackson.databind)
     // Ory's official admin client (okhttp + Gson), matching the pinned Hydra 2.2.0 (ADR 0021). The
     // OAuth2 pieces are excluded: the admin API is called without OAuth.

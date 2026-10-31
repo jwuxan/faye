@@ -23,7 +23,13 @@ class BoundaryTest {
     private static final Path SERVER = Path.of(System.getProperty("faye.repoRoot"), "server");
     private static final List<String> CORE = List.of("faye-ir", "faye-dsl", "faye-engine", "faye-check");
     private static final List<String> OUTSIDE = List.of(
-            ":faye-host-hydra", ":faye-host-mock", ":faye-screens", ":faye-identity", ":faye-hooks", ":faye-app");
+            ":faye-host-hydra",
+            ":faye-host-mock",
+            ":faye-screens",
+            ":faye-clients",
+            ":faye-identity",
+            ":faye-hooks",
+            ":faye-app");
 
     /** The host contract is the one place the protocol's parameter names are written down. */
     private static final String CONTRACT = "HostParams.java";
@@ -36,6 +42,10 @@ class BoundaryTest {
             String lower = text.toLowerCase(Locale.ROOT);
             if (lower.contains("hydra")) found.add(file + ": hydra");
             if (lower.contains("otpauth")) found.add(file + ": otpauth");
+            // The authorization server's clients are the admin console's business (faye-clients)
+            if (text.contains("ClientDirectory") || text.contains("redirectUris")) {
+                found.add(file + ": the authorization server's client registry");
+            }
             if (text.contains("PASSKEY_ALGORITHMS")) found.add(file + ": PASSKEY_ALGORITHMS");
             if (text.contains("\"Faye\"")) found.add(file + ": \"Faye\"");
             // Tenant and preview come typed from the host; claims are the host's (ADR 0025)

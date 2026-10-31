@@ -69,7 +69,8 @@ faye/
 │   ├── faye-screens/             the screens of screen protocol v1 as ScreenSpecs
 │   ├── faye-hooks/               HookRuntime interface + QuickJS on Wasm implementation, egress
 │   ├── faye-identity/            users, password, TOTP, WebAuthn handlers and their issuers
-│   ├── faye-host-hydra/          FlowHost for Hydra
+│   ├── faye-clients/             ClientDirectory: the admin SPI over the authorization server's clients
+│   ├── faye-host-hydra/          FlowHost and ClientDirectory for Hydra
 │   ├── faye-host-mock/           FlowHost for tests
 │   └── faye-app/                 Spring Boot: screen API, admin API, wiring
 ├── web/                          pnpm workspace

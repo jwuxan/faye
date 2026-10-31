@@ -155,7 +155,7 @@ Faye is the IdP's frontend: it completes the sign in and reports what was proven
 * `HostKind` (`LOGIN`, `CONSENT`, `LOGOUT`) names kinds of request, not Hydra endpoints. It and `EntrySelector` are unchanged.
 * The `/login?login_challenge=` and `/consent?consent_challenge=` routes are the Hydra host's HTTP surface. They stay in `faye-app`. An embedding host adds its own start route, or calls `Engine.start` as a library.
 * The IR grammar and format 1, the state format, the screen types and `conformance/handlers.yaml` do not change. Only the handler modules gain issuers.
-* `ClientDirectory`, the read only list of the authorization server's clients for the Admin UI, stays in `faye-engine` though the engine never uses it; moving it to a host API module is left for a later change.
+* `ClientDirectory`, the read only list of the authorization server's clients for the Admin UI, leaves `faye-engine`, which never used it, for its own module `faye-clients`: an admin SPI that `faye-host-hydra` implements and the app's admin API reads. `BoundaryTest` refuses it in the core.
 
 ### Consequences
 

@@ -6,6 +6,7 @@ include(
     "faye-check",
     "faye-engine",
     "faye-screens",
+    "faye-clients",
     "faye-hooks",
     "faye-identity",
     "faye-host-mock",

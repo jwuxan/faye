@@ -1,12 +1,13 @@
-package faye.engine;
+package faye.clients;
 
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Read only view of the OAuth clients the authorization server holds, for the Admin UI. The
- * authorization server owns clients: Faye never registers, changes or deletes one, and the engine
- * does not use this interface.
+ * authorization server owns clients: Faye never registers, changes or deletes one. An admin SPI,
+ * not part of the engine: a host module implements it ({@code HydraClientDirectory}), the app's
+ * admin API reads it, and the core never sees it (ADR 0025).
  */
 public interface ClientDirectory {
 
