@@ -97,10 +97,10 @@ The browser goes to Hydra, then to Faye, then to the Login UI. Acme's flow is [`
 
 The browser returns to the demo client. The **Signed in** card shows the claims of the ID token: `sub`, `name`, `email`, `amr`, `acr` and `auth_time`. The **ID token** card shows the raw token and its decoded claims.
 
-For this sign in, `amr` is `["pwd"]` and `acr` is `faye:1fa`. The engine computes both from the credentials that verified. A flow cannot set them.
+For this sign in, the authentication methods references (`amr`) are `["pwd"]`. The authentication context class reference (`acr`) is `faye:1fa`. The engine computes both claims from the credentials that verified. A flow cannot set them.
 
 > [!TIP]
-> To see a second factor, select **Sign out**, pick **Bank Online**, and use a `bank` account that has a `totp_secret`. After the password, the flow asks for a 6 digit code. Add the secret to an authenticator app, or run `oathtool --totp -b <secret>` if you have `oathtool`. Next, the flow offers to create a passkey; select **Not now**. The token then shows `amr` with `pwd` and `otp`, and `acr` is `faye:2fa`.
+> To see a second factor, select **Sign out**, pick **Bank Online**, and use a `bank` account that has a `totp_secret`. After the password, the flow asks for a 6 digit code. If you have `oathtool`, run `oathtool --totp -b <secret>`. Otherwise, add the secret to an authenticator app. Next, the flow offers to create a passkey. Select **Not now**. In the token, `amr` now lists `pwd` and `otp`, and `acr` is `faye:2fa`.
 
 To try a one time code instead of a password, pick **Email** on the method screen. The demo does not send email. Faye writes each code to a file in the container:
 
@@ -122,15 +122,15 @@ The sidebar has these pages:
 On **Applications**, every application has **Try sign in**, which runs it through the demo client.
 
 > [!CAUTION]
-> The Admin UI has no sign in. Anyone who can reach it can publish flows. The compose file binds it to `127.0.0.1` only, so only your machine can reach it. Keep it that way.
+> The Admin UI has no sign in. Anyone who can reach the Admin UI can publish flows. The compose file binds the Admin UI to `127.0.0.1` only, so only your machine can reach it. Do not change this setting.
 
 ### 6. Change the flow and preview it
 
 1. Open **Login flow** and select the **YAML** tab.
-2. Delete the `add-phone` step: the comment line, `add-phone:` and its three lines.
+2. Delete the `add-phone` step. The step is the comment line, the `add-phone:` line and the three lines under it.
 3. Wait for the header to show **Draft saved** and the status bar to show **No problems**. The checker runs on every edit.
 4. Select the **Preview** tab. In **Account**, choose **New user**. Then select **Preview**.
-5. Sign in with the identifier and password that the panel shows. The **Add a phone number** screen no longer appears. The trace lights up each block that the run visits.
+5. Sign in with the identifier and password that the panel shows. The **Add a phone number** screen no longer appears. The trace highlights each block that the run visits.
 
 The preview runs your draft, not the live version. Nothing changes for real users until you select **Publish**.
 
@@ -176,7 +176,7 @@ All state lives in one volume at `/var/lib/faye`. Hydra's tables and Faye's tabl
 
 ### Sign in hangs, or the container never becomes healthy
 
-The usual cause is a stale database from an earlier build. Delete the volume and start again:
+The usual cause is an old database from an earlier build. Delete the volume and start again:
 
 ```bash
 docker compose -f deploy/compose.yaml down -v && make up
@@ -184,15 +184,15 @@ docker compose -f deploy/compose.yaml down -v && make up
 
 ### The first start is slow
 
-This is expected. The health check allows 240 seconds for the start. The seed hashes 1000 passwords before the accounts exist. Run `docker logs -f faye` to see each service start.
+This is normal. The health check allows 240 seconds for the start. The seed hashes 1000 passwords before the accounts exist. Run `docker logs -f faye` to see each service start.
 
 ### A port is already in use
 
-If Docker reports that a port is already allocated, stop the program that uses it. Do not change the port numbers in the compose file. Hydra, the Login UI and the demo client name each other by these URLs.
+If Docker reports that a port is already allocated, stop the program that uses it. Do not change the port numbers in the compose file. Hydra, the Login UI and the demo client find each other by these URLs.
 
 ### Passkeys do not work
 
-Passkeys are scoped to `localhost`. Open the Login UI at http://localhost:3000, through the demo client at http://localhost:3001. A passkey ceremony fails at `127.0.0.1` or at another host name. To serve another host, see `FAYE_PUBLIC_HOST` in [Configuration](../reference/configuration.md#image-and-container).
+Passkeys work only on the host name `localhost`. Open the demo client at http://localhost:3001. The demo client sends you to the Login UI at http://localhost:3000. A passkey fails at `127.0.0.1` or at another host name. To serve another host, see `FAYE_PUBLIC_HOST` in [Configuration](../reference/configuration.md#image-and-container).
 
 ### The admin API answers 404 on port 8080
 

@@ -431,7 +431,7 @@ Later blocks add to `user.*`: Enroll TOTP sets `has_totp`, Add passkey sets `has
 
 `and` and `or` take a list of one or more conditions. `eq`, `ne` and `has` take a path and a literal: a string, an integer or a boolean. `gt` and `lt` take a path and an integer. The path is always first. A literal string is at most 1,024 characters.
 
-Quote a literal that YAML would read as another type, such as `"faye:2fa"` or `"10.0.0.1"`.
+Quote a literal that YAML would read as another type, such as `"yes"`, `"010"` or `"1.5"`.
 
 This condition from `passkey-totp.yaml` combines them:
 

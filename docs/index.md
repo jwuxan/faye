@@ -1,31 +1,31 @@
 ---
-description: Faye runs the sign in and sign up screens in front of an OAuth2 authorization server, from flows you write as YAML and that are checked before they run.
+description: Faye runs the sign in and sign up screens in front of an OAuth2 authorization server, from YAML flows that Faye checks before they run.
 ---
 
 # What is Faye?
 
-Faye is a sign in flow engine. It sits between the browser and an OAuth2 / OpenID Connect authorization server, such as [Ory Hydra](https://www.ory.sh/hydra/). The authorization server keeps the protocol. Faye owns every screen a person sees, and every decision about how that person proves who they are.
+Faye is a sign in flow engine. It sits between the browser and an OAuth2 / OpenID Connect authorization server, such as [Ory Hydra](https://www.ory.sh/hydra/). The authorization server handles the protocol. Faye owns every screen that a person sees. Faye also owns every decision about how that person proves who they are.
 
-You describe a sign in as a short YAML file. Faye checks the file before it runs anywhere, then runs it one screen at a time.
+You describe a sign in as a short YAML file. Faye checks the flow before the flow runs anywhere. Then Faye runs the flow one screen at a time.
 
 > [!NOTE]
-> Faye is a working prototype. It runs end to end with Hydra, two demo tenants and ten demo applications. Production hardening, such as high availability and rate limiting at scale, is designed for but not built yet. See [Vision and north star](understand/vision.md#where-faye-is-today).
+> Faye is a working prototype. It runs end to end with Hydra, two demo tenants and ten demo applications. The design plans for production needs, such as high availability and rate limiting at scale. That work is not built yet. See [Vision and north star](understand/vision.md#where-faye-is-today).
 
 ## The problem Faye solves
 
-Every product needs sign in. Authorization servers such as Hydra handle OAuth2 and OpenID Connect very well, but on purpose they ship no login screens. Each team must build its own login app.
+Every product needs sign in. Authorization servers such as Hydra handle OAuth2 and OpenID Connect very well. But they ship no sign in screens, on purpose. Each team must build its own login app.
 
-A login app looks small, but it is hard to get right:
+A login app looks small. But it is hard to build correctly:
 
 - It needs many screens: password, passkey, one time codes, second factor, consent.
 - It needs safe rules. One wrong branch can let a person in without a password. A careless error message can tell an attacker which accounts exist.
-- It changes often. Security asks for a second factor on risky sign ins. A partner app needs a consent screen. Each change means new code and a new deploy.
+- It changes often. The security team asks for a second factor on risky sign ins. A partner app needs a consent screen. Each change means new code and a new deploy.
 
-Faye replaces that app. You change a flow as data, the checker proves it is still safe, and you try it before you publish it.
+Faye replaces that app. You change a flow as data. The checker proves that the flow is still safe. You try the flow before you publish it.
 
 ## How it works
 
-The diagram shows one sign in. The application sends the person to the authorization server, which hands the login to Faye. Faye runs the tenant's flow and shows each screen in its Login UI. When the flow succeeds, Faye tells the authorization server who signed in and how. The authorization server then issues the tokens.
+The diagram shows one sign in. The application sends the person to the authorization server. The authorization server hands the sign in to Faye. Faye runs the tenant's flow and shows each screen in its Login UI. When the flow succeeds, Faye tells the authorization server who signed in and how. The authorization server then issues the tokens.
 
 ```mermaid
 sequenceDiagram
@@ -44,15 +44,15 @@ sequenceDiagram
   AS->>App: Tokens
 ```
 
-Three ideas carry the design:
+The design rests on three ideas:
 
 1. **Flows are data.** A flow is a YAML file of steps, such as "ask who you are", then "ask for a password". You can read it, diff it and review it like code.
 2. **Flows are checked before they run.** The checker lists every path through a flow. It refuses a flow if any path can succeed without verifying a credential.
-3. **Assurance is computed, not configured.** Faye records which credentials really verified. From that it computes the `amr` and `acr` claims that go into the tokens. No setting and no script can raise them.
+3. **Assurance is computed, not configured.** Faye records which credentials really verified. From those credentials, Faye computes two claims that go into the tokens: the authentication methods references (`amr`) and the authentication context class reference (`acr`). No setting and no script can raise these claims.
 
 ## A flow in one look
 
-This is the `bank` tenant's flow, from [`passkey-totp.yaml`](../apps/server/faye-app/src/main/resources/flows/passkey-totp.yaml), shortened. A person signs in with a passkey, or with a password. After a password, an account that has an authenticator app also enters a code from it.
+This is the `bank` tenant's flow, from [`passkey-totp.yaml`](../apps/server/faye-app/src/main/resources/flows/passkey-totp.yaml), shortened. A person signs in with a passkey, or with a password. If the person used a password and the account has an authenticator app, the person also enters a code from that app.
 
 ```yaml
 flow: passkey-totp
@@ -92,7 +92,7 @@ Each `block` brings its own screen and its own verification code. The flow decid
 | Feature | What it means for you |
 |---|---|
 | Flows as YAML | Sign in logic that people can read and review, kept in version control. |
-| A checker | Every path is listed and checked before a flow is published or previewed. |
+| A checker | The checker lists and checks every path before you publish or preview a flow. |
 | Built in screens | Identifier, password, passkey, one time codes, QR code sign in and consent, accessible and branded per tenant. |
 | Sandboxed hooks | Small JavaScript functions that score risk or route a sign in, but can never sign anyone in. |
 | An Admin UI | Edit a flow as blocks or YAML beside a live graph, preview a draft with a real application, publish and roll back. |
@@ -100,14 +100,14 @@ Each `block` brings its own screen and its own verification code. The flow decid
 
 ## What Faye is not
 
-Faye has a narrow job on purpose. The [charter](../CHARTER.md) lists what it does not do.
+Faye has a narrow job on purpose. The [charter](../CHARTER.md) lists what Faye does not do.
 
 | Faye is not | Instead |
 |---|---|
 | An OAuth2 or OpenID Connect provider | The authorization server serves the protocol, registers clients and talks to applications. |
 | A token service | The authorization server issues and signs tokens and owns sessions. Faye reports the result of a flow. |
 | A general UI platform | Faye shows only the screens that sign people in, sign them up and ask for consent. Account settings belong elsewhere. |
-| A programming language | The flow language is closed and every flow ends. Hooks make decisions inside a flow; they cannot replace it. |
+| A programming language | The flow language is closed and every flow ends. Hooks make decisions inside a flow. They cannot replace the flow. |
 
 ## Where to go next
 
