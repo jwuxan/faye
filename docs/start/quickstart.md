@@ -134,7 +134,7 @@ On **Applications**, every application has **Try sign in**, which runs it throug
 
 The preview runs your draft, not the live version. Nothing changes for real users until you select **Publish**.
 
-To build a flow step by step, read [Write your first flow](../build/first-flow.md). To learn every preview control, read [Preview a draft](../console/preview.md).
+To build a flow step by step, read [Write your first flow](../flows/first-flow.md). To learn every preview control, read [Preview a draft](../console/preview.md).
 
 ### 7. Stop and clean up
 
@@ -201,7 +201,7 @@ This is by design. Faye serves the admin API only on a Unix socket inside the co
 ## Next steps
 
 - [Core concepts](concepts.md): tenants, flows, blocks, screens and versions.
-- [Write your first flow](../build/first-flow.md): build a flow block by block.
+- [Write your first flow](../flows/first-flow.md): build a flow block by block.
 - [Admin UI overview](../console/overview.md): every page of the console.
 - [Configuration](../reference/configuration.md): every environment variable and tenant setting.
 - [Build and run from source](../develop/build-from-source.md): run the stack without Docker and change the code.

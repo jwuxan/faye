@@ -328,4 +328,4 @@ A preview client runs the tenant's draft instead of the current version. For pre
 - [Security model](security.md): the guarantees that this design keeps, and where each one is tested.
 - [The IR design](ir-design.md): why flows compile to a closed IR.
 - [Core IR specification](../ir-spec.md): the normative rules for every form.
-- [Hooks](../build/hooks.md): what tenant code can and cannot do inside a flow.
+- [Hooks](../flows/hooks.md): what tenant code can and cannot do inside a flow.

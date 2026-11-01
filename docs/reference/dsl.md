@@ -4,7 +4,7 @@ description: The complete specification of the YAML flow file, with every key, b
 
 # Flow DSL reference
 
-This page specifies the YAML flow file: every key it may hold, every block a step may be, how conditions are written, and the limits and messages of the compiler and the checker. It is for flow authors and for engineers who review flows. To learn the language step by step, start with [Write your first flow](../build/first-flow.md). To see what the YAML becomes, read [How the IR is designed](../understand/ir-design.md).
+This page specifies the YAML flow file: every key it may hold, every block a step may be, how conditions are written, and the limits and messages of the compiler and the checker. It is for flow authors and for engineers who review flows. To learn the language step by step, start with [Write your first flow](../flows/first-flow.md). To see what the YAML becomes, read [How the IR is designed](../understand/ir-design.md).
 
 The compiler is [`FlowCompiler`](../../src/faye-core/src/main/java/faye/dsl/FlowCompiler.java). The blocks are [`BuiltinBlock`](../../src/faye-engine/src/main/java/faye/handlers/BuiltinBlock.java), listed as a contract in [`src/conformance/blocks.yaml`](../../src/conformance/blocks.yaml). Every example on this page comes from a shipped flow in `apps/server/faye-app/src/main/resources/flows/`, from a test, or was compiled before it was published here.
 
@@ -106,7 +106,7 @@ A hook may only return one of these. Anything else, a throw, a timeout or a memo
 | `{fail: reason}` | Fails the step with that reason, an id of at most 64 characters. |
 | `{pick: id}` | Only for a `pick` hook: runs that option. It must name an enabled option. |
 
-A hook can never sign anyone in, bind a subject, write `auth` or show a screen. See [Hooks](../build/hooks.md) to write one.
+A hook can never sign anyone in, bind a subject, write `auth` or show a screen. See [Hooks](../flows/hooks.md) to write one.
 
 ## Steps and options
 
@@ -418,7 +418,7 @@ Later blocks add to `user.*`: Enroll TOTP sets `has_totp`, Add passkey sets `has
 
 | Operator | Holds when | Example |
 |---|---|---|
-| bare path | the value is truthy: not null, `false`, `""`, `0`, or an empty list or mapping | `if: user.has_totp` |
+| bare path | the value is truthy. Null, `false`, `""`, `0` and an empty list or mapping are not. | `if: user.has_totp` |
 | `and` | every condition in the list holds | `if: { and: [user.has_passkey, { not: { has: [auth.amr, hwk] } }] }` |
 | `or` | at least one condition in the list holds | `if: { or: [user.has_totp, user.mfa_required] }` |
 | `not` | its condition does not hold | `if: { not: client.first_party }` |
@@ -483,7 +483,7 @@ login:
 
 ## Attempts and retries
 
-A block with `attempts` above 1 runs again after a failure, up to that many times in total. One attempt means no retry.
+A block with `attempts` of 2 or more runs again after a failure, up to that many times in total. One attempt means no retry.
 
 - After a failed attempt, the block's screen shows again with the failure code and the attempts left.
 - `vars`, `user` and `auth` keep what earlier attempts did.
@@ -532,7 +532,7 @@ The rules:
 - Approve QR code is the last call on every success path, exactly once.
 - Consent and the `qr` block are not allowed in `approve`.
 - Step ids are unique across the flow, so the ids differ from the ones in `login`.
-- A `qr` block in `login` needs this section. Without it, the checker says `screen 'qr' needs the flow to have a approve entry`.
+- A `qr` block in `login` needs this section. Without it, the checker says `screen 'qr' needs the flow to have an approve entry`.
 
 ## Screen paths
 
@@ -573,7 +573,7 @@ To use one of these refused values as a string, quote it: `"yes"`, `"0x1F"`.
 
 ## Limits
 
-Every flow stays under these limits ([ADR 0037](../adr/0037-hard-limits-on-flows-and-hooks.md)). Real flows are far below them.
+Every flow stays under these limits ([ADR 0037](../adr/0037-hard-limits-on-flows-and-hooks.md)). The shipped flows stay far under them.
 
 | Limit | Value | Checked by |
 |---|---|---|
@@ -645,7 +645,7 @@ These are the messages you are most likely to see from the compiler. Placeholder
 | `screen 'passkey' acts for the signed in subject, which needs a subject a credential verified earlier in the flow, but shows first on a path` | Add passkey shows before any credential. Move it after one. |
 | `<handler> verifies a credential; a consent entry only grants access to a subject its authenticate entry proved` | A credential comes after Consent. Move it before Consent. |
 | `an approve entry ends with exactly one approval, after everything else; this path has <n>: <path>` | Approve QR code is missing, conditional, or not last on some path of `approve`. |
-| `screen 'qr' needs the flow to have a approve entry` | The flow uses the QR code block without an `approve` section. Add one. |
+| `screen 'qr' needs the flow to have an approve entry` | The flow uses the QR code block without an `approve` section. Add one. |
 | `handler '<name>' is not enabled for this tenant` | The tenant does not allow this handler, or has no delivery for this code channel. Change the tenant's settings or the flow. |
 | `screen '<type>' is not enabled for this tenant` | The tenant does not allow this screen. |
 | `'<path>' is not part of the host contract; a flow reads only [...], and below host.context` | The condition reads a `host.*` field that does not exist. Use one of the [host fields](#host-fields). |
@@ -694,7 +694,7 @@ Warnings do not stop a publish.
 
 ## Next steps
 
-- Write a flow step by step in [Write your first flow](../build/first-flow.md).
-- Copy common patterns from [Recipes](../build/recipes.md).
-- Write the JavaScript behind a hook in [Hooks](../build/hooks.md).
+- Write a flow step by step in [Write your first flow](../flows/first-flow.md).
+- Copy common patterns from [Recipes](../flows/recipes.md).
+- Write the JavaScript behind a hook in [Hooks](../flows/hooks.md).
 - See what the YAML compiles to in [How the IR is designed](../understand/ir-design.md) and the [Core IR specification](../ir-spec.md).

@@ -115,7 +115,7 @@ Pick the path that matches what you want to do.
 
 - **Try it.** Run the demo stack and sign in, in about ten minutes: [Quickstart](start/quickstart.md).
 - **Learn the words.** Tenants, flows, blocks, screens and hooks: [Core concepts](start/concepts.md).
-- **Write a flow.** Build and publish a flow step by step: [Write your first flow](build/first-flow.md).
+- **Write a flow.** Build and publish a flow step by step: [Write your first flow](flows/first-flow.md).
 - **Run the Admin UI.** Every page and control: [Admin UI overview](console/overview.md).
 - **Understand the design.** Why it is built this way: [Architecture](understand/architecture.md) and [How the engine works](understand/engine.md).
 - **Contribute.** Build from source and find your way around: [Build and run from source](develop/build-from-source.md).

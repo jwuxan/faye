@@ -38,7 +38,7 @@ A flow attaches a hook to a step or an option in one of three ways:
 
 | Key | Where | When it runs |
 |---|---|---|
-| `before:` | Any step or option | Once, before the block and before its `set`. |
+| `before:` | Any step or option | Once, before the rest of the step. |
 | `after:` | Any step or option, except a **Fail** | Once, after the block has run. |
 | `pick:` | A **Choose** | When the **Choose** decides, with the ids of the enabled options in `ctx.options`. |
 
@@ -48,14 +48,13 @@ The diagram shows the order in which a step runs its parts.
 flowchart LR
   If{"if holds?"} -->|yes| Before["before hook"]
   If -->|no| Skip["step skipped"]
-  Before --> Set["set"]
-  Set --> Attempts["block: screen and handler, up to its attempts"]
-  Attempts --> After["after hook"]
+  Before --> Block["the block, with all its attempts"]
+  Block --> After["after hook"]
 ```
 
 A step's condition (`if`) covers its hooks too: when the condition does not hold, no hook of that step runs. A block's attempts wrap only its screen and its handler. So a hook runs once, however many times the person retries the password or the code. A `before` hook on the **Identifier** runs before the account is known, so it sees no `user` values yet.
 
-In the Admin UI, you attach a hook in the block inspector: **Before** and **After** in the **Hooks** group, or **Picked by** **Hook** and **Picker** for a **Choose**. See [Edit and publish a flow](../console/flow-editor.md#hooks).
+In the Admin UI, you attach a hook in the block inspector. Use **Before** and **After** in the **Hooks** group. For a **Choose**, set **Picked by** to **Hook** and choose the hook in **Picker**. See [Edit and publish a flow](../console/flow-editor.md#hooks).
 
 ## Declare a hook in YAML
 
@@ -275,7 +274,7 @@ These controls write `capabilities` and `timeout_ms` in the draft.
 
 Hooks are part of the draft. Select **Publish** in the header to publish them with the flow. See [Publish](../console/flow-editor.md#publish).
 
-To delete a hook, select **Delete hook** above the source, then **Delete**. If steps still use the hook, the console warns that they will fail the check until you change them. Press `⌘Z` to undo.
+To delete a hook, select **Delete hook** above the source, then **Delete**. If steps still use the hook, the console warns that they fail the check until you change them. Press `⌘Z` to undo.
 
 ## Egress
 

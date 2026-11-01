@@ -24,7 +24,7 @@ The console does not create users or OAuth clients. Both come from outside Faye,
 
 The Admin UI has no sign in. Anyone who can open it can publish, roll back and change settings for every tenant ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)).
 
-The console talks to Faye's admin API through its own server. Faye serves the admin API only on a Unix domain socket (`FAYE_ADMIN_SOCKET`), never on a network port, and checks a bearer token (`FAYE_ADMIN_TOKEN`) on every call ([ADR 0028](../adr/0028-admin-api-on-a-unix-domain-socket.md)). The browser never sees the token. A request that changes something must also carry the header `x-faye-admin: 1`, which a form on another site cannot send.
+The console talks to Faye's admin API through its own server. Faye serves the admin API only on a Unix domain socket (`FAYE_ADMIN_SOCKET`), never on a network port. It checks a bearer token (`FAYE_ADMIN_TOKEN`) on every call ([ADR 0028](../adr/0028-admin-api-on-a-unix-domain-socket.md)). The browser never sees the token. A request that changes something must also carry the header `x-faye-admin: 1`, which a form on another site cannot send.
 
 The compose stack publishes the console on `127.0.0.1:3002` only, so other machines cannot reach it.
 
@@ -73,7 +73,7 @@ The sidebar groups the tenant's pages:
 | Group | Page | What you do there |
 |---|---|---|
 | Sign in | **Login flow** | Edit the draft as blocks or YAML, check its paths, change flow settings, preview and publish. See [Edit and publish a flow](flow-editor.md). |
-| Sign in | **Hooks** | Write, test and configure the tenant's hooks. See [Hooks](../build/hooks.md). |
+| Sign in | **Hooks** | Write, test and configure the tenant's hooks. See [Hooks](../flows/hooks.md). |
 | Sign in | **Versions** | Compare published versions with the draft, load one into the draft, or make one live. See [Versions](flow-editor.md#compare-and-roll-back-on-the-versions-page). |
 | Sign in | **Customization** | Brand the login page and choose its sign in options. See [Customize the login page](login-page.md). |
 | Directory | **Applications** | See the OAuth clients that use this tenant, and try a sign in as one. |
@@ -187,6 +187,6 @@ Tenant settings are not part of the draft. **General**, **Customization** and th
 
 - [Edit and publish a flow](flow-editor.md)
 - [Preview a draft](preview.md)
-- [Hooks](../build/hooks.md)
+- [Hooks](../flows/hooks.md)
 - [Customize the login page](login-page.md)
 - [Tenant settings, applications and users](tenant-settings.md)

@@ -50,7 +50,7 @@ Pick one kind of page and stay with it:
 
 | Kind | Answers | Example |
 |---|---|---|
-| Tutorial | "Teach me, step by step." | [Write your first flow](../build/first-flow.md) |
+| Tutorial | "Teach me, step by step." | [Write your first flow](../flows/first-flow.md) |
 | How-to guide | "How do I do this one task?" | [Preview a draft](../console/preview.md) |
 | Explanation | "Why is it like this?" | [How the engine works](../understand/engine.md) |
 | Reference | "What exactly is allowed?" | [Flow DSL reference](../reference/dsl.md) |
@@ -122,7 +122,7 @@ Give each code block a language: `yaml`, `json`, `js`, `bash`, `java`. Copy flow
 
 ### Links
 
-Link to other docs with relative paths to the `.md` file: `[Hooks](../build/hooks.md)`. Link to code with a relative path from the docs folder: `[FlowCompiler](../../src/faye-core/src/main/java/faye/dsl/FlowCompiler.java)`. The docs site opens code links on GitHub.
+Link to other docs with relative paths to the `.md` file: `[Hooks](../flows/hooks.md)`. Link to code with a relative path from the docs folder: `[FlowCompiler](../../src/faye-core/src/main/java/faye/dsl/FlowCompiler.java)`. The docs site opens code links on GitHub.
 
 ## Add a page to the sidebar
 
@@ -138,7 +138,7 @@ The sidebar order lives in `docs/nav.yaml`. Add the page's path to the right sec
 
 The docs site gives agents the same text people read:
 
-- Every page has a Markdown version at its URL plus `.md`, for example `/docs/build/hooks.md`.
+- Every page has a Markdown version at its URL plus `.md`, for example `/docs/flows/hooks.md`.
 - `/llms.txt` lists every page with a one line summary, following [llmstxt.org](https://llmstxt.org).
 - `/llms-full.txt` holds every page in one file.
 - Each page has **Copy Markdown**, an **Open** menu (ChatGPT, Claude, Cursor, GitHub), and **Ask Devin**, which opens [DeepWiki](https://deepwiki.com/jwuxan/faye) for this repository.

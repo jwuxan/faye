@@ -220,5 +220,5 @@ Without Docker, `dev.sh` keeps the database at `deploy/.data/faye.db`, the outbo
 
 - [Quickstart](../start/quickstart.md): run the image with its defaults.
 - [Build and run from source](../develop/build-from-source.md): run each process yourself.
-- [Hooks](../build/hooks.md): how a hook uses egress targets.
+- [Hooks](../flows/hooks.md): how a hook uses egress targets.
 - [Sign in screens](screens.md): the screens that the `screens` allowlist names.

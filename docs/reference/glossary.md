@@ -57,7 +57,7 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 ## H
 
 - **handler**: Built in code that checks what a person entered, such as `password.verify`.
-- **hook**: A small JavaScript function that a tenant writes. It can set values, fail a step, or pick an option. It can never sign anyone in. See [Hooks](../build/hooks.md).
+- **hook**: A small JavaScript function that a tenant writes. It can set values, fail a step, or pick an option. It can never sign anyone in. See [Hooks](../flows/hooks.md).
 - **host**: The adapter between the engine and one authorization server. Faye ships a host for Hydra.
 - **hosted answer**: An answer to a later screen given early. For example, a passkey chosen from the browser's autofill on the first screen also answers the passkey screen.
 

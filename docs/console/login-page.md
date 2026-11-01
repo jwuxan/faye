@@ -62,7 +62,7 @@ The option applies to sign ins that start after you save. You do not need to pub
 
 ### Sign up button
 
-Faye does not run sign up flows yet. The **Sign up** button is a placeholder: it opens a notice that says "Sign up isn't available yet" and tells the person to sign in if they already have an account. It sends nothing to the server. Turn it on only if you want people to see that sign up is coming.
+Faye does not run sign up flows yet. The **Sign up** button is a placeholder. It opens a notice that says "Sign up isn't available yet". The notice tells the person to sign in if they already have an account. It sends nothing to the server. Turn it on only if you want people to see that sign up is coming.
 
 ## Save your changes
 

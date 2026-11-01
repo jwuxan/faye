@@ -7,7 +7,7 @@ sections:
   - title: Understand Faye
     pages: [understand/vision.md, understand/design-goals.md, understand/architecture.md, understand/ir-design.md, understand/engine.md, understand/host-spi.md, understand/security.md, understand/compare.md]
   - title: Build flows
-    pages: [build/first-flow.md, build/flow-syntax.md, build/recipes.md, build/hooks.md]
+    pages: [flows/first-flow.md, flows/flow-syntax.md, flows/recipes.md, flows/hooks.md]
   - title: Use the Admin UI
     pages: [console/overview.md, console/flow-editor.md, console/preview.md, console/login-page.md, console/tenant-settings.md]
   - title: Reference

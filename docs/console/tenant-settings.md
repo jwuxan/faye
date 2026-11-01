@@ -55,7 +55,7 @@ Each handler shows the amr values it can prove, if any. Each screen shows its op
 
 ### Egress
 
-**Egress** lists the named HTTP targets that this tenant's hooks may call, or **None**. It is read only here. The operator grants targets in the server config, in `faye.tenants.<id>.egress`. See [Egress](../build/hooks.md#egress).
+**Egress** lists the named HTTP targets that this tenant's hooks may call, or **None**. It is read only here. The operator grants targets in the server config, in `faye.tenants.<id>.egress`. See [Egress](../flows/hooks.md#egress).
 
 ### Save the settings
 
@@ -126,5 +126,5 @@ The console shows applications and users, but never creates, changes or deletes 
 ## Next steps
 
 - [Edit and publish a flow](flow-editor.md): build a flow that passes the tenant's policy.
-- [Hooks](../build/hooks.md): call the egress targets that the tenant grants.
+- [Hooks](../flows/hooks.md): call the egress targets that the tenant grants.
 - [Customize the login page](login-page.md)

@@ -50,7 +50,7 @@ A flow file can have up to two sections that a person goes through:
 - `login` is the sign in itself. If it contains a consent step, the steps from that point on run later, when the authorization server asks for consent.
 - `approve` is the phone's side of a QR code sign in.
 
-Faye compiles each section to an **entry** of the flow. Learn the syntax in [Write flows in YAML](../build/flow-syntax.md).
+Faye compiles each section to an **entry** of the flow. Learn the syntax in [Write flows in YAML](../flows/flow-syntax.md).
 
 ## Step and block
 
@@ -77,7 +77,7 @@ A **handler** is the code that checks what the person entered. Only built in han
 
 A **hook** is a small JavaScript function that a tenant writes. A hook can score the risk of a sign in, pick an option of a choice, or add a value for later steps. A hook runs in a sandbox with a time limit and no network, except for the targets the tenant grants.
 
-A hook can do only three things: set values, fail the step, or pick an option. It can never sign a person in. See [Hooks](../build/hooks.md).
+A hook can do only three things: set values, fail the step, or pick an option. It can never sign a person in. See [Hooks](../flows/hooks.md).
 
 ## Assurance: amr and acr
 
@@ -115,4 +115,4 @@ Faye compiles each flow file to an **intermediate representation (IR)**: a small
 ## Next steps
 
 - Run the demo and see these ideas in action: [Quickstart](quickstart.md).
-- Write a flow: [Write your first flow](../build/first-flow.md).
+- Write a flow: [Write your first flow](../flows/first-flow.md).

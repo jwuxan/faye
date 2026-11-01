@@ -48,7 +48,7 @@ The **Blocks** tab shows the draft as a tree of blocks. A block is one part of a
 
 The tree has up to two sections, each with a step count:
 
-- **Sign in** holds the steps of the sign in, from the **Identifier** on. If the flow asks for consent, the **Consent** block and every step after it appear under a **Consent** heading: "runs after sign in, on the consent challenge". These steps run only after the sign in succeeded, when the authorization server asks for consent.
+- **Sign in** holds the steps of the sign in, from the **Identifier** on. If the flow asks for consent, the **Consent** block and every step after it appear under a **Consent** heading. The heading says "runs after sign in, on the consent challenge". These steps run only after the sign in succeeded, when the authorization server asks for consent.
 - **Approve** holds the steps that a phone runs to approve a QR code sign in ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)). The YAML gets an `approve` section only once this section has steps.
 
 Inside a section:
@@ -181,7 +181,7 @@ Select **Add condition** for another test, or **Add group** for a nested group w
 
 If you choose **With password** while the flow also has a **Password** block, the inspector warns that the block "asks for the password again" and offers **Remove**.
 
-If hand written YAML gives a block a key it does not take, an **Unsupported keys** group lists each one with the reason and a **Remove** button. The draft fails the check until you remove them.
+Hand written YAML can give a block a key that it does not take. The inspector then shows an **Unsupported keys** group, with the reason and a **Remove** button for each key. The draft fails the check until you remove them.
 
 ### Hooks
 
@@ -190,7 +190,7 @@ The **Hooks** group attaches the flow's hooks to the block:
 - **Before** runs the hook once before the block, before all of its attempts.
 - **After** runs the hook once after the block has run. A **Fail** block has no **After**, because nothing runs after it.
 
-A hook can set `vars` or fail the step. It cannot complete a sign in. To write a hook, go to the **Hooks** page. See [Hooks](../build/hooks.md).
+A hook can set `vars` or fail the step. It cannot complete a sign in. To write a hook, go to the **Hooks** page. See [Hooks](../flows/hooks.md).
 
 ## Edit the YAML
 
@@ -235,7 +235,7 @@ If the YAML does not parse, the toolbar shows **YAML does not parse**. The **Blo
 > [!WARNING]
 > An edit in the **Blocks** tab rewrites the YAML. Only the comment at the top of the document survives. The **Settings** tab shows that comment as the flow's description. Comments anywhere else are lost.
 
-For the full YAML syntax, see [Flow syntax](../build/flow-syntax.md) and the [Flow DSL reference](../reference/dsl.md).
+For the full YAML syntax, see [Flow syntax](../flows/flow-syntax.md) and the [Flow DSL reference](../reference/dsl.md).
 
 ## Read the status bar and the Problems list
 
@@ -340,5 +340,5 @@ The server checks the version again under the tenant's current settings before i
 ## Next steps
 
 - [Preview a draft](preview.md) before you publish it.
-- [Hooks](../build/hooks.md): write the JavaScript that **Before**, **After** and **Picker** run.
+- [Hooks](../flows/hooks.md): write the JavaScript that **Before**, **After** and **Picker** run.
 - [Tenant settings, applications and users](tenant-settings.md): the policy that every publish is checked against.

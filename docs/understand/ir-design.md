@@ -19,25 +19,105 @@ In practice, that means four things:
 - **Another engine can prove itself.** The conformance suite in [`src/conformance/`](../../src/conformance/README.md) is a set of IR documents and scripted scenarios. An engine that passes every vector behaves like the reference engine.
 - **Authors never see it.** People write YAML or use the block editor. The charter calls the IR "important but optional for authors", and asks for the simpler path when the IR adds cost without serving interop or modularity.
 
-## A narrow waist
+## The compiler model: source, bytecode, virtual machine
 
-The IR sits at the narrow point between the ways to write a flow and the tools that use one. The diagram shows the two authoring paths at the top, the IR in the middle, and the parts that read the IR at the bottom.
+Faye is built like a language toolchain. If you know the Java virtual machine (JVM) or LLVM, you already know its shape:
+
+- The **YAML flow file is the source code.** People read and write it.
+- The **IR is the bytecode.** It is small, exact and versioned, and it is what Faye stores, hashes and runs.
+- The **engine is the virtual machine (VM).** It runs IR and nothing else.
+
+The diagram shows the three layers. Front ends at the top produce IR. Back ends at the bottom consume it. The IR in the middle is the only thing they share, which is why it is called a narrow waist.
 
 ```mermaid
 flowchart TB
-  editor["Block editor"] --> yaml["YAML flow file"]
-  author["Author"] --> yaml
-  yaml --> compiler["DSL compiler"]
-  compiler --> ir["Core IR"]
-  ir --> checker["Checker"]
-  ir --> engine["Engine"]
-  ir --> generator["Path generator"]
-  generator --> vectors["Conformance vectors"]
-  vectors --> engine
-  vectors --> other["Another engine"]
+  subgraph front["Front ends: how people write flows"]
+    yaml["YAML flow file"]
+    blocks["Block editor in the Admin UI"]
+    future["Other front ends (possible, not built)"]
+  end
+  compiler["DSL compiler (FlowCompiler)"]
+  subgraph waist["The narrow waist"]
+    ir["Core IR: 11 forms, versioned, hashed"]
+    verify["Schema and verifier"]
+  end
+  subgraph back["Back ends: what reads the IR"]
+    checker["Checker: proves rules on every path"]
+    engine["Reference engine: runs flows"]
+    gen["Path generator: writes test vectors"]
+    other["Another engine (possible)"]
+  end
+  blocks --> yaml
+  yaml --> compiler
+  future -.-> ir
+  compiler --> ir
+  ir --> verify
+  verify --> checker
+  verify --> engine
+  verify --> gen
+  gen -. "conformance vectors" .-> other
+  gen -. "conformance vectors" .-> engine
 ```
 
-The Admin UI's block editor writes YAML, the same text an author can edit by hand ([ADR 0010](../adr/0010-m5-admin-ui.md)). The DSL compiler, [`FlowCompiler`](../../src/faye-core/src/main/java/faye/dsl/FlowCompiler.java), lowers that YAML to the IR. Everything under the IR depends only on the IR and on the catalogs of handlers and screens ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md)).
+Today there is one text front end. The Admin UI's block editor writes the same YAML that an author can edit by hand ([ADR 0010](../adr/0010-m5-admin-ui.md)), and [`FlowCompiler`](../../src/faye-core/src/main/java/faye/dsl/FlowCompiler.java) lowers that YAML to the IR. Everything below the IR depends only on the IR and on the catalogs of handlers and screens ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md)).
+
+The table maps each part of Faye to its counterpart in the JVM and in LLVM.
+
+| Role | Faye | JVM | LLVM |
+|---|---|---|---|
+| Source language | YAML flow file, block editor | Java, Kotlin, Scala | C, C++, Rust, Swift |
+| Front end | `FlowCompiler` | `javac`, `kotlinc` | `clang`, `rustc` |
+| Intermediate form | Core IR, as JSON arrays | Bytecode in `.class` files | LLVM IR |
+| Specification | [Core IR specification](../ir-spec.md), [`ir.schema.json`](../../src/schema/ir.schema.json) | The JVM specification | The LLVM language reference |
+| Load time check | JSON Schema and `Verifier`: shape, catalogs, hard limits | The bytecode verifier | The IR verifier |
+| Static analysis | The checker: every path, safety rules | Static analysis tools | Analysis passes |
+| Runtime | The engine: a step by step interpreter | The JVM | Code generators for each machine |
+| Compatibility tests | [`src/conformance/`](../../src/conformance/README.md) vectors | The Java compatibility kit (TCK) | The LLVM test suite |
+| Library interface | Handler and screen catalogs | The Java class library | Intrinsics and the runtime library |
+
+### Where the analogy stops
+
+The analogy explains the structure. It does not mean Faye is a general language platform. The differences are on purpose:
+
+- **The IR is not a general purpose language.** JVM bytecode can express any program. Faye's IR can only express sign in flows: it has no loops except a bounded `retry`, no recursion and no arithmetic. That is what makes it possible to list every path.
+- **Faye checks more than a bytecode verifier.** The JVM verifier checks that bytecode is well formed and type safe. Faye's checker also proves security rules, such as "no path succeeds without a verified credential".
+- **There is no optimizer.** The compiler never rewrites meaning. Two flows that mean the same thing but are written differently, such as `{ not: { not: x } }` and `x`, stay different versions. That is on purpose: the stored bytes are exactly what the checker checked.
+- **The VM pauses between requests.** A flow waits for a person, often for minutes. The engine saves the whole state of the flow as data and resumes it on the next request, even after a restart or in a new engine instance (`EngineTest.progressSurvivesANewEngineInstance`). A JVM keeps a running program in memory.
+
+## YAML is a front end, not the contract
+
+The contract between Faye's parts is the IR, not the YAML. This choice protects tenants and the project from YAML lock in.
+
+If the engine read YAML directly, every improvement to how flows are written would be an engine change. Every stored flow would also be bound to one version of one syntax forever. Faye avoids both:
+
+- **Versions are stored as IR.** A published version is the IR's canonical bytes, addressed by their SHA-256 hash. The YAML is kept beside it only so that the Admin UI can show it. A sign in in progress runs the IR, never the YAML.
+- **The surface can change while the IR stays.** This has already happened twice:
+  - [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) replaced the whole step syntax with blocks. The IR did not change, the shipped flows lowered to the same golden IR files, and stored versions kept running, "since they are IR".
+  - [ADR 0026](../adr/0026-consent-as-a-step.md) turned consent from a section of its own into a step. The IR, the published versions, the stored flow states and the conformance vectors were untouched.
+- **New front ends need no engine work.** A front end only has to produce IR that passes the schema and the checker. A visual designer, a builder library in another language, or an importer from another system could each target the same IR. None of these exists today; the point is that adding one would not touch the checker or the engine.
+- **Authorization server words stay in the front end.** The compiler accepts `hydra.` as another name for `host.`, because the Hydra adapter hands it that alias. The IR only ever contains `host.`, so a stored flow does not depend on Hydra.
+
+> [!NOTE]
+> The YAML still matters: it is how people review flows in pull requests, and the Admin UI round trips it. But it is not what the engine trusts.
+
+## No business logic in the engine
+
+The engine knows how to run eleven forms and how to keep sign ins safe. It knows nothing about any tenant, any product rule, or any authorization server. Each kind of logic has one home, outside the engine:
+
+| Logic | Where it lives | Who changes it |
+|---|---|---|
+| Which steps run, in what order, under which conditions | The flow, as IR | The tenant, by publishing a version |
+| How a credential is verified | A built in handler, such as `password.verify` | Faye's maintainers, with review |
+| What a screen shows and accepts | A typed screen spec and the Login UI | Faye's maintainers, with review |
+| Custom decisions, such as risk scores and routing | A sandboxed hook with a closed result | The tenant |
+| Tenant policy, such as "require two factors" | Tenant settings | The operator |
+| The protocol, tokens and sessions | The authorization server, behind a host adapter | Whoever runs the authorization server |
+
+The engine keeps only the rules that must hold for every tenant: what each form means, when an entry may succeed, how `amr` and `acr` are computed, and how a flow saves and resumes safely.
+
+The code enforces this split. [`BoundaryTest`](../../src/faye-engine/src/test/java/faye/engine/BoundaryTest.java) fails the build if the engine names Hydra, a built in screen or handler, a token claim, or a host parameter outside the host contract. And when [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) introduced blocks, it rejected a `block` form in the IR: that would have made every engine resolve blocks, and let a block's behavior change under a published version. Blocks stayed in the front end, as catalog entries that the compiler lowers to the `screen` and `call` forms that already existed.
+
+The result is an engine that rarely changes. New sign in methods arrive as handlers, screens and blocks in the catalogs; new authorization servers arrive as hosts ([Embed Faye: the host SPI](host-spi.md)); new ways to write flows arrive as front ends.
 
 Each fact about the IR has exactly one source:
 

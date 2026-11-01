@@ -123,5 +123,5 @@ Faye secures the sign in flow. Some parts of a deployment are outside that scope
 
 - [How the engine works](engine.md): the run time model behind these guarantees.
 - [The IR design](ir-design.md): why a closed IR lets the checker see every path.
-- [Hooks](../build/hooks.md): what a hook can do, and its limits.
+- [Hooks](../flows/hooks.md): what a hook can do, and its limits.
 - [Core IR specification](../ir-spec.md): the normative checks and failures.

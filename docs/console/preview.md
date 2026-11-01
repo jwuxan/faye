@@ -179,5 +179,5 @@ If the card says **Preview run not found**, the trace has expired. A run's trace
 ## Next steps
 
 - [Edit and publish a flow](flow-editor.md): publish the draft once the preview looks right.
-- [Hooks](../build/hooks.md): the risk hook that **High risk** exercises.
+- [Hooks](../flows/hooks.md): the risk hook that **High risk** exercises.
 - [Admin UI overview](overview.md)
