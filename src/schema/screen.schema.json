@@ -425,7 +425,12 @@
       "required": ["error"],
       "additionalProperties": false,
       "properties": {
-        "error": { "enum": ["flow_not_found", "flow_finished", "flow_expired", "stale_nonce", "conflict", "invalid_submission", "unknown_action", "host_error"] }
+        "error": { "enum": ["flow_not_found", "flow_finished", "flow_expired", "stale_nonce", "conflict", "invalid_submission", "unknown_action", "host_error"] },
+        "reference": {
+          "type": "string",
+          "pattern": "^ref_[A-Za-z0-9]{12}$",
+          "description": "With host_error after a flow ended: a reference to the failure the person can hand support, naming the operator's log line and nothing about the flow (ADR 0027)."
+        }
       }
     }
   }

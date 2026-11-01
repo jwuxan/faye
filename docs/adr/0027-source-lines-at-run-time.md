@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-31
+status: in progress
+date: 2026-11-01
 decision-makers: Josh Wu
 ---
 
@@ -64,9 +64,26 @@ Chosen: **B**, with C used once as a backfill for versions published before this
 | Operator | Server log | One structured `WARN` line per abnormal end: tenant, flow id, version hash, entry, step, path, resolved `file:line:column`, code, and the reference below. Ordinary outcomes a person caused (`invalid_credentials`, `invalid_code`, a retry) are not logged at `WARN`. |
 | Person signing in | Error screen | The existing safe `code`, plus a `reference`: a random `ref_` id, unique per failure, also written to the log line. No file, line, step id or handler name. |
 
-* The screen protocol change is additive: `ErrorScreen` gains an optional `reference` (`^ref_[A-Za-z0-9]{12}$`). Per AGENTS.md rule 1 it lands in `schema/screen.schema.json` first, then the Java types and `pnpm generate`.
+* The screen protocol change is additive (as implemented, on `ErrorResponse`; see As implemented): `ErrorScreen` gains an optional `reference` (`^ref_[A-Za-z0-9]{12}$`). Per AGENTS.md rule 1 it lands in `schema/screen.schema.json` first, then the Java types and `pnpm generate`.
 * A failure that ends in a redirect to the client through the host (the host's rejection) carries no reference in this record; Hydra's `error_debug` would put it in the relying party's hands. Open gap, decided separately if needed.
 * The map never reaches the Login UI: the screen API has no route to it, and the resolver lives in `faye-app` beside the preview and admin APIs (AGENTS.md rule 5).
+
+### As implemented
+
+Built as above, with these changes, each forced by something the proposal got wrong about the code:
+
+* **The reference goes on `ErrorResponse`, not `ErrorScreen`.** `ErrorScreen` is a typed screen a flow shows itself (`screen: error`); no abnormal end reaches it. An abnormal end either becomes the host's rejection (Hydra redirects to the relying party: the open gap above) or, when the host throws, the screen API's `502 host_error`. So `ErrorResponse` gains the optional `reference` (`^ref_[A-Za-z0-9]{12}$`, `schema/screen.schema.json`), set only for `host_error` after a flow ended, and the Login UI shows it with its copy for `host_error`. Still additive.
+* **`FailureSite` reaches the embedder through a `Failures` SPI** (`Engine.builder().failures(...)`, like `Previews`), **not inside `EngineResponse`.** `Redirect` and `Handoff` are records the host builds, and a host that throws leaves no response at all. A host that throws in `accept` or `reject` surfaces as `HostFailure`, which carries the site (already reported) and the host's exception as its cause; the app answers it `502 {error: host_error, reference}`. A failure followed by a host that throws is reported twice: the failure, then `host_error`, each with its own reference.
+* **Sites the proposal left open:** a write that fails to commit fails at the `succeed` that ran it (commits run when the entry succeeds); a `choose`'s pick hook is at the `choose` (the map positions nodes, and the pick hook is not a child); `incomplete` is at the entry's body (the empty path), with no step. The unknown handler error says `unknown handler <name> at <entry>/<path>`: it is a catalog bug, not a run failure, so it has no reference.
+* **A previewed draft's map is kept in memory** (`SourceLines`, the 64 most recent), not stored: a draft is not published, has no row in `faye_version_source`, and its lines are those of the YAML in the author's editor. After a restart, a preview flow still waiting on an old draft resolves no lines (its events keep `at` and step ids).
+* `TraceEvent` keeps a constructor without `at` for callers written before it.
+
+Open gaps (why this record is `in progress`):
+
+1. The Admin UI Versions view does not resolve failure sites against a version's map yet; production failure sites are only in the server log.
+2. `deploy/smoke.sh` has no check that a draft preview's trace shows a throwing hook at its line (needs the compose stack).
+3. The log line is tested by its content (`SourceLinesTest.theLogLineHoldsTheReferenceAndTheLine`), not by capturing the logger's output.
+4. The host's rejection carries no reference (unchanged from the proposal's open gap).
 
 ### Consequences
 
@@ -81,14 +98,12 @@ Chosen: **B**, with C used once as a backfill for versions published before this
 
 ### Confirmation
 
-Planned; none of this exists yet.
-
-1. `cd server && ./gradlew :faye-ir:test :faye-dsl:test`: `SourceMapTest.everyNodeOfTheShippedFlowsHasALine` (every node of `acme.yaml` and `bank.yaml` resolves to a line greater than 0), `SourceMapTest.reformattingYamlKeepsTheHashAndMovesTheLines`, `NodePathsTest` against `Frame` paths for every IR form.
-2. `cd server && ./gradlew :faye-engine:test`: new conformance vectors `trace-at-call-failure.yaml`, `trace-at-hook-failure.yaml`, `trace-at-fail.yaml`, `trace-at-retry-exhausted.yaml` that assert the `at` of each event and the `FailureSite`; `conformance/README.md` documents the optional `at` field.
-3. `cd server && ./gradlew :faye-app:test`: `SqliteFlowVersionsTest.publishStoresTheSourceMap`, `backfillSkipsAVersionWhoseYamlNoLongerCompilesToItsHash`, `PreviewControllerTest.traceEventsCarryTheYamlLine`, `ScreenControllerTest.errorScreenShowsAReferenceAndNoSource`, and a log capture test that the `WARN` line holds the reference and the line.
-4. Fuzz (ADR 0007): `SourceMapFuzzTest` reads arbitrary map JSON and arbitrary paths without an exception other than a refusal; `EngineFuzzTest` asserts every `FailureSite` path resolves in the map of the flow it ran.
-5. `cd web && pnpm typecheck && pnpm test`: the generated contract has `reference`; `apps/admin/lib` tests that a resolved trace event selects the right block and line.
-6. `deploy/smoke.sh`: a draft preview with a hook that throws shows `hook risk hook_error` at the hook's line in the trace (unverified until implemented; needs the compose stack).
+1. `cd server && ./gradlew :faye-ir:test :faye-dsl:test`: `SourceMapTest.everyNodeOfTheShippedFlowsHasALine` (every node of every shipped flow in `faye-app/src/main/resources/flows/` resolves to a line greater than 0, through the map's JSON form), `SourceMapTest.reformattingYamlKeepsTheHashAndMovesTheLines`, `NodePathsTest` (every IR form's children, paths, canonical keys, and the map's JSON form). The engine resolves frame paths with `NodePaths` itself, so the two share one indexing by construction.
+2. `cd server && ./gradlew :faye-engine:test`: conformance vectors `trace-at-call-failure.yaml`, `trace-at-hook-failure.yaml`, `trace-at-fail.yaml`, `trace-at-retry-exhausted.yaml` assert each event's `at` and the `FailureSite`; `effect-commit-fails.yaml` and `password-success.yaml` assert the failure site of a non preview run and its absence. Every vector checks that every traced event but `start` has an `at`, and every failure site, a node of the version that ran. `conformance/README.md` documents `@entry/path` and `expect_failure`.
+3. `cd server && ./gradlew :faye-app:test`: `SourceLinesTest.publishStoresTheSourceMap`, `.backfillSkipsAVersionWhoseYamlNoLongerCompilesToItsHash`, `.aHostErrorShowsAReferenceAndNoSource` (validated against the screen protocol), `.theLogLineHoldsTheReferenceAndTheLine`; `MilestoneSixTest.aPreviewRunIsTracedAndCheckedAgainstThePredictedPaths` (every event of a draft preview carries its node and line); `FlywayMigrationTest` pins `V3__version_source_map.sql`.
+4. Fuzz (ADR 0007): F17 `SourceMapFuzzTest.parse` reads arbitrary map text, path keys and paths with no exception, only refusals; F6 `EngineFuzzTest` asserts every `FailureSite` names a node of the version its flow ran, and its sweep that failure sites are reached.
+5. `cd web && pnpm generate && pnpm typecheck && pnpm lint && pnpm test`: the generated contract has `ErrorResponse.reference`; `apps/admin/lib/preview.test.ts` checks that a trace event's source selects the block its line is in.
+6. `deploy/smoke.sh`: not yet (open gap 2).
 
 ## Pros and Cons of the Options
 

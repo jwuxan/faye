@@ -37,6 +37,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
@@ -124,6 +125,8 @@ class ConformanceTest {
         var previews = new ScriptedPreviews(v.path("preview"), versions);
         var store = new RacingStore();
         var clock = new SteppedClock();
+        List<FailureSite> failures = new ArrayList<>();
+        List<String> failedVersions = new ArrayList<>();
         var engine = Engine.builder()
                 .clock(clock)
                 .versions(versions)
@@ -133,6 +136,10 @@ class ConformanceTest {
                 .tenants(TenantPolicies.of(Map.of(Engine.DEFAULT_TENANT, policy)))
                 .hooks(hooks)
                 .previews(previews)
+                .failures((state, site) -> {
+                    failures.add(site);
+                    failedVersions.add(state.versionHash());
+                })
                 .screens(BuiltinScreen.registry(issuers))
                 .build();
 
@@ -321,10 +328,67 @@ class ConformanceTest {
         issuers.forEach(i -> assertThat(i.actions)
                 .as("unconsumed action outcomes for issuer " + i.screen())
                 .isEmpty());
-        // Only preview clients' flows are traced
+        // Only preview clients' flows are traced. A line may end with the node the event is about,
+        // as @entry/path; without it, the event's at is not compared
         List<String> expectedTrace = new ArrayList<>();
         v.path("expect_trace").forEach(e -> expectedTrace.add(e.asText()));
-        assertThat(previews.trace).as("trace").isEqualTo(expectedTrace);
+        List<String> actualTrace = new ArrayList<>();
+        for (int i = 0; i < previews.trace.size(); i++) {
+            TraceEvent e = previews.trace.get(i);
+            boolean located = i < expectedTrace.size() && expectedTrace.get(i).contains(" @");
+            actualTrace.add(located ? e.describe() + " @" + e.at() : e.describe());
+        }
+        assertThat(actualTrace).as("trace").isEqualTo(expectedTrace);
+        // Every event but start says where it happened, and that node exists in the version it ran
+        @Nullable String ran = null;
+        for (TraceEvent e : previews.trace) {
+            if ("start".equals(e.event())) {
+                ran = e.id();
+                continue;
+            }
+            assertThat(e.at()).as("at of " + e.describe()).isNotNull();
+            assertThat(nodeAt(versions, Objects.requireNonNull(ran), Objects.requireNonNull(e.at())))
+                    .as("node at " + e.at())
+                    .isTrue();
+        }
+        for (int i = 0; i < failures.size(); i++) {
+            assertThat(nodeAt(versions, failedVersions.get(i), failures.get(i).site()))
+                    .as("node at " + failures.get(i).site())
+                    .isTrue();
+        }
+        // Every failure carries a fresh reference; expect_failure, when given, is the only one
+        failures.forEach(f -> assertThat(f.reference()).matches(FailureSite.REFERENCE));
+        assertThat(failures.stream().map(FailureSite::reference).distinct()).hasSameSizeAs(failures);
+        if (v.has("expect_failure")) {
+            JsonNode expected = v.get("expect_failure");
+            if (expected.isTextual() && "none".equals(expected.asText())) {
+                assertThat(failures).as("failures").isEmpty();
+            } else {
+                assertThat(failures).as("failures").hasSize(1);
+                FailureSite f = failures.get(0);
+                assertThat(f.entry())
+                        .as("failure entry")
+                        .isEqualTo(expected.path("entry").asText());
+                assertThat(faye.ir.NodePaths.key(f.path()))
+                        .as("failure path")
+                        .isEqualTo(expected.path("path").asText());
+                assertThat(f.step())
+                        .as("failure step")
+                        .isEqualTo(
+                                expected.path("step").isTextual()
+                                        ? expected.get("step").asText()
+                                        : null);
+                assertThat(f.code())
+                        .as("failure code")
+                        .isEqualTo(expected.path("code").asText());
+            }
+        }
+    }
+
+    /** Whether {@code at} names a node of the stored version {@code hash}. */
+    static boolean nodeAt(FlowVersions versions, String hash, Site at) {
+        faye.ir.Entry entry = versions.get(hash).orElseThrow().flow().entries().get(at.entry());
+        return entry != null && faye.ir.NodePaths.find(entry.body(), at.path()).isPresent();
     }
 
     /**
@@ -428,12 +492,12 @@ class ConformanceTest {
 
     /**
      * A preview client runs {@code draft} (refused without one) with the {@code request} overrides;
-     * the trace is recorded as {@link TraceEvent#describe()}.
+     * the trace is recorded as it was handed over.
      */
     static final class ScriptedPreviews implements Previews {
         final @Nullable FlowVersion draft;
         final Map<String, Object> request;
-        final List<String> trace = new ArrayList<>();
+        final List<TraceEvent> trace = new ArrayList<>();
         final FlowVersions versions;
 
         ScriptedPreviews(JsonNode preview, FlowVersions versions) throws IOException {
@@ -458,7 +522,7 @@ class ConformanceTest {
 
         @Override
         public void trace(FlowState state, TraceEvent event) {
-            trace.add(event.describe());
+            trace.add(event);
         }
     }
 

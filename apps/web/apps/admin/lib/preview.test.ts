@@ -2,7 +2,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { totp } from "./totp.ts";
-import { follow, type LiveRun, type Recorded } from "./trace.ts";
+import { locate } from "./locate.ts";
+import { follow, type LiveRun, type Recorded, sourceLabel } from "./trace.ts";
 
 test("totp matches the RFC 6238 SHA-1 test vectors, truncated to six digits", async () => {
   // The RFC's secret is the ASCII "12345678901234567890"
@@ -68,4 +69,36 @@ test("the consent run after a sign in continues it; another run starts over", ()
   failed = follow(failed, at(11, "f_5", { event: "start", id: "sha256:x", outcome: "consent" }));
   assert.equal(failed.signIn, undefined);
   assert.equal(failed.events.length, 1);
+});
+
+test("a trace event's source selects the block its YAML line is in (ADR 0027)", () => {
+  const yaml = [
+    "flow: f",
+    "version: 1",
+    "login:",
+    "  steps:",
+    "    identify:",
+    "      screen: identifier",
+    "      use: identity.resolve",
+    "    credential:",
+    "      retry: 3",
+    "      screen: password",
+    "      use: password.verify",
+    "",
+  ].join("\n");
+  // What the server sends for `call password.verify invalid_credentials`
+  const r: Recorded = {
+    seq: 7,
+    tenantId: "t",
+    flowId: "f_1",
+    at: 0,
+    event: { event: "call", id: "password.verify", outcome: "invalid_credentials", at: { entry: "login", path: [1, 0, 0, 1] } },
+    source: { origin: "t.yaml", line: 11, column: 12, kind: "use" },
+  };
+  assert.equal(sourceLabel(r.source!), "t.yaml:11:12");
+  assert.equal(locate(yaml, r.source!.line, r.source!.column), locate(yaml, 8, 5));
+  assert.notEqual(locate(yaml, r.source!.line, r.source!.column), locate(yaml, 5, 5));
+  // The run keeps each event's source for the panel to show
+  const run = follow(null, r);
+  assert.equal(run.events[0].source?.line, 11);
 });

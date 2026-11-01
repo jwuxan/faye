@@ -82,12 +82,17 @@ events:
   #   consent's is not, nor a request refused before any flow ran: flow_unavailable, preview_unavailable; ADR 0031)
 expect_trace:                    # the events a preview flow traced, in order; absent means none
   - start login
-  - step identify
+  - step identify @login/0       # optional: the node the event is about, as @entry/path (ADR 0027)
   - screen identifier
   - call identity.resolve ok
   - end succeed pwd faye:1fa
+expect_failure:                  # optional: the one failure site reported to Failures, preview or not
+  { entry: login, path: "1.0.1", step: first, code: invalid_credentials }   # step: null outside steps
+  # or: none (no run ended abnormally)
 ```
 
 A trace event is written as its fields that are set, space separated: the event, its id (none for `start`, whose id is the version hash), its outcome, the amr it carries joined by `+`, and the acr. Events are `start <entry id>`, `step <id>`, `option <id> only|user|hook`, `screen <type>`, `call <handler> ok [amr]` or `call <handler> <error>`, `hook <id> ok|<failure>`, `retry <error>`, `commit <handler> <code>` (an effect whose commit failed), and `end succeed [amr acr]` or `end <reason>`. Only preview clients' flows are traced, and a run's events are traced only once the state it led to is saved.
+
+Every event but `start` names its node as `at`: the entry and the child index path from the entry's body (ir-spec.md, Evaluation), written `@entry/path` with the indices joined by `.` (`@login/` for the body itself). A trace line with `@` checks it; one without does not. `at` is the step for `step`, the option's body for `option`, the screen for `screen` (the `choose` for `method_picker`), the call for `call`, the hook for `hook` (the `choose` for its pick hook), the retry for `retry`, and for `commit` and `end` the node the entry ended at. An entry that ends abnormally also reports a failure site: that node, the innermost step around it, the code, and a random `ref_` reference; whatever the vector says, each must name a node of the version that ran.
 
 Every scripted outcome must be consumed by the end of the vector. Every hook run must receive a `ctx` with exactly `request`, `client`, `host`, `tenant`, `user` and `vars` (plus `options` for the hook of a `choose`), never `auth`.

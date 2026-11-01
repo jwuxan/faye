@@ -58,7 +58,7 @@ class FlywayMigrationTest {
                     jdbc.queryForList("SELECT version, success FROM faye_schema_history ORDER BY installed_rank");
             assertThat(history)
                     .extracting(row -> row.get("version"))
-                    .containsExactly("0", "1", "2", "3", "4", "5", "6");
+                    .containsExactly("0", "1", "2", "3", "4", "5", "6", "7");
             assertThat(history).allSatisfy(row -> assertThat(row.get("success")).isIn(1, true));
         }
     }
@@ -75,7 +75,8 @@ class FlywayMigrationTest {
             "V3__publish_time.sql", "db6b9e78ba6967169cacb0b2e36f3e18f4f56670f46c510f42008bfcb75ab33b",
             "V4__hook_stored_at.sql", "be3754d645035ecbb47cd2fd7731838b964856022cc665534709e739cf6edb04",
             "V5__delivered_codes.sql", "685d4a98900f0d9ddb1543bcfb3ec212e337796a8f0304e705772bca337a4778",
-            "V6__qr_grants.sql", "b46b64bc5b39aee7ac779eff742fd002360c72a34493c302c0f7af1582418d7b");
+            "V6__qr_grants.sql", "b46b64bc5b39aee7ac779eff742fd002360c72a34493c302c0f7af1582418d7b",
+            "V7__version_source_map.sql", "7ef64078cb3d7b5487f23bdd3dcbc30794c70376ac701d9216e4e9bd3d9bc1a4");
 
     @Test
     void migrationsAreNeverEdited() throws IOException, java.security.NoSuchAlgorithmException {

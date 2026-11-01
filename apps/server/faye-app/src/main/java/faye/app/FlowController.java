@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import faye.engine.Engine;
 import faye.engine.FlowException;
 import faye.engine.FlowException.Code;
+import faye.engine.HostFailure;
 import faye.engine.Submission;
 import faye.engine.spi.EngineResponse;
 import faye.engine.spi.FlowStore;
@@ -56,7 +57,17 @@ class FlowController {
     /** A finished flow whose host hands its result to the page that embeds the Login UI (ADR 0025). */
     record HandoffResponse(Map<String, Object> result) {}
 
-    record ErrorResponse(String error) {}
+    /**
+     * @param reference for {@code host_error} after a flow ended, the reference of its failure (ADR
+     *     0027): something the person can hand support, which names the operator's log line and
+     *     nothing about the flow
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record ErrorResponse(String error, @Nullable String reference) {
+        ErrorResponse(String error) {
+            this(error, null);
+        }
+    }
 
     /** The engine's screen, with the tenant's branding when it has any. */
     @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -257,6 +268,14 @@ class FlowController {
     ResponseEntity<ErrorResponse> badRedirect(BadRedirect e) {
         LOG.log(System.Logger.Level.ERROR, e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(new ErrorResponse("host_error"));
+    }
+
+    /** The host threw as it was told how the flow ended; the engine has logged where (FailureLog). */
+    @ExceptionHandler
+    ResponseEntity<ErrorResponse> hostFailed(HostFailure e) {
+        LOG.log(System.Logger.Level.ERROR, e.getMessage(), e.getCause());
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(new ErrorResponse("host_error", e.site().reference()));
     }
 
     @ExceptionHandler

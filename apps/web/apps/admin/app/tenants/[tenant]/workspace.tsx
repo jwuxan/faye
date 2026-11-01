@@ -32,6 +32,8 @@ import {
 } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PathView } from "../../../lib/api";
+import { locate } from "../../../lib/locate";
+import type { Source } from "../../../lib/trace";
 import { APPROVE, AUTHENTICATE, ENTRIES } from "../../../lib/entries";
 import {
   addressKey,
@@ -139,6 +141,12 @@ export function FlowWorkspace() {
   const select = (key: string | null) => {
     setSelected(key);
     if (key && !key.startsWith(LIST)) setPanelOpen(true);
+  };
+
+  // A trace event's YAML line: the block it is in is selected, and the graph shows it
+  const showSource = (s: Source) => {
+    const key = yaml ? locate(yaml, s.line, s.column) : null;
+    if (key && !key.startsWith("hook:")) select(key);
   };
 
   /** Where a block would go now, and why it cannot, if it cannot. */
@@ -278,6 +286,7 @@ export function FlowWorkspace() {
               blocked={d.blocked ?? (d.saved === "saving" ? "Saving the draft…" : d.saved === "failed" ? "Draft not saved" : null)}
               run={run}
               onEvent={d.onTrace}
+              onSource={showSource}
               fail={d.fail}
               reset={previewReset}
               onFollowing={setFollowing}

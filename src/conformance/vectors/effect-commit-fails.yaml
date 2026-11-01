@@ -13,3 +13,5 @@ events:
   - submit: { code: "123456" }
   - expect_commits: []
   - expect_result: { succeed: false, reason: invalid_credentials }
+# A commit runs when the entry succeeds, so its failure site is the succeed that ran it
+expect_failure: { entry: login, path: "3", step: null, code: invalid_credentials }

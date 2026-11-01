@@ -20,6 +20,7 @@ import faye.ir.Entry;
 import faye.ir.Fail;
 import faye.ir.Hook;
 import faye.ir.Node;
+import faye.ir.NodePaths;
 import faye.ir.Predicate;
 import faye.ir.Retry;
 import faye.ir.Screen;
@@ -91,6 +92,9 @@ public final class Engine {
      */
     public static final String REMEMBER = "remember";
 
+    /** Why a flow is reported failed when the host threw as it was told how the flow ended. */
+    public static final String HOST_ERROR = "host_error";
+
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final FlowVersions versions;
@@ -100,6 +104,7 @@ public final class Engine {
     private final TenantPolicies tenants;
     private final HookRunner hooks;
     private final Previews previews;
+    private final Failures failures;
     private final ScreenRegistry screens;
     private final Clock clock;
 
@@ -113,13 +118,15 @@ public final class Engine {
         this.hooks = b.hooks;
         this.previews = b.previews;
         this.clock = b.clock;
+        this.failures = b.failures;
     }
 
     /**
      * How an embedder assembles an engine from its SPIs. {@code versions}, {@code handlers}, {@code
      * screens}, {@code store} and {@code host} are required; tenants default to {@link
      * TenantPolicy#DEFAULT} for all, hooks to {@link HookRunner#NONE}, previews to {@link
-     * Previews#NONE}, the clock to the system clock. Registration is explicit: the engine runs
+     * Previews#NONE}, failures to {@link Failures#NONE}, the clock to the system clock. Registration
+     * is explicit: the engine runs
      * exactly the handlers, screens and issuers it is given, and discovers nothing.
      */
     public static Builder builder() {
@@ -137,6 +144,7 @@ public final class Engine {
         private HookRunner hooks = HookRunner.NONE;
         private Previews previews = Previews.NONE;
         private Clock clock = Clock.systemUTC();
+        private Failures failures = Failures.NONE;
 
         private Builder() {}
 
@@ -196,6 +204,12 @@ public final class Engine {
         /** What preview clients run, and where their traces go. */
         public Builder previews(Previews previews) {
             this.previews = previews;
+            return this;
+        }
+
+        /** Told where every run that ends abnormally ended (ADR 0027). */
+        public Builder failures(Failures failures) {
+            this.failures = failures;
             return this;
         }
 
@@ -455,8 +469,19 @@ public final class Engine {
      *
      * @param failure null when the entry succeeded
      * @param writes the writes the entry staged, to apply because it succeeded; empty on a failure
+     * @param at the node the entry ended at
+     * @param step the innermost step around it, or null
      */
-    private record Ended(FlowState state, @Nullable String failure, List<Effect> writes) implements Run {}
+    private record Ended(
+            FlowState state,
+            @Nullable String failure,
+            List<Effect> writes,
+            Site at,
+            @Nullable String step) implements Run {
+        Ended withFailure(String code) {
+            return new Ended(state, code, List.of(), at, step);
+        }
+    }
 
     /**
      * Runs a suspended flow's answer.
@@ -485,6 +510,7 @@ public final class Engine {
         while (!stack.isEmpty()) {
             Frame frame = stack.removeLast();
             List<Integer> path = frame.path();
+            Site at = new Site(state.entry(), path);
             @Nullable String failed = null;
             switch (frame) {
                 case Frame.StepExit exit -> {}
@@ -501,7 +527,7 @@ public final class Engine {
                     String method = input.string("method");
                     for (int i = 0; i < options.size(); i++) {
                         if (options.get(i).id().equals(method)) {
-                            trace.add(TraceEvent.of("option", method, "user"));
+                            trace.add(TraceEvent.of("option", method, "user", site(state, child(path, i))));
                             stack.add(new Frame.Eval(child(path, i)));
                         }
                     }
@@ -510,7 +536,7 @@ public final class Engine {
                     switch (resolve(root, path)) {
                         case Seq seq -> stack.add(new Frame.SeqNext(path, 0));
                         case Step step -> {
-                            trace.add(TraceEvent.of("step", step.id(), null));
+                            trace.add(TraceEvent.of("step", step.id(), null, at));
                             stack.add(new Frame.StepExit(path, step.id()));
                             stack.add(new Frame.Eval(child(path, 0)));
                         }
@@ -540,15 +566,16 @@ public final class Engine {
                                     case HookOutput.Set set -> failed = HookOutput.HOOK_ERROR;
                                     case HookOutput.Fail fail -> failed = fail.reason();
                                     case HookOutput.Pick pick -> {
-                                        int at = ids.indexOf(pick.option());
-                                        if (at < 0) {
+                                        int index = ids.indexOf(pick.option());
+                                        if (index < 0) {
                                             failed = HookOutput.HOOK_ERROR;
                                         } else {
-                                            picked = enabled.get(at);
+                                            picked = enabled.get(index);
                                         }
                                     }
                                 }
-                                trace.add(TraceEvent.of("hook", choose.pick().id(), failed == null ? "ok" : failed));
+                                trace.add(
+                                        TraceEvent.of("hook", choose.pick().id(), failed == null ? "ok" : failed, at));
                             }
                             if (failed != null) break;
                             String by = "only";
@@ -570,7 +597,10 @@ public final class Engine {
                             }
                             if (chosen != null) {
                                 trace.add(TraceEvent.of(
-                                        "option", choose.options().get(chosen).id(), by));
+                                        "option",
+                                        choose.options().get(chosen).id(),
+                                        by,
+                                        site(state, child(path, chosen))));
                                 stack.add(new Frame.Eval(child(path, chosen)));
                             } else if (enabled.isEmpty()) {
                                 failed = "no_method";
@@ -582,7 +612,7 @@ public final class Engine {
                                                 .map(i ->
                                                         choose.options().get(i).id())
                                                 .toList());
-                                trace.add(TraceEvent.of("screen", ScreenRegistry.METHOD_PICKER, null));
+                                trace.add(TraceEvent.of("screen", ScreenRegistry.METHOD_PICKER, null, at));
                                 return suspend(
                                         state,
                                         stack,
@@ -611,23 +641,23 @@ public final class Engine {
                             Map<String, Object> data = prepare(type, env, context(state), node.opts(), previous);
                             if (data == null) {
                                 failed = ISSUER_ERROR;
-                                trace.add(TraceEvent.of("screen", type.type(), ISSUER_ERROR));
+                                trace.add(TraceEvent.of("screen", type.type(), ISSUER_ERROR, at));
                                 break;
                             }
-                            trace.add(TraceEvent.of("screen", type.type(), null));
+                            trace.add(TraceEvent.of("screen", type.type(), null, at));
                             return suspend(
                                     state, stack, env, effects, revision, path, type.type(), data, error, attemptsLeft);
                         }
                         case Call call -> {
                             Handler handler = handlers.find(call.handler())
                                     .orElseThrow(() -> new IllegalStateException(
-                                            call.source() + ": unknown handler " + call.handler()));
+                                            "unknown handler " + call.handler() + " at " + at));
                             HandlerMeta meta = handler.meta();
                             switch (handler.invoke(new Invocation(
                                     env, input, call.args(), state.flowId(), state.tenantId(), state.preview()))) {
                                 case Outcome.Fail f -> {
                                     failed = f.error();
-                                    trace.add(TraceEvent.of("call", handler.name(), failed));
+                                    trace.add(TraceEvent.of("call", handler.name(), failed, at));
                                 }
                                 case Outcome.Ok ok -> {
                                     List<Effect> staged = effects(handler, ok);
@@ -635,8 +665,10 @@ public final class Engine {
                                     String mismatch = checkSubject(handler, ok, env);
                                     @Nullable List<String> amr = meta.credential() ? proven(handler, ok) : null;
                                     trace.add(new TraceEvent(
-                                            "call", handler.name(), mismatch == null ? "ok" : mismatch, amr, null));
-                                    if (mismatch != null) return end(state, env, effects, revision, mismatch);
+                                            "call", handler.name(), mismatch == null ? "ok" : mismatch, amr, null, at));
+                                    if (mismatch != null) {
+                                        return end(state, env, effects, revision, mismatch, at, currentStep(stack));
+                                    }
                                     effects.addAll(staged);
                                     // An identifying handler names the person afresh: nothing an
                                     // earlier attempt learned about someone else may stay (O16)
@@ -672,20 +704,22 @@ public final class Engine {
                                 // Only the hook of a choose may pick
                                 case HookOutput.Pick pick -> failed = HookOutput.HOOK_ERROR;
                             }
-                            trace.add(TraceEvent.of("hook", hook.id(), failed == null ? "ok" : failed));
+                            trace.add(TraceEvent.of("hook", hook.id(), failed == null ? "ok" : failed, at));
                         }
                         case Succeed succeed -> {
-                            return end(state, env, effects, revision, succeeds(entry.kind(), env));
+                            return end(
+                                    state, env, effects, revision, succeeds(entry.kind(), env), at, currentStep(stack));
                         }
                         case Fail fail -> {
-                            return end(state, env, effects, revision, fail.reason());
+                            return end(state, env, effects, revision, fail.reason(), at, currentStep(stack));
                         }
                     }
                 }
             }
             if (failed != null) {
                 // Unwind to the innermost retry with attempts left and rerun its body; without one,
-                // the entry fails.
+                // the entry fails, at the node that failed.
+                @Nullable String step = currentStep(stack);
                 Frame.@Nullable RetryExit again = null;
                 while (again == null && !stack.isEmpty()) {
                     if (stack.removeLast() instanceof Frame.RetryExit r
@@ -693,15 +727,19 @@ public final class Engine {
                         again = r;
                     }
                 }
-                if (again == null) return end(state, env, effects, revision, failed);
-                trace.add(TraceEvent.of("retry", null, failed));
+                if (again == null) return end(state, env, effects, revision, failed, at, step);
+                trace.add(TraceEvent.of("retry", null, failed, site(state, again.path())));
                 stack.add(new Frame.RetryExit(again.path(), again.attempt() + 1));
                 stack.add(new Frame.Eval(child(again.path(), 0)));
                 error = failed;
                 attemptsLeft = ((Retry) resolve(root, again.path())).attempts() - again.attempt();
             }
         }
-        return end(state, env, effects, revision, "incomplete");
+        return end(state, env, effects, revision, "incomplete", site(state, List.of()), null);
+    }
+
+    private static Site site(FlowState state, List<Integer> path) {
+        return new Site(state.entry(), path);
     }
 
     /**
@@ -723,8 +761,8 @@ public final class Engine {
                 failure = WRITE_ERROR;
             }
             if (failure != null) {
-                trace.add(TraceEvent.of("commit", handler.name(), failure));
-                return new Ended(e.state(), failure, List.of());
+                trace.add(TraceEvent.of("commit", handler.name(), failure, e.at()));
+                return e.withFailure(failure);
             }
         }
         return run;
@@ -843,26 +881,7 @@ public final class Engine {
     }
 
     private static Node resolve(Node root, List<Integer> path) {
-        Node node = root;
-        for (int i : path) {
-            node = switch (node) {
-                case Seq seq -> seq.children().get(i);
-                case Choose choose -> choose.options().get(i).body();
-                case Step step when i == 0 -> step.body();
-                case When w when i == 0 -> w.body();
-                case Retry r when i == 0 -> r.body();
-                case Step step -> throw new IllegalStateException("bad path " + path);
-                case When w -> throw new IllegalStateException("bad path " + path);
-                case Retry r -> throw new IllegalStateException("bad path " + path);
-                case Screen s -> throw new IllegalStateException("bad path " + path);
-                case Call c -> throw new IllegalStateException("bad path " + path);
-                case Hook h -> throw new IllegalStateException("bad path " + path);
-                case SetVar s -> throw new IllegalStateException("bad path " + path);
-                case Succeed s -> throw new IllegalStateException("bad path " + path);
-                case Fail f -> throw new IllegalStateException("bad path " + path);
-            };
-        }
-        return node;
+        return NodePaths.resolve(root, path);
     }
 
     private static List<Integer> child(List<Integer> path, int index) {
@@ -894,17 +913,27 @@ public final class Engine {
         FlowState suspended = state(state, stack, env, awaiting, effects, revision);
         // A flow may not suspend into a state too big to keep; it ends, never retried
         if (FlowStateCodec.write(suspended).getBytes(StandardCharsets.UTF_8).length > FlowLimits.MAX_STATE_BYTES) {
-            return end(state, env, effects, revision, LIMIT_EXCEEDED);
+            return end(
+                    state, env, effects, revision, LIMIT_EXCEEDED, new Site(state.entry(), path), currentStep(stack));
         }
         return new Suspended(suspended);
     }
 
     /** The entry ended; its staged writes go with a success and are dropped with a failure. */
-    private static Ended end(FlowState state, Env env, List<Effect> effects, long revision, @Nullable String failure) {
+    private static Ended end(
+            FlowState state,
+            Env env,
+            List<Effect> effects,
+            long revision,
+            @Nullable String failure,
+            Site at,
+            @Nullable String step) {
         return new Ended(
                 state(state, List.of(), env, null, List.of(), revision),
                 failure,
-                failure == null ? effects : List.of());
+                failure == null ? effects : List.of(),
+                at,
+                step);
     }
 
     private static FlowState state(
@@ -1026,11 +1055,7 @@ public final class Engine {
     }
 
     private static @Nullable Node resolveOrNull(Node root, List<Integer> path) {
-        try {
-            return resolve(root, path);
-        } catch (IllegalStateException | IndexOutOfBoundsException e) {
-            return null;
-        }
+        return NodePaths.find(root, path).orElse(null);
     }
 
     /**
@@ -1118,15 +1143,16 @@ public final class Engine {
         FlowState s = ended.state();
         String failure = ended.failure();
         if (failure != null) {
-            Completion rejected = reported(s, () -> host.reject(req, "access_denied", failure));
-            emit(s, List.of(TraceEvent.of("end", null, failure)));
+            failures.failed(s, failureSite(ended, failure));
+            Completion rejected = reported(s, ended, () -> host.reject(req, "access_denied", failure));
+            emit(s, List.of(TraceEvent.of("end", null, failure, ended.at())));
             // A failed sign in, not a denied consent: a consent the person refused goes back to the app
             return s.kind() == HostKind.LOGIN && rejected instanceof Redirect r
                     ? new Redirect(r.url(), true)
                     : rejected;
         }
         Env.Auth auth = s.env().auth();
-        Completion accepted = reported(s, () -> switch (s.kind()) {
+        Completion accepted = reported(s, ended, () -> switch (s.kind()) {
             // succeeds() refused any login without a subject and a verified credential
             case LOGIN ->
                 host.accept(
@@ -1164,19 +1190,36 @@ public final class Engine {
                 s,
                 List.of(
                         s.kind() == HostKind.LOGIN || s.kind() == HostKind.APPROVE
-                                ? new TraceEvent("end", null, "succeed", auth.amr(), auth.acr())
-                                : TraceEvent.of("end", null, "succeed")));
+                                ? new TraceEvent("end", null, "succeed", auth.amr(), auth.acr(), ended.at())
+                                : TraceEvent.of("end", null, "succeed", ended.at())));
         return accepted;
     }
 
-    /** Calls the host; if it throws, a preview's trace ends with {@code host_error} before the error propagates. */
-    private Completion reported(FlowState state, Supplier<Completion> call) {
+    /**
+     * Calls the host. If it throws, the failure is reported as {@code host_error} and a preview's
+     * trace ends with it, then a {@link HostFailure} carrying the site propagates.
+     */
+    private Completion reported(FlowState state, Ended ended, Supplier<Completion> call) {
         try {
             return call.get();
         } catch (RuntimeException e) {
-            emit(state, List.of(TraceEvent.of("end", null, "host_error")));
-            throw e;
+            FailureSite site = failureSite(ended, HOST_ERROR);
+            failures.failed(state, site);
+            emit(state, List.of(TraceEvent.of("end", null, HOST_ERROR, ended.at())));
+            throw new HostFailure(site, e);
         }
+    }
+
+    private static FailureSite failureSite(Ended ended, String code) {
+        return new FailureSite(ended.at().entry(), ended.at().path(), ended.step(), code, reference());
+    }
+
+    /** {@code ref_} and 12 random letters and digits: unique enough per failure to find one log line. */
+    private static String reference() {
+        String alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        StringBuilder out = new StringBuilder("ref_");
+        for (int i = 0; i < 12; i++) out.append(alphabet.charAt(RANDOM.nextInt(alphabet.length())));
+        return out.toString();
     }
 
     /** Hands a preview flow's events to {@link Previews}; other flows are not traced. */

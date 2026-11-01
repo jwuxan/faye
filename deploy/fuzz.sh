@@ -16,6 +16,7 @@ filter="${2:-}"
 # build          module       test (class.method)
 harnesses=(
   "src           faye-core    faye.ir.IrCodecFuzzTest.readFlow"
+  "src           faye-core    faye.ir.SourceMapFuzzTest.parse"
   "src           faye-core    faye.dsl.FlowCompilerFuzzTest.compile"
   "src           faye-engine  faye.engine.PredicatesFuzzTest.predicates"
   "src           faye-engine  faye.engine.PredicatesFuzzTest.acr"

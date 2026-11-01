@@ -1,0 +1,21 @@
+name: fail is the failure site of the entry it ends
+ir: flows/explicit-fail.json
+host:
+  client: { client_id: preview-default }
+  preview: true
+preview:
+  draft: flows/explicit-fail.json
+handlers:
+  identity.resolve: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_result: { succeed: false, reason: blocked }
+expect_trace:
+  - start login
+  - step identify @login/0
+  - screen identifier @login/0.0.0
+  - call identity.resolve ok @login/0.0.1
+  - step blocked @login/1
+  - end blocked @login/1.0
+expect_failure: { entry: login, path: "1.0", step: blocked, code: blocked }

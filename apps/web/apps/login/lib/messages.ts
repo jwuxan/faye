@@ -1,6 +1,15 @@
 import type { ErrorResponse } from "@faye/contract";
 
-export function errorMessage(code: ErrorResponse["error"]): string {
+/**
+ * @param reference the failure's reference (host_error after the flow ended), shown so the person
+ *   can quote it to support; it names a log line and nothing about the flow
+ */
+export function errorMessage(code: ErrorResponse["error"], reference?: string): string {
+  const message = baseErrorMessage(code);
+  return reference ? `${message} If you contact support, quote ${reference}.` : message;
+}
+
+function baseErrorMessage(code: ErrorResponse["error"]): string {
   switch (code) {
     case "flow_not_found":
     case "flow_finished":

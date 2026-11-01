@@ -171,7 +171,7 @@ export function FlowScreen({ initial, embedOrigin }: { initial: ScreenResponse; 
         setPending(false);
         return;
       }
-      if ("error" in body) setError(errorMessage(body.error));
+      if ("error" in body) setError(errorMessage(body.error, body.reference));
       else {
         setCurrent(body);
         setReceived((n) => n + 1);
