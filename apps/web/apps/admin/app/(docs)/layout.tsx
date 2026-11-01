@@ -22,7 +22,7 @@ const paperMono = localFont({
 
 export const metadata: Metadata = {
   title: { default: "Faye docs", template: "%s · Faye docs" },
-  description: "Faye is a sign in flow engine that sits in front of an OAuth2 authorization server.",
+  description: "Faye is an embeddable, configurable flow runtime built only for sign in and sign up.",
 };
 
 /**

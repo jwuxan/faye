@@ -115,7 +115,7 @@ export function searchIndexes(): AdvancedIndex[] {
 
 /** What /llms.txt says Faye is: the docs home page's own description, so the two never drift. */
 function summary(): string {
-  return loadDoc([])?.description ?? "Faye is a sign in flow engine in front of an OAuth2 authorization server.";
+  return loadDoc([])?.description ?? "Faye is an embeddable, configurable flow runtime built only for sign in and sign up.";
 }
 
 /** /llms.txt: a title, a summary, then each sidebar section as a list of its pages' Markdown URLs. */

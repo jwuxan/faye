@@ -1,10 +1,16 @@
 ---
-description: Faye runs the sign in and consent screens in front of an OAuth2 authorization server, from YAML flows that Faye checks before they run.
+description: Faye is an embeddable, configurable flow runtime built only for sign in and sign up. It runs the sign in and consent screens in front of an OAuth2 authorization server, from YAML flows that Faye checks before they run.
 ---
 
 # What is Faye?
 
-Faye is a sign in flow engine. It sits between the browser and an OAuth2 / OpenID Connect authorization server, such as [Ory Hydra](https://www.ory.sh/hydra/). The authorization server handles the protocol. Faye owns every screen that a person sees. Faye also owns every decision about how that person proves who they are.
+Faye is an embeddable, configurable flow runtime built only for sign in and sign up. A **flow** is the steps that a person goes through to get into an account. You configure the flow, and Faye runs it.
+
+- **Embeddable.** Faye's engine is a Java library. You embed it in a server, and connect it to your authorization server and your user store through a few Java interfaces ([the host SPI](understand/host-spi.md)). The prototype runs the engine in a server in front of Ory Hydra.
+- **Configurable.** Each tenant writes its own flow as data, not as code.
+- **Built only for sign in and sign up.** The flow language knows about credentials, screens and assurance, and about nothing else. It cannot run other kinds of work.
+
+Faye sits between the browser and an OAuth2 / OpenID Connect authorization server, such as [Ory Hydra](https://www.ory.sh/hydra/). The authorization server handles the protocol. Faye owns every screen that a person sees. Faye also owns every decision about how that person proves who they are.
 
 You describe a sign in as a short YAML file. Faye checks the flow before the flow runs anywhere. Then Faye runs the flow one screen at a time.
 
@@ -114,6 +120,7 @@ Faye has a narrow job on purpose. The [charter](../CHARTER.md), the project's fo
 | An OAuth2 or OpenID Connect provider | The authorization server serves the protocol, registers clients and talks to applications. |
 | A token service | The authorization server issues and signs tokens and owns sessions. Faye reports the result of a flow. |
 | A general UI platform | Faye shows only the screens that sign people in and ask for consent, and later the screens that sign people up. Account settings belong elsewhere. |
+| A general workflow engine | Faye runs only sign in, sign up and consent flows. Other processes, such as orders or approvals at work, belong in other tools. |
 | A programming language | The flow language is closed and every flow ends. Hooks make decisions inside a flow. They cannot replace the flow. |
 
 ## Where to go next
