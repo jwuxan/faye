@@ -205,7 +205,7 @@ Then serve four calls from your HTTP layer:
 
 An embedding host creates its own `ref`, returns `Handoff` from `accept` and `reject`, and starts flows through its own route or by calling `Engine.start` directly. The prototype server then answers the last submit with `{result}` instead of a redirect.
 
-The Login UI supports this in a popup. When `FAYE_EMBED_ORIGIN` names exactly one origin, the Login UI posts the result to the window that opened it, with `postMessage`, and only to that origin. The Login UI refuses to be shown in a frame. [`HandoffApiTest`](../../apps/server/faye-app/src/test/java/faye/app/HandoffApiTest.java) runs this path end to end.
+The Login UI supports this in a popup. When `FAYE_EMBED_ORIGIN` names exactly one origin, the Login UI posts the result to the window that opened it, with `postMessage`, and only to that origin. The Login UI refuses to be shown in a frame. [`HandoffApiTest`](../../apps/server/faye-app/src/test/java/faye/app/HandoffApiTest.java) tests the server side of this path: the screen API answers the last submit with `{result}`. No automated test covers the popup yet.
 
 ## What the engine promises a host
 
