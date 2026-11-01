@@ -71,7 +71,7 @@ Select **Add block** in the toolbar, or press `/` anywhere outside a text field.
 | Steps | **Add passkey** | Offers to create a passkey, once signed in. |
 | Steps | **One time code** | A code from an authenticator app, an email or a text message. You switch the kind in the inspector. |
 | Steps | **Add phone** | Adds a phone number that the person proves with a texted code, once signed in. |
-| Steps | **Enroll TOTP** | Sets up an authenticator app. |
+| Steps | **Enroll TOTP** | Sets up an authenticator app for time based one time passwords (TOTP). |
 | Steps | **QR code** | Shows a QR code that the person scans and approves on their phone. |
 | Steps | **Approve QR code** | On the phone: the person picks the number the other device shows. The last **Approve** step. |
 | Steps | **Consent** | Asks to share data with the client. Runs after sign in, on the consent challenge. |
@@ -179,7 +179,7 @@ Select **Add condition** for another test, or **Add group** for a nested group w
 | **Fail** | **Reason**: the failure reason, an id such as `denied`. |
 | **Group** | No settings. Add steps under it in the tree. |
 
-If you choose **With password** while the flow also has a **Password** block, the inspector warns that the block "asks for the password again" and offers **Remove**.
+If you choose **With password** while the flow also has a **Password** block, the inspector warns that the block "asks for the password again". It also offers **Remove**.
 
 YAML that you write by hand can give a block a key that the block does not take. The inspector then shows an **Unsupported keys** group, with the reason and a **Remove** button for each key. The draft fails the check until you remove these keys.
 
@@ -226,7 +226,7 @@ login:
 
 The editor helps you as you type:
 
-- Press `Ctrl+Space` to show completions. The editor completes keys, block ids after `block:`, hook ids after `before:`, `after:` and `pick:`, a block's settings under `with:`, and paths and operators in `if:`.
+- Press `Ctrl+Space` to show completions. The editor completes keys, block ids after `block:`, and hook ids after `before:`, `after:` and `pick:`. It also completes a block's settings under `with:`, and paths and operators in `if:`.
 - The server's errors and warnings appear as marks in the left margin at their line. Hold the pointer over a mark to read it.
 - The YAML tab has its own undo. Press `⌘Z` inside the editor.
 
@@ -287,7 +287,7 @@ Time limits are tenant settings, not part of the draft. Select **Save limits** t
 
 ## Read the graph
 
-The graph draws the draft from top to bottom. Each section starts with its title and ends with an end node: **signed in** for the sign in, **consented** after the consent steps, and **approved** after the approve steps. The options of a **Choose** and the steps of a **Group** branch to the right.
+The graph draws the draft from top to bottom. Each section starts with its title and ends with an end node. The end node is **signed in** for the sign in, **consented** after the consent steps, and **approved** after the approve steps. The options of a **Choose** and the steps of a **Group** branch to the right.
 
 - Select a node to select its block. The inspector opens.
 - A node flashes briefly when an edit changes its block.

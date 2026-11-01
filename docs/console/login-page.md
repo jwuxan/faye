@@ -68,7 +68,7 @@ Faye does not run sign up flows yet. The **Sign up** button is a placeholder. It
 
 When you change a setting, a bar appears at the bottom of the page: **Unsaved changes**, with **Discard** and **Save changes**. Select **Save changes**.
 
-The server checks the values again. If a value is not allowed, for example a logo URL that does not start with `https://`, the page lists the problem in red and saves nothing.
+The server checks the values again. If a value is not allowed, the page lists the problem in red and saves nothing. An example is a logo URL that does not start with `https://`.
 
 Saved branding and buttons appear on the next screen that the Login UI loads. This includes sign ins that are in progress. **Keep me signed in** applies to sign ins that start after the save. None of these settings is part of the draft, so you do not publish them.
 

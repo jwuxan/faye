@@ -44,14 +44,14 @@ Every page has the same parts, in this order:
 2. **One `#` title.** Use sentence case: "Write your first flow", not "Write Your First Flow".
 3. **An opening paragraph** that says what the page is for and who it is for.
 4. **Sections** with `##` and `###` headings. The docs site builds the "On this page" list from them.
-5. **Next steps**, when the reader has an obvious next page.
+5. **Next steps**, when there is a clear next page for the reader.
 
 Pick one kind of page and stay with it:
 
 | Kind | Answers | Example |
 |---|---|---|
 | Tutorial | "Teach me, step by step." | [Write your first flow](../flows/first-flow.md) |
-| How-to guide | "How do I do this one task?" | [Preview a draft](../console/preview.md) |
+| How to guide | "How do I do this one task?" | [Preview a draft](../console/preview.md) |
 | Explanation | "Why is it like this?" | [How the engine works](../understand/engine.md) |
 | Reference | "What exactly is allowed?" | [Flow DSL reference](../reference/dsl.md) |
 
@@ -80,11 +80,11 @@ Use GitHub's alert syntax. The docs site shows each one as a callout box.
 > Something that weakens security.
 ```
 
-Use at most two callouts in a section. A page full of boxes hides the one that matters.
+Use at most two callouts in a section. On a page with many boxes, the reader misses the important one.
 
 ### Steps
 
-Number the headings of a procedure. The docs site shows them as steps; GitHub shows numbered headings.
+Number the headings of a procedure. The docs site shows them as steps. GitHub shows numbered headings.
 
 ```markdown
 ## Run the stack
@@ -100,7 +100,7 @@ Open http://localhost:3001.
 
 ### Diagrams
 
-Draw diagrams in [Mermaid](https://mermaid.js.org). Mermaid is text, so a diagram can be reviewed in a diff, translated, and read by an agent.
+Draw diagrams in [Mermaid](https://mermaid.js.org). Mermaid is text. So you can review a diagram in a diff, a translation tool can translate it, and an agent can read it.
 
 ````markdown
 ```mermaid
@@ -126,11 +126,11 @@ Link to other docs with relative paths to the `.md` file: `[Hooks](../flows/hook
 
 ## Add a page to the sidebar
 
-The sidebar order lives in `docs/nav.yaml`. Add the page's path to the right section. A section with `dir` lists every file in that folder, its `README.md` first.
+The sidebar order lives in `docs/nav.yaml`. Add the page's path to the right section. A section with `dir` lists every file in that folder, with its `README.md` first.
 
 ## Check your change
 
-- Read the page out loud. If a sentence makes you take a breath in the middle, split it.
+- Read the page out loud. If you need to stop for breath in the middle of a sentence, split the sentence.
 - Run the admin tests: `cd apps/web && pnpm --filter @faye/admin test`. One test checks that every page in `nav.yaml` exists and that every link between docs works.
 - Open the page in the Admin UI at http://localhost:3002/docs and look at it in light and dark mode.
 
@@ -143,4 +143,4 @@ The docs site gives agents the same text people read:
 - `/llms-full.txt` holds every page in one file.
 - Each page has **Copy Markdown**, an **Open** menu (GitHub, Markdown, Scira AI, ChatGPT, Claude, Cursor), and **Ask Devin**, which opens [DeepWiki](https://deepwiki.com/jwuxan/faye) for this repository.
 
-Because the Admin UI runs on your own machine, the **Open** menu hands AI assistants the page's public GitHub copy, not the local URL.
+Because the Admin UI runs on your own machine, the **Open** menu gives AI assistants the page's public GitHub copy, not the local URL.

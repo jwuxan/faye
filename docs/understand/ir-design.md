@@ -400,7 +400,7 @@ On those paths the checker proves, among other rules:
 - Every success path of an `authenticate` or `approve` entry verifies a credential that binds the subject.
 - Every credential runs after a handler identified the person.
 - A handler that needs a signed in subject, such as `totp.enroll`, runs only after a credential verified one.
-- If the tenant requires MFA, every success path reaches `faye:2fa`.
+- If the tenant requires multi factor authentication (MFA), every success path reaches `faye:2fa`.
 - A `consent` entry verifies no credential.
 - An entry runs at most 32 hooks and 5,000 ms of hook time over all its requests.
 

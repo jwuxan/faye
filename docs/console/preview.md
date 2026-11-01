@@ -49,7 +49,7 @@ You need four things:
 - **Previews on.** The Faye server must run with `FAYE_PREVIEW_ENABLED=true`. Without this setting, the **Preview** tab says "Previews are disabled on this server", and Faye refuses every preview client. The image turns previews on when it runs the demo (`FAYE_DEMO=true`). `deploy/dev.sh` also turns previews on.
 - **A preview client.** The authorization server must have a client `preview-{tenant}` with `metadata.preview: true` and `metadata.tenant` set to the tenant. In the local stack, `deploy/bootstrap.mjs` registers `preview-acme` and `preview-bank`.
 - **The demo client.** The console opens the demo client at `DEMO_CLIENT_URL`, which is http://localhost:3001 by default.
-- **A saved draft with no errors.** The console saves the draft as you edit, and the server checks the draft. While the draft cannot run, the **Preview** button shows why instead of its name: **Checking…**, **Saving the draft…**, **Draft not saved**, or the number of errors to fix.
+- **A saved draft with no errors.** The console saves the draft as you edit, and the server checks the draft. While the draft cannot run, the **Preview** button shows the reason instead of its name. The reason is **Checking…**, **Saving the draft…**, **Draft not saved**, or the number of errors to fix.
 
 ## Set up the scenario
 
@@ -114,7 +114,7 @@ Select **Preview** in the toolbar. The button shows **Opening…**, then **Previ
 
 ### 6. Sign in in the preview window
 
-Answer the screens as a person would. Paste the identifier and password from the **Account** section. For an authenticator app code, copy the code from **Authenticator**. For a code sent by email or text message, read the code where your deployment delivers codes.
+Answer the screens as a person does. Paste the identifier and password from the **Account** section. For an authenticator app code, copy the code from **Authenticator**. For a code sent by email or text message, read the code where your deployment delivers codes.
 
 ### 7. Follow the trace
 
@@ -150,7 +150,7 @@ If the sign in succeeds and the flow asks for consent, the consent run appears i
 
 ## Check the run against the paths
 
-When the run ends, the console compares the run with the paths that the checker listed for the draft. A box under the trace shows how the run ended: a green check and the amr and acr, or a red cross and the failure reason. When the run had a consent part, there is one box for **Sign in** and one for **Consent**. Each box then says one of these:
+When the run ends, the console compares the run with the paths that the checker listed for the draft. A box under the trace shows how the run ended. It shows a green check with the amr and acr, or a red cross with the failure reason. When the run had a consent part, there is one box for **Sign in** and one for **Consent**. Each box then says one of these:
 
 | Message | Meaning |
 |---|---|

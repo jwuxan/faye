@@ -118,7 +118,7 @@ Shown by the `totp` block.
 
 Shown by the `enroll-totp` block.
 
-- **What the person sees:** **Set up an authenticator app**, the text "Scan this code with your authenticator app, then enter the 6 digit code it shows.", a QR code, the secret under **Or enter this key:** with a **Copy key** button, and the six code boxes with **Verify**.
+- **What the person sees:** **Set up an authenticator app**, the text "Scan this code with your authenticator app, then enter the 6 digit code it shows.", and a QR code. Then the secret under **Or enter this key:** with a **Copy key** button, and the six code boxes with **Verify**.
 - **On a retry:** the screen keeps the same secret, so the person does not scan a new QR code.
 - **Answer:** `{code}`.
 

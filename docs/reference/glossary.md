@@ -8,11 +8,11 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 ## A
 
-- **acr** (authentication context class reference): The overall level of a sign in. Faye uses `faye:1fa` for one factor and `faye:2fa` for two factors of different kinds. The engine computes it from `amr`. An application asks for a level with the OpenID Connect parameter `acr_values`.
+- **acr** (authentication context class reference): The overall level of a sign in: `faye:1fa` for one factor, or `faye:2fa` for two factors of different kinds. The engine computes it from `amr`, and an application asks for a level with the OpenID Connect parameter `acr_values`.
 - **Admin UI**: The web console at port 3002 where operators edit, check, preview, publish and roll back flows. Also called the console. See [Admin UI overview](../console/overview.md).
 - **alternative**: The YAML key of a choice. See *choice*.
-- **amr** (authentication methods references): The list of methods that verified during a sign in, such as `pwd` (password), `otp` (one time code from an app), `sms`, `email`, `hwk` (a hardware bound key, such as a passkey) and `user` (user verification, such as a fingerprint). Only the engine writes it.
-- **application**: A program that signs people in through the authorization server. OAuth2 calls it a client. Each application belongs to one tenant.
+- **amr** (authentication methods references): The list of methods that verified during a sign in. Only the engine writes it, with values such as `pwd` (password), `otp` (one time code from an app), `sms`, `email`, `hwk` (a hardware bound key, such as a passkey) and `user` (user verification, such as a fingerprint).
+- **application**: A program that belongs to one tenant and signs people in through the authorization server. OAuth2 calls it a client.
 - **approve**: The section of a flow file that runs on a phone during a QR code sign in. It becomes the flow's approve entry.
 - **attempts**: How many times a person may try a block before the step fails. Set with `with: { attempts: N }`.
 - **authorization server**: The server that speaks OAuth2 and OpenID Connect and issues tokens. Faye's first one is Ory Hydra.
@@ -26,15 +26,15 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 - **checker**: The part of Faye that lists every path through a flow and refuses unsafe flows, before publish and before preview.
 - **choice**: A step with several options, written with `alternative:`. A hook, an earlier answer, or the person picks one option.
-- **condition**: A test written with `if:`. A step whose condition is false is skipped. An option whose condition is false is not offered.
-- **consent**: The screen where a person allows a third party application to access their account. In a flow file, consent is a step of `login`; it runs when the authorization server asks for consent.
+- **condition**: A test written with `if:`. If the condition is false, the engine skips the step, or does not offer the option.
+- **consent**: The screen where a person allows a third party application to access their account. In a flow file, consent is a step of `login` that runs when the authorization server asks for consent.
 - **continuation**: The saved state of a sign in between two screens: where the flow is, what it knows, and what it waits for. It is plain data in the database.
 - **credential**: A handler that verifies something about the person, such as a password or a passkey, and proves an `amr` value.
 
 ## D
 
 - **demo client**: A small OpenID Connect application at port 3001 that comes with the demo stack. It starts sign ins and shows the resulting ID token.
-- **draft**: The version of a tenant's flow that you are editing. It is saved as you type and is not live until you publish it.
+- **draft**: The version of a tenant's flow that you are editing. The console saves it as you type, and it is not live until you publish it.
 
 ## E
 
@@ -45,8 +45,8 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 ## F
 
-- **factor**: A kind of proof. Faye counts a password as knowledge; app codes, text message codes and hardware keys as possession; and user verification, such as a fingerprint, as inherence. Two factors of different kinds give `faye:2fa`. An emailed code counts as one factor alone, never as a second.
-- **first party**: An application that belongs to the same owner as the tenant. A first party application is registered with `metadata.first_party = true`. The shipped flows do not ask it for consent.
+- **factor**: A kind of proof: a password is knowledge; app codes, text message codes and hardware keys are possession; user verification, such as a fingerprint, is inherence. Two factors of different kinds give `faye:2fa`, but an emailed code counts as one factor alone, never as a second.
+- **first party**: An application that belongs to the same owner as the tenant, registered with `metadata.first_party = true`. The shipped flows do not ask a first party application for consent.
 - **flow**: The recipe for a sign in: the steps, their order and their conditions.
 - **flow file**: The YAML file that describes a flow.
 
@@ -57,7 +57,7 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 ## H
 
 - **handler**: Built in code that checks what a person entered, such as `password.verify`.
-- **hook**: A small JavaScript function that a tenant writes. It can set values, fail a step, or pick an option. It can never sign anyone in. See [Hooks](../flows/hooks.md).
+- **hook**: A small JavaScript function that a tenant writes. It can set values, fail a step or pick an option, but it can never sign anyone in. See [Hooks](../flows/hooks.md).
 - **host**: The adapter between the engine and one authorization server. Faye ships a host for Hydra.
 - **hosted answer**: An answer to a later screen given early. For example, a passkey chosen from the browser's autofill on the first screen also answers the passkey screen.
 
@@ -74,11 +74,11 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 ## M
 
-- **method picker**: The screen that asks a person to choose how to continue, when a choice has several options and nothing else picks one.
+- **method picker**: The screen that asks a person to choose how to continue. It appears when a choice has several options and nothing else picks one.
 
 ## N
 
-- **nonce**: A one use value that each screen carries. An answer with an old nonce is refused, so an answer cannot be replayed.
+- **nonce**: A single use value that each screen carries. Faye refuses an answer with an old nonce, so nobody can send the same answer twice.
 
 ## O
 
