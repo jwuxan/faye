@@ -174,7 +174,7 @@ The **Preview run** card shows:
 - **Token matches the predicted path** when the token's `amr` and `acr` match a path that the checker predicted for the run. Otherwise **Token does not match any predicted path**, with the predicted outcomes.
 - The `amr` and `acr` from the ID token, and the run's events.
 
-If the card says **Preview run not found**, the trace has expired. A run's trace expires with its flow, 30 minutes after it started.
+If the card says **Preview run not found**, the trace has expired. A run's trace expires with its flow: `faye.flow-ttl` after the run started, which is 30 minutes in the shipped configuration.
 
 ## Next steps
 

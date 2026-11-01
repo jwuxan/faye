@@ -4,14 +4,14 @@ description: A tutorial that builds a sign in flow with a second factor in the A
 
 # Write your first flow
 
-This tutorial is for flow authors. You build a sign in flow for the `acme` tenant in the Admin UI, one step at a time. You start with a password, watch the checker refuse an unsafe change, add a second factor, try the draft in a preview, publish it, and roll it back.
+This tutorial is for flow authors. You build a sign in flow for the `acme` tenant in the Admin UI, one step at a time. First you build a flow with a password only. Then you watch the checker refuse an unsafe change, and you add a second factor. Last, you try the draft in a preview, publish it, and roll it back.
 
-You write YAML in this tutorial, so you see exactly what the flow says. The Blocks tab edits the same flow without YAML; see [the flow editor](../console/flow-editor.md).
+You write YAML in this tutorial, so you see exactly what the flow says. The Blocks tab edits the same flow without YAML. See [the flow editor](../console/flow-editor.md).
 
 ## Before you start
 
 - Run the demo stack and open the Admin UI at http://localhost:3002. The [quickstart](../start/quickstart.md) shows how.
-- The demo stack turns on previews (`FAYE_PREVIEW_ENABLED=true`). It also runs a stub of the IP reputation service that the `acme` tenant's risk hook calls. If you run Faye another way, the Preview tab says that previews are disabled.
+- The demo stack turns on previews (`FAYE_PREVIEW_ENABLED=true`). It also runs a stub, a small test version, of the IP reputation service. The `acme` tenant's risk hook calls this service. If you run Faye another way, the Preview tab says that previews are disabled.
 
 > [!WARNING]
 > Publishing changes how every person signs in to the `acme` tenant's applications. Do this tutorial on your own demo stack, not on a shared server. The last step puts the shipped flow back.
@@ -42,7 +42,7 @@ flowchart TD
 
 The page has two halves. On the left are the tabs **Blocks**, **YAML**, **Paths**, **Settings** and **Preview**. On the right is the graph of the flow. The status bar at the bottom shows what the checker found, and how many paths the flow has.
 
-Every change you make goes into a draft. The draft saves itself, and the header says **Draft saved**. People keep signing in with the live version until you publish.
+Every change that you make goes into a draft. The draft saves itself, and the header says **Draft saved**. People keep signing in with the live version until you publish.
 
 ### 2. Read the shipped flow
 
@@ -53,10 +53,10 @@ Click the **YAML** tab. It shows the flow that the `acme` tenant ships with, fro
 - `login.steps` lists the steps of a sign in, in the order they run. Each step has an id that you choose, such as `identify` or `credential`.
 - Each step names a `block`, such as `identifier` or `password`. A block brings its own screen and the handler that checks the answer.
 - `alternative` is a choice between options, such as a password or an emailed code.
-- `if` is a condition. The step runs only when the condition holds.
+- `if` is a condition. The step runs only when the condition is true.
 - `approve` is the phone's side of QR code sign in.
 
-Now click the **Paths** tab. The checker lists every path through the flow. Each row says whether the path succeeds, its entry, and the `amr` and `acr` it ends with. The shipped flow has thousands of paths, because it has many choices.
+Now click the **Paths** tab. The checker lists every path through the flow. Each row shows the path's entry, whether the path succeeds, and the `amr` and `acr` values that the path ends with. The shipped flow has thousands of paths, because it has many choices.
 
 ### 3. Start from a password only flow
 
@@ -79,7 +79,7 @@ This flow has two steps:
 - `identify` shows the identifier screen and looks up the account. The Identifier block is always the first step, because every credential needs to know whose account it checks.
 - `credential` shows the password screen and verifies the password. The Password block allows 3 attempts by default.
 
-You do not write "sign the person in" at the end. The compiler ends every section with success, and the engine accepts that success only if a credential verified.
+You do not write "sign the person in" at the end. The compiler ends every section with success. The engine accepts that success only if a credential verified.
 
 The graph updates as you type. The status bar shows **1 warning**. Click it to open the Problems list:
 
@@ -87,7 +87,7 @@ The graph updates as you type. The status bar shows **1 warning**. Click it to o
 no path reaches faye:2fa; clients that request it in acr_values are refused
 ```
 
-A warning does not stop you from publishing. It tells you that no person can reach two factors with this flow. You fix that in [step 6](#6-add-a-second-factor).
+A warning does not stop you from publishing. It tells you that no person can reach two factors with this flow. You fix this problem in [step 6](#6-add-a-second-factor).
 
 > [!NOTE]
 > This flow has no consent step. Until you add one, the authorization server grants consent without a screen. See [consent](flow-syntax.md#consent).
@@ -105,7 +105,7 @@ There are 3 successful paths because the password may be right on the first, sec
 
 ### 5. Make a mistake on purpose
 
-Faye refuses any flow that has a path to success without a verified credential. See it happen. Add a condition to the password step:
+Faye refuses any flow that has a path to success without a verified credential. To see this rule work, add a condition to the password step:
 
 ```yaml
 flow: acme
@@ -126,7 +126,7 @@ The status bar now shows **1 error** beside the warning. The Problems list shows
 a path succeeds without verifying a credential: identify > credential > (condition at 9 false) > succeed with no credential
 ```
 
-The checker cannot know at publish time whether `user.has_password` holds, so it follows both ways. On the path where the condition is false, nobody proves anything, yet the flow reaches its end. The message names that path, step by step, and points at line 9, where the condition is.
+When you publish, the checker cannot know whether `user.has_password` is true. So the checker follows both ways. On the path where the condition is false, the person proves nothing, but the flow still reaches its end. The message names that path, step by step. It also points to line 9, where the condition is.
 
 While the draft has errors, the **Publish** button is disabled. If you remove the `credential` step completely, you get the same error, with the path `identify > succeed with no credential`.
 
@@ -172,16 +172,16 @@ login:
 
 Here is what each new part does:
 
-- `hooks.risk` declares the risk hook. Its code, [`risk.js`](../../apps/server/faye-app/src/main/resources/flows/risk.js), asks the `ip-reputation` service to score the request. `capabilities` lets the hook call that service, and the tenant grants it. `timeout_ms` gives the hook 500 milliseconds.
-- `after: risk` runs the hook after the `identify` step. The hook sets `vars.risk` to `high` or `low`. If the service does not answer, the hook sets `high`, so a failure costs the person a second factor, never the sign in.
-- `second-factor` runs only when its condition holds: the risk is high, or the client asked for `faye:2fa` in `acr_values`.
-- `alternative` is a choice. Each option has its own condition. A person with TOTP proves it. A person without TOTP enrolls an authenticator app now.
+- `hooks.risk` declares the risk hook. Its code, [`risk.js`](../../apps/server/faye-app/src/main/resources/flows/risk.js), asks the `ip-reputation` service to score the request. `capabilities` lets the hook call that service. The tenant must grant the same permission. `timeout_ms` gives the hook 500 milliseconds.
+- `after: risk` runs the hook after the `identify` step. The hook sets `vars.risk` to `high` or `low`. If the service does not answer, the hook sets `high`. So if the service fails, the person must give a second factor, but the sign in does not fail.
+- `second-factor` runs only when its condition is true: the risk is high, or the application asked for `faye:2fa` in `acr_values`.
+- `alternative` is a choice. Each option has its own condition. A person who has a time based one time password (TOTP) enters a code from their authenticator app. A person without TOTP enrolls an authenticator app now.
 
-For any account, exactly one of the two options is enabled. So the engine runs that option at once and shows no method picker. When two or more options are enabled, the person chooses on the method picker screen.
+For any account, exactly one of the two options is enabled. So the engine runs that option immediately and shows no method picker. When two or more options are enabled, the person chooses on the method picker screen.
 
-The order of steps matters. A TOTP code is a second factor only: it needs an account that a credential verified earlier in the flow. If you move `second-factor` before `credential`, the checker refuses the flow with `totp.verify needs a subject a credential verified earlier in the flow`.
+The order of steps matters. A TOTP code is only a second factor. It needs an account that a credential verified earlier in the flow. If you move `second-factor` before `credential`, the checker refuses the flow with `totp.verify needs a subject a credential verified earlier in the flow`.
 
-Open the **Paths** tab again. Successful paths now end with either `pwd` and `faye:1fa`, or `pwd` `otp` and `faye:2fa`. The warning is gone, because a path reaches `faye:2fa`.
+Open the **Paths** tab again. Successful paths now end with either `pwd` and `faye:1fa`, or `pwd`, `otp` and `faye:2fa`. The warning is gone, because a path reaches `faye:2fa`.
 
 A hook cannot sign anyone in. It can only set values, fail a step, or pick an option. So the checker still sees a password on every successful path, whatever the hook does. See [hooks](hooks.md).
 
@@ -196,7 +196,7 @@ A preview runs your draft, not the live version, through the demo client. It wor
 5. Sign in with the identifier and password that the Preview tab shows.
 6. The new account has no TOTP, so the Enroll TOTP screen appears. Add the key to an authenticator app, and enter the code. If you have no app, paste the secret from that screen into **Secret** under **Authenticator**. The Preview tab then shows the current code.
 
-While you sign in, the **Trace** section lists what the engine does, and the graph highlights each block it visits. When the sign in ends, Faye compares it with the paths that the checker found. The result reads **Matches path** and the path.
+While you sign in, the **Trace** section lists what the engine does, and the graph highlights each block it visits. When the sign in ends, Faye compares it with the paths that the checker found. The result shows **Matches path**, followed by the path.
 
 Run the preview again with **High risk IP** off. The flow skips the second factor and ends with `faye:1fa`. Then choose `faye:2fa` under **acr_values**. The flow asks for the second factor again.
 
@@ -205,21 +205,21 @@ Run the preview again with **High risk IP** off. The flow skips the second facto
 
 ### 8. Publish
 
-Click **Publish** in the header. The server checks the flow again before it publishes. A message confirms **Published** with the first characters of the new version's hash, and the **live** badge shows the same hash.
+Click **Publish** in the header. The server checks the flow again before it publishes. A message confirms **Published** with the first characters of the new version's hash. The **live** badge shows the same hash.
 
 New sign ins now use your flow. A sign in that started earlier finishes on the version it started with.
 
-Try it as a real person would. In the sidebar, open **Applications** and click **Try sign in** on any application. The demo client opens and signs you in through your new flow.
+Now test the flow as a real person. In the sidebar, open **Applications** and click **Try sign in** on any application. The demo client opens and signs you in through your new flow.
 
 ### 9. Roll back
 
 1. In the sidebar, under **Sign in**, click **Versions**. The list shows the newest version first, and the live one has a **Live** badge.
-2. Click the version before yours. That is the shipped flow. The page shows its difference from your draft.
+2. Click the version before yours. This version is the shipped flow. The page shows its difference from your draft.
 3. Click **Make live**, and confirm.
 
-New sign ins use the shipped flow again. The checker checks the old version again before it goes live, because the tenant's settings may have changed since it was published.
+New sign ins use the shipped flow again. Before the old version goes live, the checker checks it again. The tenant's settings may have changed since that version was published.
 
-Rolling back does not change your draft. To bring the draft back to the shipped flow too, click **Load into draft** on that version.
+A rollback does not change your draft. To bring the draft back to the shipped flow too, click **Load into draft** on that version.
 
 ## What you learned
 
@@ -228,7 +228,7 @@ Rolling back does not change your draft. To bring the draft back to the shipped 
 - `if` makes a step conditional, and `alternative` offers a choice.
 - The checker follows every path before anything runs. It refuses a flow where any path succeeds without a verified credential.
 - `amr` and `acr` come from the credentials that verified, never from the flow.
-- A hook can steer a flow, but it cannot sign anyone in.
+- A hook can change which path a flow takes, but it cannot sign anyone in.
 - You preview a draft, publish it as a new version, and roll back to an earlier version from **Versions**.
 
 ## Next steps

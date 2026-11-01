@@ -10,6 +10,8 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 - **acr** (authentication context class reference): The overall level of a sign in: `faye:1fa` for one factor, or `faye:2fa` for two factors of different kinds. The engine computes it from `amr`, and an application asks for a level with the OpenID Connect parameter `acr_values`.
 - **Admin UI**: The web console at port 3002 where operators edit, check, preview, publish and roll back flows. Also called the console. See [Admin UI overview](../console/overview.md).
+- **ADR** (architecture decision record): A short document in `docs/adr/` that records one decision, the options considered and why. See [Decisions](../adr/README.md).
+- **allowlist**: The handlers and screens a tenant may use. The checker refuses a flow that uses anything else. Set in [General settings](../console/tenant-settings.md).
 - **alternative**: The YAML key of a choice. See *choice*.
 - **amr** (authentication methods references): The list of methods that verified during a sign in. Only the engine writes it, with values such as `pwd` (password), `otp` (one time code from an app), `sms`, `email`, `hwk` (a hardware bound key, such as a passkey) and `user` (user verification, such as a fingerprint).
 - **application**: A program that belongs to one tenant and signs people in through the authorization server. OAuth2 calls it a client.
@@ -21,18 +23,22 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 - **binder**: A random secret, kept in a cookie, that ties a sign in to the browser that started it. Another browser cannot read or answer that sign in.
 - **block**: A built in piece of a sign in with a fixed screen and a fixed handler, such as `password` or `totp`. See [Flow DSL reference](dsl.md#blocks).
+- **block defaults**: A tenant's own default settings for blocks, such as the number of password attempts. A flow's `with:` still takes priority.
 
 ## C
 
 - **checker**: The part of Faye that lists every path through a flow and refuses unsafe flows, before publish and before preview.
 - **choice**: A step with several options, written with `alternative:`. A hook, an earlier answer, or the person picks one option.
+- **client**: OAuth2's word for an *application*. The docs use "application", except in fixed names such as *demo client* and *preview client*.
 - **condition**: A test written with `if:`. If the condition is false, the engine skips the step, or does not offer the option.
+- **conformance vector**: A test, written as data, that says how any engine must run a given IR. The vectors are in `src/conformance/`.
 - **consent**: The screen where a person allows a third party application to access their account. In a flow file, consent is a step of `login` that runs when the authorization server asks for consent.
 - **continuation**: The saved state of a sign in between two screens: where the flow is, what it knows, and what it waits for. It is plain data in the database.
 - **credential**: A handler that verifies something about the person, such as a password or a passkey, and proves an `amr` value.
 
 ## D
 
+- **delivery channel**: Where a tenant's emailed or texted codes go: the tenant's webhook, or the outbox folder of the demo. Without one, the code blocks are off.
 - **demo client**: A small OpenID Connect application at port 3001 that comes with the demo stack. It starts sign ins and shows the resulting ID token.
 - **draft**: The version of a tenant's flow that you are editing. The console saves it as you type, and it is not live until you publish it.
 
@@ -64,8 +70,13 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 ## I
 
 - **identifier**: What a person types to say who they are, such as an email address. Also the name of the first block of every sign in.
+- **idle timeout**: How long a sign in may wait for the next answer before it ends. Set per entry kind, in a flow's Settings tab.
 - **IR** (intermediate representation): The small JSON form that a flow file compiles to. The checker and the engine read the IR. See [How the IR is designed](../understand/ir-design.md).
 - **issuer**: Built in code that makes the server side data a screen needs, such as a passkey challenge or a QR code.
+
+## K
+
+- **keep me signed in**: A checkbox on the first screen. If the person checks it, the authorization server remembers the sign in for 30 days. Next time, Faye skips the screens if one factor is enough for the application.
 
 ## L
 
@@ -75,6 +86,7 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 ## M
 
 - **method picker**: The screen that asks a person to choose how to continue. It appears when a choice has several options and nothing else picks one.
+- **MFA** (multi factor authentication): Signing in with two factors of different kinds. A tenant can require it for every sign in.
 
 ## N
 
@@ -82,13 +94,21 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 ## O
 
+- **one time code**: A short code that works once: from an authenticator app (TOTP), or sent by email or text message.
 - **option**: One branch of a choice. An option is one credential block, or a `fail`.
+- **outbox**: The queue of codes that wait to be emailed or texted. A separate worker delivers them.
 
 ## P
 
+- **passkey**: A credential that the browser or phone keeps, unlocked by a fingerprint, a face or a PIN. It uses the WebAuthn standard.
 - **path**: One way a sign in can go through a flow, from the first step to success or failure. The checker lists every path.
 - **preview**: A run of a draft with a real application, before you publish it.
+- **preview client**: An application registered with `metadata.preview = true`. It runs the tenant's draft instead of the live version.
 - **publish**: To check a draft and make it the live version.
+
+## Q
+
+- **QR code sign in**: Signing in on one device by scanning a QR code with a phone where you sign in and approve. The phone runs the flow's approve section.
 
 ## R
 
@@ -96,6 +116,7 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 ## S
 
+- **scenario**: The settings of a preview run: which account, which `acr_values`, which IP address.
 - **screen**: One page of a sign in, of a fixed type, such as `password` or `consent`. See [Sign in screens](screens.md).
 - **step**: One stage of a flow, with a name, such as `identify` or `second-factor`.
 - **step up**: Asking a person who already signed in for a stronger factor, for example because an application asked for `faye:2fa`.
@@ -105,6 +126,8 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 - **tenant**: One customer or product line with its own flow, applications, users, branding and policy.
 - **third party**: An application that does not belong to the tenant's owner. In the shipped flows, a third party application asks the person for consent.
+- **time limit**: How long a sign in may take in total before it ends. Set per entry kind, in a flow's Settings tab.
+- **TOTP** (time based one time password): A 6 digit code from an authenticator app that changes every 30 seconds.
 - **trace**: The list of events that a preview run records: the start, steps, options, screens, calls, hooks, retries, commits and the end.
 
 ## U
@@ -113,4 +136,5 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 ## V
 
+- **vars**: Values that a flow writes with `set:` or that a hook sets, for later conditions to test.
 - **version**: A published flow, addressed by the hash of its IR. A sign in keeps the version it started with.
