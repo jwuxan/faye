@@ -567,6 +567,7 @@ The compiler reads YAML strictly, so a value means what it looks like.
 | A boolean is `true` or `false`. `yes`, `no`, `on`, `off` and other spellings are refused | `write a boolean as true or false, or quote 'yes'` |
 | An integer is decimal and fits in 64 bits. Hex (`0x1F`), octal (`010`) and other forms are refused | `write an integer in decimal within 64 bits, or quote '0x1F'` |
 | A literal is a string, an integer or a boolean. A decimal number such as `1.5` is refused | for a `set` value: `value of <name>: number found, [string, integer, boolean] expected` |
+| Lines end with a newline (`\n`, `\r\n` or `\r`) only. NEL, LS and PS (U+0085, U+2028, U+2029) are refused, because the YAML parser would read them as line breaks that an editor does not show | `U+0085 breaks a line in YAML 1.1 but not in an editor; write a newline, or \N, \L or \P in a double quoted string` |
 | The file is at most 1,048,576 characters and nests at most 64 levels | refused before anything else |
 
 To use one of these refused values as a string, quote it: `"yes"`, `"0x1F"`.

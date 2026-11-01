@@ -4,7 +4,7 @@ description: What Faye needs from the system it runs for, so that it can sit in 
 
 # Embed Faye: the host SPI
 
-Faye's engine does not know which authorization server it serves. It talks to the outside world only through a small set of Java interfaces, its service provider interface (SPI). This page explains that SPI. It covers what a **host** must provide, what the engine guarantees in return, and how to run Faye as middleware in front of an authorization server or inside your own application.
+Faye's engine does not know which authorization server it serves. It talks to the outside world only through a small set of Java interfaces, its service provider interface (SPI). This page explains that SPI. It covers what a **host** must provide and what the engine guarantees in return. It also shows how to run Faye as middleware in front of an authorization server or inside your own application.
 
 This page is for engineers who want to connect Faye to a new authorization server, connect an existing user store, or embed the engine. For the runtime behind the SPI, read [How the engine works](engine.md).
 

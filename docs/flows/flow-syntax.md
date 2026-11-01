@@ -323,7 +323,7 @@ A path keeps the first segment of its default and adds up to three lowercase seg
 
 ## What the compiler and the checker refuse
 
-Faye reads a flow in two stages. The compiler turns the YAML into the intermediate representation (IR). It refuses what does not fit the language. The checker then follows every path through the flow and refuses what is unsafe. A flow with any error cannot be previewed or published.
+Faye reads a flow in two stages. The compiler turns the YAML into the intermediate representation (IR). It refuses what does not fit the language. The checker then verifies the IR against the catalogs and limits, follows every path through the flow, and refuses what is unsafe. The [Flow DSL reference](../reference/dsl.md) splits the checker's work into two gates: the verifier and the path checker. A flow with any error cannot be previewed or published.
 
 Every error points to the YAML that caused it, by line and column. In the Admin UI, the status bar counts errors and warnings. Click the count to open the Problems list, and click a problem to jump to its line. Outside the console, an error reads `acme.yaml:9:11: <message>`.
 
@@ -346,7 +346,7 @@ Common errors, and how to fix them:
 
 The checker also gives warnings, which do not block publish. For example, it warns `no path reaches faye:2fa; clients that request it in acr_values are refused`. It also warns about a step whose condition is false on every path that reaches it.
 
-The YAML itself must be plain. The compiler refuses anchors, aliases and duplicate keys. The checker refuses an entry with more than 10,000 paths, and a flow has at most 64 steps. [ADR 0037](../adr/0037-hard-limits-on-flows-and-hooks.md) lists every limit.
+The YAML itself must be plain. The compiler refuses anchors, aliases, duplicate keys and hidden line breaks. The checker refuses an entry with more than 10,000 paths, and a flow has at most 64 steps. [ADR 0037](../adr/0037-hard-limits-on-flows-and-hooks.md) lists every limit.
 
 ## From YAML to IR
 

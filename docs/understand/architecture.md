@@ -115,7 +115,7 @@ flowchart TB
 ```
 
 - **`faye-core`** holds the intermediate representation (IR) types and their JSON codec, the YAML to IR compiler, and the JavaScript hook runtime (QuickJS compiled to WebAssembly).
-- **`faye-engine`** holds the engine, the service provider interfaces (SPIs) that a host implements in `faye.engine.spi`, the checker and `Publisher`, the screen catalog, and the built in handlers and blocks. It knows no authorization server.
+- **`faye-engine`** holds the engine and the service provider interfaces (SPIs) that a host implements, in `faye.engine.spi`. It also holds the checker and `Publisher`, the screen catalog, and the built in handlers and blocks. It knows no authorization server.
 - **`faye-app`** is the Spring Boot application. It wires the engine to SQLite stores, serves the HTTP APIs, and runs the code outbox for emailed and texted codes.
 - **`faye-host-hydra`** implements `FlowHost` for Hydra's admin API, and the read only list of applications.
 - **`faye-identity`** implements the credential interfaces (passwords with Argon2, authenticator app codes, passkeys) over each tenant's user pool.
