@@ -5,7 +5,7 @@ import type * as PageTree from "fumadocs-core/page-tree";
 import type { AdvancedIndex } from "fumadocs-core/search/server";
 import type { TOCItemType } from "fumadocs-core/toc";
 import { remark } from "remark";
-import { allPages, docIndex, docsVersion, loadDoc, REPO_BRANCH, REPO_URL, type Doc, type DocSection } from "./docs";
+import { absoluteLinks, allPages, docIndex, docsVersion, loadDoc, REPO_BRANCH, REPO_URL, type Doc, type DocSection } from "./docs";
 import { MDX_NODE_TYPES, remarkGithubAlerts, remarkMermaid } from "./docs-markdown";
 
 /** The remark plugins every doc goes through, in order. Shared by the renderer and the TOC. */
@@ -80,7 +80,7 @@ export function markdownUrl(doc: Doc): string {
 export function markdownOf(doc: Doc): string {
   const lines = [`# ${doc.title}`, ""];
   if (doc.description) lines.push(`> ${doc.description}`, "");
-  lines.push(`Source: ${sourceUrls(doc).github}`, "", doc.body.trim(), "");
+  lines.push(`Source: ${sourceUrls(doc).github}`, "", absoluteLinks(doc.body, doc.file).trim(), "");
   return lines.join("\n");
 }
 

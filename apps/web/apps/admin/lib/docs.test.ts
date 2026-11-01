@@ -5,7 +5,7 @@ import { join, posix } from "node:path";
 import { test } from "node:test";
 import type { Root } from "mdast";
 import { parse } from "yaml";
-import { allPages, docIndex, loadDoc, parseDoc, resolveHref } from "./docs.ts";
+import { absoluteLinks, allPages, docIndex, loadDoc, parseDoc, resolveHref } from "./docs.ts";
 import { remarkGithubAlerts, remarkMermaid } from "./docs-markdown.ts";
 
 const REPO_DOCS = join(import.meta.dirname, "..", "..", "..", "..", "..", "docs");
@@ -107,6 +107,28 @@ test("resolveHref: docs links stay in /docs, repo files go to GitHub, other link
     assert.equal(resolveHref("index.md", "https://example.com/x"), "https://example.com/x");
     assert.equal(resolveHref("index.md", "mailto:a@b.c"), "mailto:a@b.c");
     assert.equal(resolveHref("index.md", "#frag"), "#frag");
+  });
+});
+
+test("absoluteLinks: doc links become .md URLs, repo links GitHub URLs, code and dead links stay", () => {
+  withDocs(fixture(), () => {
+    const md = [
+      "See [setup](guide/setup.md#part), [home](index.md) and [code](../src/a.java).",
+      "Keep `[inline](guide/setup.md)` and [dead](nope.md) and [web](https://x.y/z).",
+      "```",
+      "[fenced](guide/setup.md)",
+      "```",
+    ].join("\n");
+    assert.equal(
+      absoluteLinks(md, "index.md"),
+      [
+        "See [setup](/docs/guide/setup.md#part), [home](/docs.md) and [code](https://github.com/jwuxan/faye/blob/main/src/a.java).",
+        "Keep `[inline](guide/setup.md)` and [dead](nope.md) and [web](https://x.y/z).",
+        "```",
+        "[fenced](guide/setup.md)",
+        "```",
+      ].join("\n"),
+    );
   });
 });
 

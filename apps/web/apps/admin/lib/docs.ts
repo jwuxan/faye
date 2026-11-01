@@ -194,3 +194,27 @@ export function resolveHref(fromFile: string, href: string): string | null {
   if (!docFiles(docsDir()).has(slug)) return null;
   return `${hrefOf(slug)}${hash ? `#${hash}` : ""}`;
 }
+
+/**
+ * A doc's Markdown with its relative links made absolute, for an agent that reads one page out of
+ * context: links to other docs point at their Markdown (/docs/<slug>.md), links to repository files
+ * at GitHub. Links in fenced or inline code, and links that resolve to nothing, stay as written.
+ */
+export function absoluteLinks(markdown: string, fromFile: string): string {
+  const toMarkdownUrl = (href: string) => {
+    const [path, hash] = href.split("#", 2);
+    return `${path === "/docs" ? "/docs.md" : `${path}.md`}${hash ? `#${hash}` : ""}`;
+  };
+  const rewrite = (text: string) =>
+    text.replace(/(\]\()([^)\s]+)((?:\s+"[^"]*")?\))/g, (whole, open: string, href: string, close: string) => {
+      if (/^(https?:|mailto:|#)/i.test(href)) return whole;
+      const resolved = resolveHref(fromFile, href);
+      if (resolved === null) return whole;
+      return `${open}${resolved.startsWith("/docs") ? toMarkdownUrl(resolved) : resolved}${close}`;
+    });
+  // Split on fenced blocks and inline code, and rewrite only the prose between them
+  return markdown
+    .split(/(^(?:`{3,}|~{3,})[^\n]*\n[\s\S]*?^(?:`{3,}|~{3,})[ \t]*$)/m)
+    .map((part, i) => (i % 2 === 1 ? part : part.split(/(`[^`\n]*`)/).map((p, j) => (j % 2 === 1 ? p : rewrite(p))).join("")))
+    .join("");
+}

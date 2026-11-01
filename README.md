@@ -1,5 +1,7 @@
 # Faye
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jwuxan/faye)
+
 Faye is the login box that sits in front of an authorization server. The server (Ory Hydra) speaks OAuth2/OIDC to applications; Faye owns every screen the user sees and decides how they prove who they are: password, TOTP, passkey, consent screen, risk check. Flows are written in YAML, so you can reshape a sign in without touching server code.
 
 **Documentation:** start at [docs/index.md](docs/index.md), or open the Admin UI's **Docs** (http://localhost:3002/docs) once the stack runs. It covers the architecture, the engine, the flow language and its IR, the Admin UI, and building from source. Every page is also Markdown for agents (`/llms.txt`), and [DeepWiki](https://deepwiki.com/jwuxan/faye) answers questions about the code.
