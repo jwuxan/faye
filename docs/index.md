@@ -9,7 +9,7 @@ Faye is a sign in flow engine. It sits between the browser and an OAuth2 / OpenI
 You describe a sign in as a short YAML file. Faye checks the flow before the flow runs anywhere. Then Faye runs the flow one screen at a time.
 
 > [!NOTE]
-> Faye is a working prototype. It runs end to end with Hydra, two demo tenants (customers, each with its own setup) and ten demo applications. Production features, such as high availability and rate limiting at scale, are planned and not built yet. Sign up is not built yet either. See [Vision and north star](understand/vision.md#where-faye-is-today).
+> Faye is a working prototype. It runs end to end with Hydra, two demo tenants (customers, each with its own setup) and ten demo applications. Production features, such as high availability and rate limiting at scale, are planned and not built yet. Sign up is not built yet either. The Admin UI has no sign in, so it must run only on your own machine. See [Vision and north star](understand/vision.md#where-faye-is-today).
 
 ## The problem Faye solves
 
@@ -21,9 +21,16 @@ A login app looks small. But it is hard to build correctly:
 - It needs safe rules. One wrong branch can let a person in without a password. A careless error message can tell an attacker which accounts exist.
 - It changes often. The security team asks for a second factor on risky sign ins. A partner app needs a consent screen. Each change means new code and a new deploy.
 
-Faye replaces that app. You change a flow as data. The checker refuses the change if any path through the flow could skip a credential. You try the flow before you publish it.
+Faye replaces that app. You change a flow as data. Faye refuses the change if any route through the flow could sign a person in without checking a credential. You try the flow before you publish it.
 
 ## How it works
+
+Four words appear on this page:
+
+- An **application** is the program a person signs in to, such as your web app.
+- A **tenant** is one customer or product line in Faye, with its own flow, applications and users. Each application belongs to one tenant.
+- A **credential** is what the person gives to prove who they are: a password, a passkey or a one time code.
+- **Consent** is the screen where a person allows another company's application to read their account data.
 
 The diagram shows one sign in. The application sends the person to the authorization server. The authorization server hands the sign in to Faye. Faye runs the flow of the application's tenant and shows each screen in its Login UI. When the flow succeeds, Faye tells the authorization server who signed in and how. The authorization server then issues the tokens.
 
@@ -35,12 +42,12 @@ sequenceDiagram
   participant F as Faye
   actor P as Person
   App->>AS: Sign in request
-  AS->>F: Login challenge
+  AS->>F: Hand over the sign in
   loop One screen at a time
     F->>P: Show a screen
     P->>F: Answer
   end
-  F->>AS: Subject, amr and acr
+  F->>AS: Who signed in, and how
   AS->>App: Tokens
 ```
 
@@ -117,7 +124,9 @@ Pick the path that matches what you want to do.
 - **Learn the words.** Tenants, flows, blocks, screens and hooks: [Core concepts](start/concepts.md).
 - **Write a flow.** Build and publish a flow step by step: [Write your first flow](flows/first-flow.md).
 - **Run the Admin UI.** Every page and control: [Admin UI overview](console/overview.md).
+- **Decide whether Faye fits.** The goals, the limits and the alternatives: [Vision and north star](understand/vision.md) and [How Faye compares](understand/compare.md).
 - **Understand the design.** Why it is built this way: [Architecture](understand/architecture.md) and [How the engine works](understand/engine.md).
+- **Connect Faye to your systems.** Run it as a container next to Hydra, or embed its two Java libraries in your own server: [Embed Faye: the host SPI](understand/host-spi.md).
 - **Contribute.** Build from source and find your way around: [Build and run from source](develop/build-from-source.md).
 
 > [!TIP]

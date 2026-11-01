@@ -13,7 +13,7 @@ Each goal comes from a principle of the charter. The table says what each goal m
 | Goal | In practice | Enforced by |
 |---|---|---|
 | **Secure by design** | The checker checks every flow before it runs, also before a preview. The checker refuses a flow with a path to success that verifies no credential. Safe behavior, such as not revealing which accounts exist, is the default. | The checker, the engine's final check at success, and the conformance and fuzz tests |
-| **Closed extension** | Only built in handlers verify credentials, create accounts and name the person. Hooks can only set values, fail a step or pick an option. | The fixed list of hook results, and the fixed list of built in blocks |
+| **Closed extension** | Only Faye's own built in handlers check credentials and decide which account is signing in. Sign up, when it exists, follows the same rule. Hooks can only set values, fail a step or pick an option. | The fixed list of hook results, and the fixed list of built in blocks |
 | **Assurance from facts** | The authentication methods references (`amr`) and the authentication context class reference (`acr`) come from the credentials that verified. They cannot be configured. | The engine computes them. Nothing else can write them |
 | **Host neutral** | The engine talks to the authorization server only through the `FlowHost` interface. A new authorization server needs a new adapter, not engine changes. | A build test, `BoundaryTest`, fails if the engine names Hydra |
 | **Out of the box** | A new tenant gets a safe working flow. Trying Faye locally takes minutes. Defaults are the recommended setup. | The demo stack and the built in blocks |
@@ -23,7 +23,7 @@ Each goal comes from a principle of the charter. The table says what each goal m
 
 ## Non goals
 
-Faye does not do these things, even when they look convenient. A feature that moves protocol or token work into Faye is out of scope.
+Faye does not do these things, even when they look convenient. Faye does not take over work that the authorization server does, such as protocol endpoints, tokens or sessions.
 
 ### Not an OAuth2 or OpenID Connect provider
 
@@ -83,3 +83,4 @@ Faye records each decision that changes a boundary as an architecture decision r
 - See how the goals shape the system: [Architecture](architecture.md).
 - See the guarantees one by one: [Security model](security.md).
 - Try Faye on your own machine: [Quickstart](../start/quickstart.md).
+- See how other products handle the same problem: [How Faye compares](compare.md).

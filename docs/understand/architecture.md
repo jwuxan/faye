@@ -44,7 +44,7 @@ Who does what:
 | **Authorization server** (Hydra) | Speaks OAuth2 and OpenID Connect, registers applications, issues tokens, keeps login sessions. | Show any screen. It sends the browser to Faye for login and consent. |
 | **Faye server** | Runs flows with the engine, checks every answer, tells the authorization server the result. Serves the screen API, and the admin API on a Unix socket. | Issue tokens or talk to applications. |
 | **Login UI** | Draws each typed screen and posts the person's answer to the server. | Make any security decision. It has no database access. |
-| **Admin UI** | Lets an operator edit, check, preview, publish and roll back flows, and read applications and users. | Run on a network. It has no sign in, so it must run only on your own machine. |
+| **Admin UI** | Lets an operator edit, check, preview, publish and roll back flows, and read applications and users. | Accept connections from other machines. It has no sign in, so it must run only on your own machine. |
 | **Database** | One SQLite file holds Faye's state. In the container image, the same file also holds Hydra's state. | Hold state in memory. Faye keeps nothing between requests outside the database. |
 
 ## A sign in, end to end
@@ -80,9 +80,9 @@ sequenceDiagram
   B->>App: Callback; the application gets tokens from Hydra
 ```
 
-Two words in the diagram need a definition. A *login challenge* is an opaque id that Hydra creates for one login request. Faye uses it to read that request and to answer it. The *flow cookie* holds a random secret that ties the sign in to this browser, so no other browser can continue it.
+Two words in the diagram need a definition. A *login challenge* is an opaque id that Hydra creates for one login request. Faye uses it to read that request and to answer it. The *flow cookie* holds a random secret that ties the sign in to this browser, so no other browser can continue it. Two different `/login` addresses appear: Hydra sends the browser to the Faye server's `/login` on port 8080 with the challenge, and the Faye server then sends it to the Login UI's `/login` on port 3000 with the flow id.
 
-The flow decides which screens appear. For example, the shipped flows skip the consent screen for first party applications. A remembered session may skip the login screens. [How the engine works](engine.md#the-life-of-one-sign-in) shows the same sign in from inside the engine.
+The flow decides which screens appear. For example, the shipped flows skip the consent screen for first party applications. A remembered session may skip the login screens: if the person checked "keep me signed in" before, and one factor is enough for the application, the sign in ends at once. [How the engine works](engine.md#the-life-of-one-sign-in) shows the same sign in from inside the engine.
 
 ## Inside the Faye server
 
@@ -158,7 +158,7 @@ Between two screens, a sign in is only a row in `faye_flow`. No part of the sign
 
 A tenant is chosen per application, not per request. Each application registered in the authorization server carries `metadata.tenant`. The host reads `metadata.tenant` when a sign in starts, and the engine runs that tenant's live flow.
 
-Each tenant has its own flow, user pool, branding, policy, allowed handlers and screens, and egress grants for hooks. An example of a policy is "require two factors". The prototype sets tenants in `faye.tenants` in [`application.yaml`](../../apps/server/faye-app/src/main/resources/application.yaml). See [Configuration](../reference/configuration.md).
+Each tenant has its own flow, user pool, branding, policy, allowed handlers and screens, and egress grants for hooks. An example of a policy is "require two factors". The prototype sets tenants in `faye.tenants` in [`application.yaml`](../../apps/server/faye-app/src/main/resources/application.yaml). Settings that an operator saves in the Admin UI are stored in the `faye_tenant` table and take priority over that file. See [Configuration](../reference/configuration.md).
 
 ## Deployment
 
@@ -196,3 +196,4 @@ The single container is how the prototype ships and how the demo runs. It is not
 - Follow a sign in through the engine: [How the engine works](engine.md).
 - See the guarantees and where they are enforced: [Security model](security.md).
 - Run it: [Quickstart](../start/quickstart.md).
+- See why flows compile to a small IR: [How the IR is designed](ir-design.md).

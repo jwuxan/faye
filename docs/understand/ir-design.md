@@ -98,10 +98,10 @@ If the engine read YAML directly, every improvement to how flows are written wou
   - [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) replaced the whole step syntax with blocks. The IR did not change. The shipped flows still lowered to the same IR as before, which the test suite keeps in reference files called golden files. Stored versions kept running, because they are stored as IR.
   - [ADR 0026](../adr/0026-consent-as-a-step.md) turned consent from a section of its own into a step. The IR, the published versions, the stored flow states and the conformance vectors were untouched.
 - **New front ends need no engine work.** A front end only has to produce IR that passes the schema and the checker. A visual designer, a builder library in another language, or an importer from another system could each target the same IR. None of these exists today. The point is that a new front end does not change the checker or the engine.
-- **Authorization server words stay in the front end.** The compiler accepts `hydra.` as another name for `host.`, because the Hydra adapter gives the compiler that alias. The IR only ever contains `host.`. So a stored flow does not depend on Hydra.
+- **Names specific to one authorization server stay in the front end.** A flow file may write `hydra.` instead of `host.`, because the Hydra adapter gives the compiler that alias. The compiler replaces it. The IR only ever contains `host.`. So a stored flow does not depend on Hydra.
 
 > [!NOTE]
-> The YAML still matters. People review flows as YAML in pull requests, and the Admin UI reads and writes the YAML without loss. But the engine does not trust the YAML.
+> The YAML still matters. People review flows as YAML in pull requests, and the Admin UI reads and writes the YAML without loss. But the engine never reads the YAML.
 
 ## No business logic in the engine
 

@@ -50,7 +50,7 @@ A flow file can have up to two sections that a person goes through:
 - `login` is the sign in itself. It can end with a consent step. The consent step, and any step after it, run in a second phase: when the authorization server asks for consent, after the sign in.
 - `approve` is the phone's side of a QR code sign in.
 
-Faye compiles each phase to an **entry**: a part of the flow that the authorization server can start on its own. A flow has a sign in entry, and can have a consent entry and an approve entry. Learn the syntax in [Write flows in YAML](../flows/flow-syntax.md).
+Each phase becomes a separate part of the flow, called an **entry**. Each entry starts from a different event: a sign in, a consent request, or a QR code scanned on a phone. Every flow has a sign in entry. The other two are optional. Learn the syntax in [Write flows in YAML](../flows/flow-syntax.md).
 
 ## Step and block
 
@@ -98,6 +98,8 @@ The checker refuses a flow if any path can succeed without a credential. It also
 
 You edit a **draft** of a tenant's flow. When you **publish** the draft, the checker runs and the draft becomes a new **version**. A new version is **live** as soon as you publish it. New sign ins use the live version.
 
+The `version:` number at the top of a flow file is a label that you choose. It is not the same thing: Faye names each published version by a hash of its content.
+
 A sign in that already started keeps its version to the end. So a publish never breaks a sign in that is in progress. You can **roll back** to an earlier version at any time.
 
 A **preview** runs a draft with a real application before you publish it. See [Preview a draft](../console/preview.md).
@@ -110,7 +112,7 @@ The engine knows no authorization server. A **host** adapter connects the engine
 
 ## IR
 
-Faye compiles each flow file to an **intermediate representation (IR)**: a small JSON form with eleven forms, or kinds of node. The checker and the engine read the IR, not the YAML. You never need to read or write the IR to build a flow. The IR exists so that each part of Faye can change on its own. See [How the IR is designed](../understand/ir-design.md).
+Faye compiles each flow file to an **intermediate representation (IR)**: a small JSON format built from eleven kinds of building block, called forms. The checker and the engine read the IR, not the YAML. You never need to read or write the IR to build a flow. The IR exists so that each part of Faye can change on its own. See [How the IR is designed](../understand/ir-design.md).
 
 ## Next steps
 

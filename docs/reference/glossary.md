@@ -151,4 +151,4 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 - **vars**: Values that a flow writes with `set:` or that a hook sets, for later conditions to test.
 - **verifier**: The first part of the checker, which checks a flow against the catalogs of handlers and screens and against the hard limits. The engine also runs the verifier whenever it runs a version.
-- **version**: A published flow, addressed by the hash of its IR. A sign in keeps the version it started with.
+- **version**: A published flow, addressed by the hash of its IR. A sign in keeps the version it started with. It is not the `version:` number in a flow file, which is a label you choose, and not the IR format number.

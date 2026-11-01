@@ -90,7 +90,7 @@ So Hydra's safety depends on the login app. A login app with one wrong branch ca
 | **Screens** | Typed screens that a tenant can brand but not redesign | Hosted pages with themes or templates, and often a way to build your own UI, such as Auth0's custom login screens, Okta's embedded widget or Kratos's bring your own UI |
 | **Preview** | You run a draft with a real application before you publish it. Faye then checks that the run ended the way one of the checker's predicted paths says it should. | Azure AD B2C runs a policy that is already uploaded ("Run now"). authentik's inspector runs a live flow. Auth0 versions single Actions, not a whole login. |
 | **Versions** | Every published flow is kept by its hash. A sign in keeps the version that it started with. Roll back to any version. | Varies. Many products overwrite the current configuration. |
-| **Lock in** | The IR is designed to run on other authorization servers. Not proven yet. | Each product's flow format runs only on that product. |
+| **Lock in** | The IR is designed to run on other authorization servers. Today it runs only on Hydra. | Each product's flow format runs only on that product. |
 
 ## Where the others are stronger
 

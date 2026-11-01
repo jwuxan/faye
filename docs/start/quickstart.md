@@ -40,7 +40,7 @@ Without `make`, run the same command directly:
 docker compose -f deploy/compose.yaml up -d --build --remove-orphans
 ```
 
-The command It builds one image from the [Dockerfile](../../Dockerfile) and starts one container named `faye` ([ADR 0023](../adr/0023-one-container-many-processes.md)). The image holds:
+The command builds one image from the [Dockerfile](../../Dockerfile) and starts one container named `faye` ([ADR 0023](../adr/0023-one-container-many-processes.md)). The image holds:
 
 - Ory Hydra, the authorization server.
 - The Faye server, a Java application.
@@ -92,7 +92,7 @@ If `cat` reports that the file does not exist, the seed is still running. Wait a
 Open http://localhost:3001. This is the demo client, an OpenID Connect application that signs in through Hydra.
 
 1. In **Client**, pick **Acme Web**.
-2. Leave the other fields empty and select **Sign in**.
+2. Leave **acr_values**, **prompt**, **max_age** and **ui_locales** at their defaults, and select **Sign in**.
 
 The browser goes to Hydra, then to Faye, then to the Login UI. Acme's flow is [`acme.yaml`](../../apps/server/faye-app/src/main/resources/flows/acme.yaml). You see these screens:
 
@@ -118,12 +118,11 @@ docker exec faye sh -c 'cat /var/lib/faye/outbox/*'
 
 Open http://localhost:3002. The Admin UI opens on **Choose a tenant**. Select **acme**.
 
-The sidebar has these pages:
+The sidebar has three groups:
 
-- **Login flow**: the flow editor, beside a live graph of the flow.
-- **Hooks**, **Versions** and **Customization**.
-- **Applications** and **Users**: read only lists of the tenant's clients and accounts.
-- **General**: the tenant's settings.
+- **Sign in**: **Login flow** (the flow editor, beside a live graph of the flow), **Hooks**, **Versions** and **Customization**.
+- **Directory**: **Applications** and **Users**, read only lists of the tenant's applications and accounts.
+- **Settings**: **General**, the tenant's settings.
 
 On **Applications**, every application has **Try sign in**, which runs it through the demo client.
 

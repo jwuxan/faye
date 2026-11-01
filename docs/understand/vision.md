@@ -10,7 +10,7 @@ This page explains why Faye exists and where it is going. It is for anyone who w
 
 The north star is the one outcome that guides every decision:
 
-> A team deploys Faye next to its authorization server and has secure sign in and sign up working the same day, without writing code. Then it shapes every sign in to its needs, and no flow, however it is written, can let a person in without a verified credential.
+> A team deploys Faye next to its authorization server and has secure sign in and sign up working the same day, without writing code. Then it changes each sign in as it needs. No flow can let a person in unless a password, passkey or code was really checked.
 
 That sentence makes two promises. The first promise is speed: sign in should take a few hours, not a long project. The second promise is safety: speed must never reduce security. Faye keeps both promises because it moves sign in logic out of code and into checked data. Today Faye keeps the promise for sign in. Sign up is not built yet; see [Where Faye is today](#where-faye-is-today).
 
@@ -71,15 +71,15 @@ What works today:
 
 Some work is planned but not built yet. [ADR 0036](../adr/0036-retire-the-roadmap.md#open-gaps) tracks each gap:
 
-| Gap | Today |
-|---|---|
-| A second real authorization server (success test 4) | Hydra is the only real host. Tests use stand in hosts, but no second real authorization server is supported yet. |
-| Sign up and account recovery | Not built. The Sign up button on the login page shows a notice. |
-| Logout through Faye | Hydra's logout request is not routed to Faye yet. |
-| Translated screens | The Login UI's text is English only. |
-| An automated accessibility check | WCAG 2.1 AA is the target. No automated check runs yet. |
-| A console for a shared deployment | The Admin UI has no sign in, so it must stay on one machine. |
-| Production hardening | High availability, several regions, key rotation and rate limiting at scale are not built. |
+| Gap | Today | In ADR 0036 |
+|---|---|---|
+| A second real authorization server (success test 4) | Hydra is the only real host. Tests use stand in hosts, but no second real authorization server is supported yet. | R1 |
+| Sign up and account recovery | Not built. The Sign up button on the login page shows a notice. | R10 |
+| Logout through Faye | Hydra's logout request is not routed to Faye yet. | R2 |
+| Translated screens | The Login UI's text is English only. | R7 |
+| An automated accessibility check | WCAG 2.1 AA is the target. No automated check runs yet. | R8 |
+| A console for a shared deployment | The Admin UI has no sign in, so it must stay on one machine. | R11 |
+| Production hardening | High availability, several regions, key rotation and rate limiting at scale are not built. | R1, R9 |
 
 ## Next steps
 
