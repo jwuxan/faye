@@ -2,6 +2,8 @@
 
 Faye is the login box that sits in front of an authorization server. The server (Ory Hydra) speaks OAuth2/OIDC to applications; Faye owns every screen the user sees and decides how they prove who they are: password, TOTP, passkey, consent screen, risk check. Flows are written in YAML, so you can reshape a sign in without touching server code.
 
+**Documentation:** start at [docs/index.md](docs/index.md), or open the Admin UI's **Docs** (http://localhost:3002/docs) once the stack runs. It covers the architecture, the engine, the flow language and its IR, the Admin UI, and building from source. Every page is also Markdown for agents (`/llms.txt`), and [DeepWiki](https://deepwiki.com/jwuxan/faye) answers questions about the code.
+
 The repo ships with a full sandbox: two tenants (`acme` and `bank`) with their own user pools, seeded accounts, ten registered applications, and a demo OIDC client that shows you the token at the end.
 
 ## Try it in 3 minutes
@@ -77,4 +79,4 @@ FAYE_SERVER_URL=http://localhost:8080 pnpm --filter @faye/login dev   # http://l
 
 Repo map: `src/schema/` holds the IR grammar and screen protocol (JSON Schema), `src/conformance/` the engine test vectors, `apps/web/` the pnpm workspace (`apps/login` renders the typed screens, `apps/demo-client` is the OIDC relying party, `apps/admin` the Admin UI), `apps/server/faye-app/src/main/resources/flows/` the tenant flows.
 
-With `FAYE_HYDRA_ADMIN_URL` set (compose does), the server talks to Hydra through `faye-host-hydra`; without it, challenges come from the in-memory `faye-host-mock`, so any `login_challenge` works at http://localhost:8080/login?login_challenge=anything.
+With `FAYE_HYDRA_ADMIN_URL` set (compose does), the server talks to Hydra through `faye-host-hydra`; without it, challenges come from the in-memory `MockFlowHost` (a test fixture of `faye-engine`), so any `login_challenge` works at http://localhost:8080/login?login_challenge=anything.

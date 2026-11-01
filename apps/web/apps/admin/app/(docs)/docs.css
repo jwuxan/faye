@@ -1,0 +1,118 @@
+/* The docs site (Fumadocs). Its colors come from the console's own tokens, so the docs and the
+   console share one palette in light and dark; the faces are the console's, Inter and Paper Mono. */
+@import "tailwindcss";
+@import "fumadocs-ui/css/shadcn.css";
+@import "fumadocs-ui/css/preset.css";
+
+/* Fumadocs marks dark mode with a class; the console with data-theme. next-themes sets both. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.21 0.006 285.9);
+  --card: oklch(0.985 0.001 286);
+  --card-foreground: oklch(0.21 0.006 285.9);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.006 285.9);
+  --primary: oklch(0.5 0.19 259);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.955 0.002 286);
+  --secondary-foreground: oklch(0.27 0.006 286);
+  --muted: oklch(0.962 0.002 286);
+  --muted-foreground: oklch(0.47 0.014 286);
+  --accent: oklch(0.945 0.012 259);
+  --accent-foreground: oklch(0.32 0.12 259);
+  --border: oklch(0.905 0.004 286);
+  --ring: oklch(0.5 0.19 259);
+  --destructive: oklch(0.52 0.2 27);
+  --sidebar: oklch(0.982 0.001 286);
+  --sidebar-foreground: oklch(0.27 0.008 286);
+  --sidebar-primary: oklch(0.21 0.006 285.9);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.945 0.012 259);
+  --sidebar-accent-foreground: oklch(0.32 0.12 259);
+  --sidebar-border: oklch(0.905 0.004 286);
+  --sidebar-ring: oklch(0.5 0.19 259);
+}
+
+.dark {
+  --background: oklch(0.185 0.004 286);
+  --foreground: oklch(0.97 0.001 286);
+  --card: oklch(0.205 0.005 286);
+  --card-foreground: oklch(0.97 0.001 286);
+  --popover: oklch(0.215 0.005 286);
+  --popover-foreground: oklch(0.97 0.001 286);
+  --primary: oklch(0.74 0.14 259);
+  --primary-foreground: oklch(0.17 0.02 262);
+  --secondary: oklch(0.26 0.006 286);
+  --secondary-foreground: oklch(0.95 0.001 286);
+  --muted: oklch(0.25 0.006 286);
+  --muted-foreground: oklch(0.76 0.012 286);
+  --accent: oklch(0.27 0.03 259);
+  --accent-foreground: oklch(0.9 0.05 259);
+  --border: oklch(1 0 0 / 12%);
+  --ring: oklch(0.74 0.14 259);
+  --destructive: oklch(0.65 0.19 27);
+  --sidebar: oklch(0.165 0.004 286);
+  --sidebar-foreground: oklch(0.9 0.006 286);
+  --sidebar-primary: oklch(0.97 0.001 286);
+  --sidebar-primary-foreground: oklch(0.18 0.004 286);
+  --sidebar-accent: oklch(0.27 0.03 259);
+  --sidebar-accent-foreground: oklch(0.9 0.05 259);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.74 0.14 259);
+}
+
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-paper-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/* Long prose reads better a little looser than Fumadocs' default */
+.prose {
+  line-height: 1.75;
+}
+
+/* A Mermaid diagram: centered, never wider than the page, on a quiet card */
+.docs-mermaid {
+  display: flex;
+  justify-content: center;
+  margin-block: 1.5rem;
+  padding: 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.docs-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.docs-mermaid-source {
+  margin-block: 1.5rem;
+  white-space: pre-wrap;
+  color: var(--muted-foreground);
+}
+
+/* An ADR's status line under its title */
+.docs-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.docs-meta span {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.125rem 0.625rem;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}

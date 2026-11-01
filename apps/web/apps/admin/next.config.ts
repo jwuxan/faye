@@ -7,6 +7,13 @@ const config: NextConfig = {
   transpilePackages: ["@faye/ui"],
   // In dev, the indicator would cover the tenant switcher at the foot of the sidebar
   devIndicators: { position: "bottom-right" },
+  // Every doc as Markdown at its own URL plus .md, for agents and "Copy Markdown"
+  async rewrites() {
+    return [
+      { source: "/docs.md", destination: "/api/docs-md" },
+      { source: "/docs/:path*.md", destination: "/api/docs-md/:path*" },
+    ];
+  },
 };
 
 export default config;

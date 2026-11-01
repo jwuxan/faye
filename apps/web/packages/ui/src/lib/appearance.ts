@@ -26,6 +26,7 @@ export function setAppearance(a: Appearance) {
   }
   const dark = a === "dark" || (a === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
   document.documentElement.dataset.theme = dark ? "dark" : "light"
+  document.documentElement.classList.toggle("dark", dark)
   // The theme may stay the same (system to light on a light OS), but the choice changed
   window.dispatchEvent(new Event(KEY))
 }
