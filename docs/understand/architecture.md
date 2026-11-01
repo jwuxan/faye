@@ -4,11 +4,11 @@ description: The parts of Faye, how they connect to the authorization server and
 
 # Architecture
 
-This page shows the parts of Faye and how a sign in moves through them. It is for engineers who deploy Faye, review it, or change it. For the inside of the engine, see [How the engine works](engine.md).
+This page shows the parts of Faye and how a sign in moves through them. It is for engineers who deploy Faye, review it, or change it. To learn how the engine works inside, see [How the engine works](engine.md).
 
 ## Faye in its surroundings
 
-The diagram shows Faye and the systems around it. The application never talks to Faye. It talks to the authorization server, which hands the login and consent pages to Faye.
+The diagram shows Faye and the systems around it. The application never talks to Faye. The application talks to the authorization server. The authorization server hands the login and consent pages to Faye.
 
 ```mermaid
 flowchart TB
@@ -42,14 +42,14 @@ Who does what:
 | Part | Its job | It does not |
 |---|---|---|
 | **Authorization server** (Hydra) | Speaks OAuth2 and OpenID Connect, registers applications, issues tokens, keeps login sessions. | Show any screen. It sends the browser to Faye for login and consent. |
-| **Faye server** | Runs flows with the engine, checks every answer, tells the authorization server the result. Serves the screen API and, on a Unix socket, the admin API. | Issue tokens or talk to applications. |
+| **Faye server** | Runs flows with the engine, checks every answer, tells the authorization server the result. Serves the screen API, and the admin API on a Unix socket. | Issue tokens or talk to applications. |
 | **Login UI** | Draws each typed screen and posts the person's answer to the server. | Make any security decision. It has no database access. |
-| **Admin UI** | Lets an operator edit, check, preview, publish and roll back flows, and read applications and users. | Run anywhere but on one machine: it has no sign in. |
-| **Database** | One SQLite file holds Faye's state and, in the container image, Hydra's too. | |
+| **Admin UI** | Lets an operator edit, check, preview, publish and roll back flows, and read applications and users. | Run anywhere except on one machine, because it has no sign in. |
+| **Database** | One SQLite file holds Faye's state. In the container image, the same file also holds Hydra's state. | |
 
 ## A sign in, end to end
 
-The diagram shows a sign in with a password and a consent screen. The browser goes back and forth between the parts; the parts never share a browser session.
+The diagram shows a sign in with a password and a consent screen. The browser goes back and forth between the parts. The parts never share a browser session.
 
 ```mermaid
 sequenceDiagram
@@ -80,7 +80,7 @@ sequenceDiagram
   B->>App: Callback; the application gets tokens from Hydra
 ```
 
-The flow decides which screens appear. For example, the shipped flows skip the consent screen for first party applications, and a remembered session may skip the login screens. [How the engine works](engine.md#the-life-of-one-sign-in) shows the same trip at the level of the engine.
+The flow decides which screens appear. For example, the shipped flows skip the consent screen for first party applications. A remembered session may skip the login screens. [How the engine works](engine.md#the-life-of-one-sign-in) shows the same sign in from inside the engine.
 
 ## Inside the Faye server
 
@@ -114,8 +114,8 @@ flowchart TB
   identity --> engine
 ```
 
-- **`faye-core`** holds the IR types and its JSON codec, the YAML to IR compiler, and the JavaScript hook runtime (QuickJS compiled to WebAssembly).
-- **`faye-engine`** holds the engine, the interfaces a host implements (`faye.engine.spi`), the checker and `Publisher`, the screen catalog, and the built in handlers and blocks. It knows no authorization server.
+- **`faye-core`** holds the intermediate representation (IR) types and their JSON codec, the YAML to IR compiler, and the JavaScript hook runtime (QuickJS compiled to WebAssembly).
+- **`faye-engine`** holds the engine, the service provider interfaces (SPIs) that a host implements in `faye.engine.spi`, the checker and `Publisher`, the screen catalog, and the built in handlers and blocks. It knows no authorization server.
 - **`faye-app`** is the Spring Boot application. It wires the engine to SQLite stores, serves the HTTP APIs, and runs the code outbox for emailed and texted codes.
 - **`faye-host-hydra`** implements `FlowHost` for Hydra's admin API, and the read only list of applications.
 - **`faye-identity`** implements the credential interfaces (passwords with Argon2, authenticator app codes, passkeys) over each tenant's user pool.
@@ -125,19 +125,19 @@ flowchart TB
 
 ## Boundaries and contracts
 
-Faye's parts meet at a few written contracts. Each one can be replaced on its own side without touching the other.
+Faye's parts meet at a few written contracts. You can replace the part on one side of a contract without a change to the part on the other side.
 
 | Boundary | Contract | Why it matters |
 |---|---|---|
 | Engine and authorization server | `FlowHost`, with the closed fields of `HostParams` | A second authorization server needs only a new host. Flows read `host.*` fields that every host must fill. |
-| Engine and user directory | `UserDirectory`, `PasswordAuthenticator`, `OtpVerifier`, `PasskeyAuthenticator` and the other credential interfaces | An existing user store plugs in without changing handlers. |
+| Engine and user directory | `UserDirectory`, `PasswordAuthenticator`, `OtpVerifier`, `PasskeyAuthenticator` and the other credential interfaces | You can connect an existing user store without changing handlers. |
 | Server and Login UI | The screen protocol, [`screen.schema.json`](../../src/schema/screen.schema.json) | One renderer for every tenant. The TypeScript types are generated from the schema. |
-| Author tools and engine | The IR, [`ir.schema.json`](../../src/schema/ir.schema.json) and the [Core IR specification](../ir-spec.md) | The DSL, the checker, the editor and the engine change on their own. Another engine can prove it behaves the same with the conformance vectors. |
+| Author tools and engine | The IR, [`ir.schema.json`](../../src/schema/ir.schema.json) and the [Core IR specification](../ir-spec.md) | The domain specific language (DSL), the checker, the editor and the engine change on their own. Another engine can use the conformance vectors to prove that it behaves the same. |
 | Admin UI and server | The admin API, served only on a Unix domain socket with a token ([ADR 0028](../adr/0028-admin-api-on-a-unix-domain-socket.md)) | Nothing on the network can publish a flow. |
 
 ## Where state lives
 
-All of Faye's state is in one SQLite file. In the container it is `/var/lib/faye/faye.db`, on one volume ([ADR 0017](../adr/0017-one-sqlite-database.md)). Schema changes run as Flyway migrations at startup ([ADR 0020](../adr/0020-versioned-schema-migrations-with-flyway.md)).
+All of Faye's state is in one SQLite file. In the container, the file is `/var/lib/faye/faye.db`, on one volume ([ADR 0017](../adr/0017-one-sqlite-database.md)). Schema changes run as Flyway migrations at startup ([ADR 0020](../adr/0020-versioned-schema-migrations-with-flyway.md)).
 
 | Table | Holds |
 |---|---|
@@ -146,17 +146,17 @@ All of Faye's state is in one SQLite file. In the container it is `/var/lib/faye
 | `faye_history`, `faye_tenant` | Which version each tenant published when, which one is live, and each tenant's draft, settings and preview scenario. |
 | `faye_hook` | Hook code by its hash. |
 | `faye_user` | Each tenant's user pool: password hashes, authenticator app secrets, passkeys. |
-| `faye_outbox`, `faye_key` | Codes waiting to be emailed or texted, and the server key for the MAC of each code. |
+| `faye_outbox`, `faye_key` | Codes waiting to be emailed or texted, and the server key for the message authentication code (MAC) of each code. |
 | `faye_qr_grant` | QR codes waiting to be approved from a phone. |
 | `faye_trace` | Preview trace events. |
 
-Between two screens, a sign in is only a row in `faye_flow`. Nothing of it lives in the server's memory, so a restart of the server loses nothing.
+Between two screens, a sign in is only a row in `faye_flow`. No part of the sign in stays in the server's memory. So a restart of the server loses nothing.
 
 ## Tenants
 
-A tenant is chosen per application, not per request. Each application registered in the authorization server carries `metadata.tenant`. The host reads it when a sign in starts, and the engine runs that tenant's live flow.
+A tenant is chosen per application, not per request. Each application registered in the authorization server carries `metadata.tenant`. The host reads `metadata.tenant` when a sign in starts, and the engine runs that tenant's live flow.
 
-Each tenant has its own flow, user pool, branding, policy (for example "require two factors"), allowed handlers and screens, and egress grants for hooks. The prototype sets tenants in `faye.tenants` in [`application.yaml`](../../apps/server/faye-app/src/main/resources/application.yaml). See [Configuration](../reference/configuration.md).
+Each tenant has its own flow, user pool, branding, policy, allowed handlers and screens, and egress grants for hooks. An example of a policy is "require two factors". The prototype sets tenants in `faye.tenants` in [`application.yaml`](../../apps/server/faye-app/src/main/resources/application.yaml). See [Configuration](../reference/configuration.md).
 
 ## Deployment
 
@@ -187,7 +187,7 @@ flowchart LR
 - `FAYE_DEMO=true` adds the demo client, the IP reputation stub, and two one time jobs that register demo applications and seed demo users.
 - The compose file publishes the Admin UI on `127.0.0.1` only.
 
-For a production setup you would run the authorization server and Faye as you run any service. Production hardening is not built yet; see [Vision and north star](vision.md#where-faye-is-today).
+For a production setup, run the authorization server and Faye as you run any other service. Production hardening is not built yet. See [Vision and north star](vision.md#where-faye-is-today).
 
 ## Next steps
 

@@ -4,30 +4,30 @@ description: Why Faye compiles every flow to a small intermediate representation
 
 # How the IR is designed
 
-Faye compiles every flow file to an intermediate representation (IR) before anything checks or runs it. This page explains why the IR exists, the choices behind its shape, and what those choices make possible. It is for engineers who change the compiler, the checker or the engine, or who want to build another engine. Flow authors never need the IR: the [Flow DSL reference](../reference/dsl.md) is for them.
+Faye compiles every flow file to an intermediate representation (IR) before anything checks or runs it. This page explains why the IR exists, the choices behind its shape, and what those choices make possible. This page is for engineers who change the compiler, the checker or the engine, or who want to build another engine. Flow authors never need the IR. They write flows in the domain specific language (DSL), and the [Flow DSL reference](../reference/dsl.md) is for them.
 
-The [Core IR specification](../ir-spec.md) is the normative definition. This page explains it; where the two differ, the specification wins.
+The [Core IR specification](../ir-spec.md) is the normative definition. This page explains the specification. If the two differ, follow the specification.
 
 ## Why there is an IR
 
-The charter gives the IR one job: interop and modularity. In its words, the IR "lets the DSL, the checker, the editor and the engine evolve separately, and lets another engine implementation prove it behaves the same".
+The charter gives the IR one job: interoperability and modularity. In its words, the IR "lets the DSL, the checker, the editor and the engine evolve separately, and lets another engine implementation prove it behaves the same".
 
 In practice, that means four things:
 
-- **Parts change alone.** The YAML surface can gain blocks and settings, and the Admin UI can change how it edits flows, while the checker and engine stay the same. [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) replaced the whole YAML step syntax with blocks and did not change a single IR form.
-- **One target for every check.** The checker reads the IR, not YAML. Every safety rule is written once, keyed by entry kind, and holds for any frontend.
+- **Parts change alone.** The YAML surface can gain blocks and settings. The Admin UI can change how it edits flows. Meanwhile, the checker and the engine stay the same. [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) replaced the whole YAML step syntax with blocks and did not change any IR form.
+- **One target for every check.** The checker reads the IR, not YAML. Every safety rule is written once, for its entry kind, and holds for any front end.
 - **Another engine can prove itself.** The conformance suite in [`src/conformance/`](../../src/conformance/README.md) is a set of IR documents and scripted scenarios. An engine that passes every vector behaves like the reference engine.
-- **Authors never see it.** People write YAML or use the block editor. The charter calls the IR "important but optional for authors", and asks for the simpler path when the IR adds cost without serving interop or modularity.
+- **Authors never see it.** People write YAML or use the block editor. The charter calls the IR "important but optional for authors". The charter also asks for the simpler path when the IR adds cost but does not help interoperability or modularity.
 
 ## The compiler model: source, bytecode, virtual machine
 
-Faye is built like a language toolchain. If you know the Java virtual machine (JVM) or LLVM, you already know its shape:
+Faye is built like the toolchain of a programming language. If you know the Java virtual machine (JVM) or LLVM, you already know this shape:
 
 - The **YAML flow file is the source code.** People read and write it.
-- The **IR is the bytecode.** It is small, exact and versioned, and it is what Faye stores, hashes and runs.
+- The **IR is the bytecode.** It is small, exact and versioned. Faye stores, hashes and runs the IR.
 - The **engine is the virtual machine (VM).** It runs IR and nothing else.
 
-The diagram shows the three layers. Front ends at the top produce IR. Back ends at the bottom consume it. The IR in the middle is the only thing they share, which is why it is called a narrow waist.
+The diagram shows the three layers. Front ends at the top produce IR. Back ends at the bottom consume it. The IR in the middle is the only thing that front ends and back ends share. That is why the IR is called a narrow waist.
 
 ```mermaid
 flowchart TB
@@ -59,7 +59,7 @@ flowchart TB
   gen -. "conformance vectors" .-> engine
 ```
 
-Today there is one text front end. The Admin UI's block editor writes the same YAML that an author can edit by hand ([ADR 0010](../adr/0010-m5-admin-ui.md)), and [`FlowCompiler`](../../src/faye-core/src/main/java/faye/dsl/FlowCompiler.java) lowers that YAML to the IR. Everything below the IR depends only on the IR and on the catalogs of handlers and screens ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md)).
+Today there is one text front end. The Admin UI's block editor writes the same YAML that an author can edit by hand ([ADR 0010](../adr/0010-m5-admin-ui.md)). [`FlowCompiler`](../../src/faye-core/src/main/java/faye/dsl/FlowCompiler.java) lowers that YAML to the IR. To lower means to translate into a simpler form at a lower level. Everything below the IR depends only on the IR and on the catalogs of handlers and screens ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md)).
 
 The table maps each part of Faye to its counterpart in the JVM and in LLVM.
 
@@ -77,32 +77,32 @@ The table maps each part of Faye to its counterpart in the JVM and in LLVM.
 
 ### Where the analogy stops
 
-The analogy explains the structure. It does not mean Faye is a general language platform. The differences are on purpose:
+The analogy explains the structure. It does not mean that Faye is a general language platform. The differences are on purpose:
 
-- **The IR is not a general purpose language.** JVM bytecode can express any program. Faye's IR can only express sign in flows: it has no loops except a bounded `retry`, no recursion and no arithmetic. That is what makes it possible to list every path.
+- **The IR is not a general purpose language.** JVM bytecode can express any program. Faye's IR can only express sign in flows. Its only loop is a bounded `retry`, and it has no recursion and no arithmetic. These limits make it possible to list every path.
 - **Faye checks more than a bytecode verifier.** The JVM verifier checks that bytecode is well formed and type safe. Faye's checker also proves security rules, such as "no path succeeds without a verified credential".
-- **There is no optimizer.** The compiler never rewrites meaning. Two flows that mean the same thing but are written differently, such as `{ not: { not: x } }` and `x`, stay different versions. That is on purpose: the stored bytes are exactly what the checker checked.
-- **The VM pauses between requests.** A flow waits for a person, often for minutes. The engine saves the whole state of the flow as data and resumes it on the next request, even after a restart or in a new engine instance (`EngineTest.progressSurvivesANewEngineInstance`). A JVM keeps a running program in memory.
+- **There is no optimizer.** The compiler never rewrites meaning. Take two flows that mean the same thing but are written differently, such as `{ not: { not: x } }` and `x`. They stay different versions. This is on purpose. The stored bytes are exactly what the checker checked.
+- **The VM pauses between requests.** A flow waits for a person, often for minutes. The engine saves the whole state of the flow as data. It resumes the flow on the next request, even after a restart or in a new engine instance (`EngineTest.progressSurvivesANewEngineInstance`). A JVM keeps a running program in memory.
 
 ## YAML is a front end, not the contract
 
-The contract between Faye's parts is the IR, not the YAML. This choice protects tenants and the project from YAML lock in.
+The contract between Faye's parts is the IR, not the YAML. Because of this choice, tenants and the project are never locked in to the YAML.
 
 If the engine read YAML directly, every improvement to how flows are written would be an engine change. Every stored flow would also be bound to one version of one syntax forever. Faye avoids both:
 
-- **Versions are stored as IR.** A published version is the IR's canonical bytes, addressed by their SHA-256 hash. The YAML is kept beside it only so that the Admin UI can show it. A sign in in progress runs the IR, never the YAML.
+- **Versions are stored as IR.** A published version is the IR's canonical bytes, addressed by their SHA-256 hash. Faye keeps the YAML beside the IR only so that the Admin UI can show the YAML. A sign in in progress runs the IR, never the YAML.
 - **The surface can change while the IR stays.** This has already happened twice:
-  - [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) replaced the whole step syntax with blocks. The IR did not change, the shipped flows lowered to the same golden IR files, and stored versions kept running, "since they are IR".
+  - [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) replaced the whole step syntax with blocks. The IR did not change. The shipped flows lowered to the same golden IR files. Stored versions kept running, "since they are IR".
   - [ADR 0026](../adr/0026-consent-as-a-step.md) turned consent from a section of its own into a step. The IR, the published versions, the stored flow states and the conformance vectors were untouched.
-- **New front ends need no engine work.** A front end only has to produce IR that passes the schema and the checker. A visual designer, a builder library in another language, or an importer from another system could each target the same IR. None of these exists today; the point is that adding one would not touch the checker or the engine.
-- **Authorization server words stay in the front end.** The compiler accepts `hydra.` as another name for `host.`, because the Hydra adapter hands it that alias. The IR only ever contains `host.`, so a stored flow does not depend on Hydra.
+- **New front ends need no engine work.** A front end only has to produce IR that passes the schema and the checker. A visual designer, a builder library in another language, or an importer from another system could each target the same IR. None of these exists today. The point is that a new front end does not change the checker or the engine.
+- **Authorization server words stay in the front end.** The compiler accepts `hydra.` as another name for `host.`, because the Hydra adapter gives the compiler that alias. The IR only ever contains `host.`. So a stored flow does not depend on Hydra.
 
 > [!NOTE]
-> The YAML still matters: it is how people review flows in pull requests, and the Admin UI round trips it. But it is not what the engine trusts.
+> The YAML still matters. People review flows as YAML in pull requests, and the Admin UI reads and writes the YAML without loss. But the engine does not trust the YAML.
 
 ## No business logic in the engine
 
-The engine knows how to run eleven forms and how to keep sign ins safe. It knows nothing about any tenant, any product rule, or any authorization server. Each kind of logic has one home, outside the engine:
+The engine knows how to run eleven forms and how to keep sign ins safe. It knows nothing about any tenant, any product rule, or any authorization server. Each kind of logic has one place, outside the engine:
 
 | Logic | Where it lives | Who changes it |
 |---|---|---|
@@ -113,11 +113,11 @@ The engine knows how to run eleven forms and how to keep sign ins safe. It knows
 | Tenant policy, such as "require two factors" | Tenant settings | The operator |
 | The protocol, tokens and sessions | The authorization server, behind a host adapter | Whoever runs the authorization server |
 
-The engine keeps only the rules that must hold for every tenant: what each form means, when an entry may succeed, how `amr` and `acr` are computed, and how a flow saves and resumes safely.
+The engine keeps only the rules that must hold for every tenant. These rules say what each form means and when an entry may succeed. They say how the engine computes the authentication methods references (`amr`) and the authentication context class reference (`acr`). They also say how a flow saves and resumes safely.
 
-The code enforces this split. [`BoundaryTest`](../../src/faye-engine/src/test/java/faye/engine/BoundaryTest.java) fails the build if the engine names Hydra, a built in screen or handler, a token claim, or a host parameter outside the host contract. And when [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) introduced blocks, it rejected a `block` form in the IR: that would have made every engine resolve blocks, and let a block's behavior change under a published version. Blocks stayed in the front end, as catalog entries that the compiler lowers to the `screen` and `call` forms that already existed.
+The code enforces this split. [`BoundaryTest`](../../src/faye-engine/src/test/java/faye/engine/BoundaryTest.java) fails the build if the engine names Hydra, a built in screen or handler, a token claim, or a host parameter outside the host contract. When [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) introduced blocks, it rejected a `block` form in the IR. A `block` form would have made every engine resolve blocks. It would also have let a block's behavior change under a published version. Blocks stayed in the front end, as catalog entries that the compiler lowers to the `screen` and `call` forms that already existed.
 
-The result is an engine that rarely changes. New sign in methods arrive as handlers, screens and blocks in the catalogs; new authorization servers arrive as hosts ([Embed Faye: the host SPI](host-spi.md)); new ways to write flows arrive as front ends.
+The result is an engine that rarely changes. New sign in methods come as handlers, screens and blocks in the catalogs. New authorization servers come as hosts ([Embed Faye: the host SPI](host-spi.md)). New ways to write flows come as front ends.
 
 Each fact about the IR has exactly one source:
 
@@ -128,13 +128,13 @@ Each fact about the IR has exactly one source:
 | Executable pins of that meaning | [`src/conformance/`](../../src/conformance/README.md) vectors, hand written and generated |
 | Handler contract | [`src/conformance/handlers.yaml`](../../src/conformance/handlers.yaml) |
 
-The Admin UI does not keep its own copy of the grammar either. `pnpm generate` writes the id, key and path patterns, the namespaces and the operators into `apps/web/packages/contract/src/ir.ts` from the schema, and CI fails when that file is stale.
+The Admin UI does not keep its own copy of the grammar either. `pnpm generate` reads the schema and writes the id, key and path patterns, the namespaces and the operators into `apps/web/packages/contract/src/ir.ts`. Continuous integration (CI) fails when that file is out of date.
 
 ## The design choices
 
 ### JSON arrays as S expressions
 
-Founding decision D2 in [ADR 0036](../adr/0036-retire-the-roadmap.md#founding-decisions) chose a YAML surface over an S expression IR stored as JSON. The S expression is the abstract syntax. JSON arrays are its only serialization: the head of each array names the form, and the rest are its arguments.
+Founding decision D2 in [ADR 0036](../adr/0036-retire-the-roadmap.md#founding-decisions) chose a YAML surface on top of an S expression IR stored as JSON. The S expression is the abstract syntax. JSON arrays are its only serialization. The head of each array names the form, and the rest of the array holds its arguments.
 
 ```json
 ["retry", 3, ["seq", ["screen", "password"], ["call", "password.verify"]]]
@@ -142,17 +142,17 @@ Founding decision D2 in [ADR 0036](../adr/0036-retire-the-roadmap.md#founding-de
 
 Docs and tests print the same tree in a Lisp style display, `(retry 3 (seq (screen password) (call password.verify)))`. Nothing parses that display. It is a view of the JSON, position for position (`IrCodec.display`).
 
-This needs no Lisp runtime and no second parser. Any language with a JSON library can read the IR, and a standard JSON Schema validator checks its shape ([ADR 0001](../adr/0001-validate-ir-with-json-schema.md)).
+This design needs no Lisp runtime and no second parser. Any language with a JSON library can read the IR. A standard JSON Schema validator checks its shape ([ADR 0001](../adr/0001-validate-ir-with-json-schema.md)).
 
-Every node follows one arity rule: `[head, required arguments..., options?]`. Optional parameters live in one trailing options object, such as `{"guard": ...}` on an option or `{"path": ...}` on a screen. A form's positional arity never changes within a format, so a reader always knows what each position holds.
+Every node follows one arity rule: `[head, required arguments..., options?]`. Optional parameters live in one trailing options object, at the end of the node. Examples are `{"guard": ...}` on an option and `{"path": ...}` on a screen. Within a format, the number and order of a form's positional arguments never change. So a reader always knows what each position holds.
 
 ### A closed language that always terminates
 
-Founding decision D3 made the language closed. It has no loops except `retry`, whose attempts are fixed at 1 to 10, and no recursion or calls between flows. Every flow ends.
+Founding decision D3 made the language closed. Its only loop is `retry`, and the number of attempts must be 1 to 10. It has no recursion and no calls between flows. Every flow ends.
 
-Because every flow ends, the checker can list every path through an entry. That is the basis of every static guarantee in [What the checker can prove](#what-the-checker-can-prove).
+Because every flow ends, the checker can list every path through an entry. This list of paths is the basis of every static guarantee in [What the checker can prove](#what-the-checker-can-prove).
 
-New capability arrives as a handler, a screen, a block or a predicate operator, not as a new form. A form is added only when control flow, suspension or termination change, and that needs an ADR and a new format number ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md)).
+A new capability comes as a handler, a screen, a block or a predicate operator, not as a new form. Faye adds a form only when control flow, suspension or termination change. A new form needs an architecture decision record (ADR) and a new format number ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md)).
 
 ### Eleven forms
 
@@ -172,7 +172,7 @@ The IR has eleven control forms, plus three structural ones: `flow`, `entry` and
 | `succeed` | `(succeed)` | Ends the entry. It succeeds only if the entry kind's conditions hold. |
 | `fail` | `(fail reason)` | Ends the entry with a reason. It is never retried. |
 
-No form marks a person as signed in. Only `succeed` ends an entry well, and the engine checks at that point that a credential verified the subject.
+No form marks a person as signed in. Only `succeed` ends an entry with success. At that point, the engine checks that a credential verified the subject.
 
 ### Entries and entry kinds
 
@@ -184,7 +184,7 @@ A flow holds one or more entries: `(entry id kind body)`. The kind is a typing c
 | `consent` | the consent challenge, after the sign in was accepted | the access the client asked for is granted |
 | `approve` | a QR code scanned on a second device | the waiting sign in is approved for this subject |
 
-The engine picks an entry by kind, not by name. The checker refuses a flow with no `authenticate` entry, or with two entries of one kind. Rules are keyed by kind: a `consent` entry may not verify a credential, and an `approve` entry must end with exactly one approval.
+The engine picks an entry by kind, not by name. The checker refuses a flow with no `authenticate` entry, or with two entries of one kind. Each rule belongs to a kind. For example, a `consent` entry may not verify a credential, and an `approve` entry must end with exactly one approval.
 
 The YAML surface hides the split. The steps of `login:` lower to the `authenticate` entry, up to the first step that asks for consent. That step and every step after it lower to the `consent` entry ([ADR 0026](../adr/0026-consent-as-a-step.md)).
 
@@ -198,23 +198,23 @@ A condition is not a string of code. It is a bare path, such as `"user.has_totp"
 
 The grammar limits paths to seven namespaces: `request`, `client`, `host`, `tenant`, `user`, `vars` and `auth`. Because a predicate is data, tools can read it:
 
-- The checker decides a predicate when it reads only what is known before the flow runs, such as `tenant.mfa_required`. Otherwise it follows both outcomes.
-- The checker refuses a `host.*` or `client.*` path that is not part of the closed host and client contracts ([ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)). So a flow cannot come to depend on one authorization server.
+- If a predicate reads only what is known before the flow runs, such as `tenant.mfa_required`, the checker decides it. Otherwise the checker follows both outcomes.
+- The checker refuses a `host.*` or `client.*` path that is not part of the closed host and client contracts ([ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)). So a flow cannot depend on one authorization server.
 - The Admin UI's condition builder edits predicates as structures, and checks them as you type.
 
 A new operator extends the IR without a new form. It still needs a new format number, because an older reader would refuse it.
 
 ### Hooks pinned by hash
 
-A `hook` node names its hook by id and by the SHA-256 of the hook's definition: its source, its egress targets and its timeout, as canonical JSON. Changing any of the three makes a different hook with a different hash.
+A `hook` node names its hook by id and by the SHA-256 hash of the hook's definition. The definition is the hook's source, egress targets and timeout, as canonical JSON. A change to any of the three makes a different hook with a different hash.
 
-The hash is part of the flow's own bytes. So a published version always runs exactly the hook code that was checked with it, and editing a hook means publishing a new version.
+The hash is part of the flow's own bytes. So a published version always runs exactly the hook code that the checker checked with it. To edit a hook, you publish a new version.
 
 ### Canonical JSON and the version address
 
 The canonical form of a flow is its JSON in UTF-8, with no extra whitespace, object keys sorted, and empty options objects left out. A version's address is `sha256:` followed by the hex SHA-256 of those bytes.
 
-Canonicalization is only syntax. The compiler never simplifies a predicate or rewrites meaning, because that would change hashes and node paths. Two YAML files that lower to the same IR are the same version: reformatting the YAML or adding a comment does not create a new one.
+Canonicalization changes only syntax. The compiler never simplifies a predicate or rewrites meaning, because that would change hashes and node paths. Two YAML files that lower to the same IR are the same version. A new layout of the YAML, or a new comment, does not create a new version.
 
 A store checks a version against the bytes it kept, never against a fresh serialization.
 
@@ -229,15 +229,15 @@ The IR format number is the second element of every flow: `["flow", 1, ...]`. It
 
 The compiler writes format 2 only for a flow with an `approve` entry, and format 1 for any other. So adding format 2 changed no existing version or hash. A format 1 document that names the `approve` kind is refused.
 
-The rule for a new format: a change to what a form means, a new form, a new predicate operator or a new options key needs a format bump and an ADR. A reader refuses any format it does not know before it reads anything else. It never guesses. A reader upgrades an older format in memory when it reads a stored version, keeps its hash, and must keep every node at the same position.
+The rule for a new format is this. Each of these changes needs a new format number and an ADR: a change to what a form means, a new form, a new predicate operator, or a new options key. A reader refuses any format it does not know before it reads anything else. It never guesses. When a reader reads a stored version in an older format, the reader upgrades it in memory. The reader keeps the version's hash, and it must keep every node at the same position.
 
 ### State format
 
-A flow in progress is saved as a continuation: a stack of frames, each naming its IR node by a path of child indexes from the entry body. The meaning of those frames is versioned on its own, as the state format (currently 1).
+Faye saves a flow in progress as a continuation. A continuation is a stack of frames. Each frame names its IR node by a path of child indexes from the entry body. The meaning of those frames has its own version number, the state format. The current state format is 1.
 
-A new optional field needs no bump; a changed meaning does. The engine reads the current and the previous state format. A state in any other format, or one that does not fit the version it pinned, reads as absent. The person then starts the sign in again: the engine fails closed rather than guess.
+A new optional field needs no new state format. A changed meaning does. The engine reads the current and the previous state format. A state in any other format, or one that does not fit the version it pinned, reads as absent. The person then starts the sign in again. The engine fails closed: it refuses the state rather than guess.
 
-This is why an IR upgrade must keep node positions. If it cannot, the state format changes too.
+This is why an IR upgrade must keep node positions. If an upgrade cannot keep them, the state format changes too.
 
 ### Source references
 
@@ -245,7 +245,7 @@ The compiler gives every IR node a source reference: the file, line and column o
 
 Grammar errors work the same way. The compiler keeps no copy of the grammar. It builds the JSON, validates it against the schema, and maps each error's JSON pointer back to the YAML that produced the node. The compiler test fixture `grammar.yaml` pins this, for example `13:14: variable name: does not match the regex pattern ^[a-z][a-z0-9_]*$`.
 
-Source references are not part of the JSON, so they never change a hash. A stored version is read back without them. A source map per version, so that run time errors can point at YAML lines too, is planned and not built yet ([ADR 0027](../adr/0027-source-lines-at-run-time.md)).
+Source references are not part of the JSON, so they never change a hash. A stored version is read back without them. A source map for each version is planned and not built yet. It would let run time errors point at YAML lines too ([ADR 0027](../adr/0027-source-lines-at-run-time.md)).
 
 ## Worked example: a password only flow
 
@@ -278,7 +278,7 @@ The compiler lowers it to this IR, shown in the display notation. The golden fil
 Each line of YAML became something concrete:
 
 - `login:` became the entry `login` of kind `authenticate`. There is no consent step, so there is no consent entry.
-- `block: identifier` became the identifier screen and the `identity.resolve` handler. It gets no `retry`, because a mistyped identifier does not fail: an unknown identifier resolves like an account that has only a password.
+- `block: identifier` became the identifier screen and the `identity.resolve` handler. This block gets no `retry`, because a mistyped identifier does not fail. An unknown identifier resolves like an account that has only a password.
 - `block: password` became the password screen and `password.verify`, inside `(retry 3 ...)`. Three attempts is the Password block's default.
 - The compiler added `(succeed)` at the end of the entry.
 
@@ -376,22 +376,22 @@ The table maps each YAML key in the slice to what it became.
 | default attempts | `(retry 3 ...)` around the screen and the call | The retry wraps only the block's own parts. |
 | `with: { attempts: 1 }` | no `retry` | One attempt needs no retry. |
 
-Two details matter for the checker. A hook sits outside the block's `retry`, so `risk` runs once, not once per attempt. And `vars.risk` is unknown until the hook runs, so the checker follows both outcomes of `{:eq (vars.risk high)}`.
+Two details matter for the checker. A hook sits outside the block's `retry`, so `risk` runs once, not once per attempt. Also, `vars.risk` is unknown until the hook runs, so the checker follows both outcomes of `{:eq (vars.risk high)}`.
 
 The full flow also has an `approve:` section, so `acme.ir` starts with `(flow 2 acme 1` and holds three entries: `login`, `consent` and `approve`.
 
 ## What the checker can prove
 
-The checker runs at publish, at rollback, before a preview and at startup. Its core is path enumeration: it lists every path through each entry once.
+The checker runs at publish, at rollback, before a preview and at startup. Its core is path enumeration. The checker lists every path through each entry once.
 
 Because the language has no unbounded loops and no recursion, the set of paths is finite. On each path:
 
-- A predicate is decided when it reads only what is known before the flow runs: `tenant.*`, `vars` written by `set`, and `auth.amr` and `auth.acr` from the credentials verified so far on that path. Otherwise both outcomes are paths.
-- A call succeeds, proving any nonempty part of its handler's `amr`, or fails. A handler that binds the subject may also prove someone else, which ends the entry with `subject_mismatch`.
+- The checker decides a predicate if the predicate reads only what is known before the flow runs. That is `tenant.*`, `vars` written by `set`, and `auth.amr` and `auth.acr` from the credentials verified so far on that path. Otherwise both outcomes are paths.
+- A call either fails or succeeds. A call that succeeds proves any nonempty part of its handler's `amr`. A handler that binds the subject may also prove a different person. That outcome ends the entry with `subject_mismatch`.
 - A retry's attempts may fail before one succeeds.
-- A hook fails, or sets `vars` that are unknown from then on. A pick hook fails, or picks any option that may be enabled.
+- A hook either fails or sets `vars`. Those values are unknown from then on. A pick hook either fails or picks any option that may be enabled.
 
-This over approximates what can happen. Some enumerated paths may be impossible in practice, but every real run follows one of them. So a rule that holds on every enumerated path holds on every run.
+So the list holds more paths than can really happen. Some enumerated paths may be impossible in practice. But every real run follows one of them. So a rule that holds on every enumerated path holds on every run.
 
 For the password only flow, the checker reports `login: 3 success paths, 5 failure paths; assurance pwd (faye:1fa) to pwd (faye:1fa)`.
 
@@ -406,9 +406,9 @@ On those paths the checker proves, among other rules:
 
 When a rule fails, the finding names the path. For example: `a path succeeds without verifying a credential: identify > credential > (condition at 8 false) > succeed with no credential`.
 
-Two tests hold the checker to what the engine does. The path generator turns each enumerated path of the conformance flows that some input can take into a vector, runs the engine along it, and fails the build if the engine ends differently ([`src/conformance/generated/`](../../src/conformance/README.md)). A fuzz harness, `EngineFuzzTest`, searches for flows that the checker accepts and the engine then cannot run. The build replays its stored inputs ([ADR 0007](../adr/0007-fuzz-and-adversarial-testing.md)).
+Two tests check that the checker agrees with the engine. The path generator takes each enumerated path of the conformance flows that some input can take. It turns the path into a vector and runs the engine along it. If the engine ends differently, the build fails ([`src/conformance/generated/`](../../src/conformance/README.md)). A fuzz harness, `EngineFuzzTest`, searches for flows that the checker accepts and the engine then cannot run. The build replays its stored inputs ([ADR 0007](../adr/0007-fuzz-and-adversarial-testing.md)).
 
-Enumeration has a cost: paths multiply with every choice, condition and retry. An entry with more than 10,000 paths is an error, not a partial check. The message says `entry 'login' has more than 10000 paths or a path longer than 10000 steps; split it`. Acme's flow sits close to this limit. A texted code as a second factor and three attempts at adding a phone took it over, so neither is in it ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)).
+Enumeration has a cost. The number of paths multiplies with every choice, condition and retry. An entry with more than 10,000 paths is an error, not a partial check. The message says `entry 'login' has more than 10000 paths or a path longer than 10000 steps; split it`. Acme's flow is close to this limit. A texted code as a second factor and three attempts at adding a phone took the flow over the limit. So the flow has neither ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)).
 
 ## Alternatives that were rejected
 
@@ -416,7 +416,7 @@ The founding decision log in [ADR 0036](../adr/0036-retire-the-roadmap.md#foundi
 
 | Decision | Alternatives considered | Reason recorded for the choice |
 |---|---|---|
-| D2: a YAML surface over an S expression IR in JSON | Code first flows; BPMN; string expressions | Data is diffable, checkable and editable by a UI; JSON arrays need no Lisp runtime. |
+| D2: a YAML surface on top of an S expression IR in JSON | Code first flows; BPMN; string expressions | Data is diffable, checkable and editable by a UI. JSON arrays need no Lisp runtime. |
 | D3: a closed language that always terminates | An embedded general purpose language | It enables path enumeration, static safety checks and generated tests. |
 
 Later records rejected other shapes for the IR, each with its own reason:
@@ -427,7 +427,7 @@ Later records rejected other shapes for the IR, each with its own reason:
 | The format number in an envelope around the IR | [ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md) | Every document gains a wrapper, and the format could be stripped from the bytes it describes. |
 | An attributes object after the head of every form | [ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md) | It would move the options of `screen` and `call` and break the trailing options rule. |
 | A `block` form in the IR | [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) | It changes what the IR means, so every engine must resolve blocks. A block's behavior could also change under a published version, which breaks D5. |
-| One IR entry for both login and consent | [ADR 0026](../adr/0026-consent-as-a-step.md) | It changes what the IR means: an entry would span two host challenges. That needs a format bump, a new kind of suspension in the engine, new checker rules and new vectors, only to change how a flow is written. |
+| One IR entry for both login and consent | [ADR 0026](../adr/0026-consent-as-a-step.md) | It changes what the IR means. An entry would span two host challenges. That change needs a new format number, a new kind of suspension in the engine, new checker rules and new vectors. The only gain is a change to how a flow is written. |
 
 ## Next steps
 

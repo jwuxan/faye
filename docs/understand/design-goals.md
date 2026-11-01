@@ -1,58 +1,58 @@
 ---
-description: What Faye is designed to do, what it will not do, and the founding decisions and trade offs behind both.
+description: What Faye is designed to do, what it does not do, and the founding decisions and trade offs behind both.
 ---
 
 # Design goals and non goals
 
-This page lists what Faye is designed to be good at, what it refuses to become, and the price of each choice. Read it before you propose a large change: a change that breaks a goal or crosses a non goal needs a decision record first. The [charter](../../CHARTER.md) is the source of these rules.
+This page lists what Faye is designed to be good at, what it refuses to become, and the price of each choice. Read this page before you propose a large change. A change that breaks a goal or crosses a non goal needs a decision record first. The [charter](../../CHARTER.md) is the source of these rules.
 
 ## Goals
 
-Each goal comes from a principle of the charter. The table says what the goal means in practice, and where the code holds Faye to it.
+Each goal comes from a principle of the charter. The table says what each goal means in practice, and which part of the code enforces it.
 
-| Goal | In practice | Held by |
+| Goal | In practice | Enforced by |
 |---|---|---|
-| **Secure by design** | Every flow is checked before it runs, preview included. A flow with a path to success that verifies no credential is refused. Safe behavior, such as not revealing which accounts exist, is the default. | The checker, the engine's final check at success, and the conformance and fuzz tests |
+| **Secure by design** | The checker checks every flow before it runs, also before a preview. The checker refuses a flow with a path to success that verifies no credential. Safe behavior, such as not revealing which accounts exist, is the default. | The checker, the engine's final check at success, and the conformance and fuzz tests |
 | **Closed extension** | Only built in handlers verify credentials, create accounts and name the person. Hooks can only set values, fail a step or pick an option. | The hook result contract and the block catalog |
-| **Assurance from facts** | `amr` and `acr` come from the credentials that verified. They cannot be configured. | The engine computes them; nothing else can write them |
+| **Assurance from facts** | The authentication methods references (`amr`) and the authentication context class reference (`acr`) come from the credentials that verified. They cannot be configured. | The engine computes them. Nothing else can write them |
 | **Host neutral** | The engine talks to the authorization server only through the `FlowHost` interface. A new authorization server needs a new adapter, not engine changes. | `BoundaryTest` keeps Hydra out of the engine |
 | **Out of the box** | A new tenant gets a safe working flow. Trying Faye locally takes minutes. Defaults are the recommended setup. | The demo stack and the built in blocks |
-| **Easy to use** | Common flows are a few lines. Errors point at the line the author wrote. A draft can be tried with a real application before it is published. | The DSL compiler, which keeps the YAML line of every node, and the preview |
+| **Easy to use** | Common flows are a few lines. Errors point at the line the author wrote. You can try a draft with a real application before you publish it. | The compiler for the flow domain specific language (DSL), which keeps the YAML line of every node, and the preview |
 | **Configurable within bounds** | Tenants decide what happens and in what order. Appearance is limited to branding the typed screens. Deep custom logic goes in hooks. | The typed screen protocol |
-| **Small and modular** | Each part has one job and a written contract, and can be replaced alone. Fewer features, done completely. | The IR, the SPIs and the decision records |
+| **Small and modular** | Each part has one job and a written contract, and can be replaced alone. Fewer features, done completely. | The intermediate representation (IR), the service provider interfaces (SPIs) and the decision records |
 
 ## Non goals
 
-These are things Faye does not do, however convenient they look. A feature that moves protocol or token work into Faye is out of scope.
+Faye does not do these things, even when they look convenient. A feature that moves protocol or token work into Faye is out of scope.
 
 ### Not an OAuth2 or OpenID Connect provider
 
-Faye serves no protocol endpoints, registers no clients and never talks to an application directly. The authorization server does all of that. This lets every hour of work go into the flow engine.
+Faye serves no protocol endpoints, registers no clients and never talks to an application directly. The authorization server does all of that. So all of the work can go into the flow engine.
 
 ### Not a token service
 
-Faye does not issue or sign tokens and does not own the authorization server's sessions. When a flow ends, Faye reports who signed in and how. The authorization server turns that into tokens and sessions.
+Faye does not issue or sign tokens and does not own the authorization server's sessions. When a flow ends, Faye reports who signed in and how. The authorization server turns that result into tokens and sessions.
 
 ### Not a general UI platform
 
-Faye shows end users only the screens that sign them in, sign them up and ask for consent, plus the logout confirmation the authorization server hands off. Profile pages and account settings belong in your product. The Admin UI exists only to build, check and try flows.
+Faye shows end users only the screens that sign them in, sign them up and ask for consent. Faye also shows the logout confirmation that the authorization server hands off. Profile pages and account settings belong in your product. The Admin UI exists only to build, check and try flows.
 
 ### Not a general purpose language
 
-The flow language is closed: it has a fixed set of forms, and every flow ends. There are no loops except a bounded number of attempts, and no way to call code except built in handlers and sandboxed hooks. This is what makes it possible to check every path.
+The flow language is closed. It has a fixed set of forms, and every flow ends. The only loop is a bounded number of attempts. The only way to call code is through built in handlers and sandboxed hooks. These limits make it possible to check every path.
 
 ## Trade offs we accept
 
-Every goal has a cost. These are the costs we chose to pay.
+Every goal has a cost. These are the costs that we chose to accept.
 
 | We chose | We gave up | Why |
 |---|---|---|
 | Typed screens | Free form pages per tenant | One renderer is reviewed once for accessibility and security, for every tenant. |
 | A closed language | Arbitrary logic in a flow | The checker can list every path and prove the safety rules hold. |
 | Hooks with a closed result | Hooks that can do anything | The checks stay true without reading the hook's JavaScript. |
-| Blocks with fixed screens and handlers | Assembling any screen with any handler | A step reads as one idea, and a block cannot be wired up wrong ([ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md)). |
-| One SQLite database | Horizontal scale today | One file is simple to run, back up and reason about ([ADR 0017](../adr/0017-one-sqlite-database.md)). Scale out is future work. |
-| An Admin UI without sign in | Use by a team over a network | It stays on one machine until operator accounts and roles exist ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)). |
+| Blocks with fixed screens and handlers | Assembling any screen with any handler | A step reads as one idea, and a block cannot be connected the wrong way ([ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md)). |
+| One SQLite database | Horizontal scale today | One file is simple to run, back up and understand ([ADR 0017](../adr/0017-one-sqlite-database.md)). Scale out is future work. |
+| An Admin UI without sign in | Use by a team over a network | The Admin UI stays on one machine until operator accounts and roles exist ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)). |
 
 ## Founding decisions
 
@@ -76,7 +76,7 @@ The first thirteen decisions shaped everything after them. They are recorded as 
 
 ## Change a goal or a decision
 
-Decisions that change a boundary are recorded as architecture decision records in [`docs/adr/`](../adr/README.md). To change one, write a new record that supersedes it. Only a person, through such a record, changes the charter.
+Faye records each decision that changes a boundary as an architecture decision record (ADR) in [`docs/adr/`](../adr/README.md). To change a decision, write a new record that supersedes the old record. Only a person changes the charter, through such a record.
 
 ## Next steps
 
