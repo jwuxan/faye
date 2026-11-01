@@ -588,8 +588,6 @@ Every flow must stay under these limits, and under the [hook limits](../flows/ho
 | Length of an id: step, option, hook, set name or fail reason | 64 characters | Checker: verify |
 | Paths through one entry | 10,000 | Checker: paths |
 
-The limits on hooks, such as the number of hook attachments, hook runs and hook time in a flow, are in [Hooks](../flows/hooks.md#limits).
-
 The engine also limits `vars` to 64 names, and a saved flow to 256 KiB.
 
 > [!TIP]
