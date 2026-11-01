@@ -278,7 +278,7 @@ The compiler lowers it to this IR, shown in the display notation. The golden fil
 Each line of YAML became something concrete:
 
 - `login:` became the entry `login` of kind `authenticate`. There is no consent step, so there is no consent entry.
-- `block: identifier` became the identifier screen and the `identity.resolve` handler. The identifier alone never fails, so it gets no `retry`.
+- `block: identifier` became the identifier screen and the `identity.resolve` handler. It gets no `retry`, because a mistyped identifier does not fail: an unknown identifier resolves like an account that has only a password.
 - `block: password` became the password screen and `password.verify`, inside `(retry 3 ...)`. Three attempts is the Password block's default.
 - The compiler added `(succeed)` at the end of the entry.
 

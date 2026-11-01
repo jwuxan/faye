@@ -80,7 +80,7 @@ sequenceDiagram
   B->>App: Callback; the application gets tokens from Hydra
 ```
 
-The flow decides which screens appear. A first party application skips the consent screen, and a remembered session may skip the login screens. [How the engine works](engine.md#the-life-of-one-sign-in) shows the same trip at the level of the engine.
+The flow decides which screens appear. For example, the shipped flows skip the consent screen for first party applications, and a remembered session may skip the login screens. [How the engine works](engine.md#the-life-of-one-sign-in) shows the same trip at the level of the engine.
 
 ## Inside the Faye server
 

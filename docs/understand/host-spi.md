@@ -148,7 +148,7 @@ The built in handlers verify credentials only through these interfaces. A host i
 | [`PasswordAuthenticator`](../../src/faye-engine/src/main/java/faye/engine/spi/PasswordAuthenticator.java) | `password` | An unknown identifier must cost the same as a known one, so timing does not reveal which accounts exist. |
 | [`OtpIssuer`](../../src/faye-engine/src/main/java/faye/engine/spi/OtpIssuer.java), [`OtpVerifier`](../../src/faye-engine/src/main/java/faye/engine/spi/OtpVerifier.java) | `totp`, `enroll-totp` | Verifying a code marks its time step used, atomically. The same flow may use it again (a double submit); no other flow can. |
 | [`PasskeyAuthenticator`](../../src/faye-engine/src/main/java/faye/engine/spi/PasskeyAuthenticator.java) | `passkey`, `add-passkey` | A passkey's sign count only rises. Registering is idempotent. |
-| [`CodeOutbox`](../../src/faye-engine/src/main/java/faye/engine/spi/CodeOutbox.java) | `email-code`, `sms-code` | Only record the code to send; a separate worker delivers it. For an unknown account, record a row that is never delivered, so the call costs the same. |
+| [`CodeOutbox`](../../src/faye-engine/src/main/java/faye/engine/spi/CodeOutbox.java) | `email-code`, `sms-code`, and `add-phone` to text a code | Only record the code to send; a separate worker delivers it. For an unknown account, record a row that is never delivered, so the call costs the same. |
 | [`PhoneDirectory`](../../src/faye-engine/src/main/java/faye/engine/spi/PhoneDirectory.java) | `add-phone` | Enrolling a phone is one idempotent write. |
 | [`QrGrants`](../../src/faye-engine/src/main/java/faye/engine/spi/QrGrants.java) | `qr`, `qr-approve` | A QR code is consumed once, atomically. |
 
