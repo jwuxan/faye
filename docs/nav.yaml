@@ -7,7 +7,7 @@ sections:
   - title: Build flows
     pages: [flows/first-flow.md, flows/flow-syntax.md, flows/recipes.md, flows/hooks.md, flows/codes.md]
   - title: Use the Admin UI
-    pages: [console/overview.md, console/blocks.md, console/flow-editor.md, console/preview.md, console/login-page.md, console/tenant-settings.md]
+    pages: [console/overview.md, console/flow-editor.md, console/blocks.md, console/preview.md, console/login-page.md, console/tenant-settings.md]
   - title: Understand Faye
     pages: [understand/vision.md, understand/design-goals.md, understand/compare.md, understand/architecture.md, understand/ir-design.md, understand/ir-examples.md, understand/engine.md, understand/security.md]
   - title: Integrate

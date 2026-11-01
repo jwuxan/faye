@@ -6,7 +6,7 @@ description: A tutorial that builds a sign in flow with a second factor in the A
 
 This tutorial is for flow authors. You build a sign in flow for the `acme` tenant in the Admin UI, one step at a time. First you build a flow with a password only. Then you watch the checker refuse an unsafe change, and you add a second factor. Last, you try the draft in a preview, publish it, and roll it back.
 
-You write YAML in this tutorial, so you see exactly what the flow says. The Blocks tab edits the same flow without YAML. See [the flow editor](../console/flow-editor.md).
+You write YAML in this tutorial, so you see exactly what the flow says. The Blocks tab edits the same flow without YAML. See [Build a flow with blocks](../console/blocks.md).
 
 ## Before you start
 

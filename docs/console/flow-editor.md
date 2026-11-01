@@ -4,7 +4,7 @@ description: Build a tenant's flow in the Login flow workspace with blocks or YA
 
 # Edit and publish a flow
 
-This page is a guide to the **Login flow** page of the Admin UI, where you build a tenant's sign in. It covers the blocks editor, the YAML editor, the paths the checker finds, the flow's settings, the graph, publishing, and the **Versions** page. This page is for flow authors. You do not need to know YAML to follow this page.
+This page is a guide to the **Login flow** page of the Admin UI, where you build a tenant's sign in. It covers the YAML editor, the paths the checker finds, the flow's settings, the graph, publishing, and the **Versions** page. This page is for flow authors. You do not need to know YAML to follow this page.
 
 > [!NOTE]
 > This page writes keyboard shortcuts with `⌘`. On Windows and Linux, press `Ctrl` instead.
@@ -184,5 +184,6 @@ The server checks the version again under the tenant's current settings before t
 ## Next steps
 
 - [Preview a draft](preview.md) before you publish it.
-- [Hooks](../flows/hooks.md): write the JavaScript that **Before**, **After** and **Picker** run.
+- [Build a flow with blocks](blocks.md): add blocks, set conditions, and attach hooks with **Before**, **After** and **Picker**.
+- [Hooks](../flows/hooks.md): write the JavaScript those hooks run.
 - [Tenant settings, applications and users](tenant-settings.md): the policy that every publish is checked against.

@@ -263,7 +263,7 @@ Because the language has no unbounded loops and no recursion, the set of paths i
 
 So the list holds more paths than can really happen. Some enumerated paths may be impossible in practice. But every real run follows one of them. So a rule that holds on every enumerated path holds on every run.
 
-For the password only flow, the checker reports `login: 3 success paths, 5 failure paths; assurance pwd (faye:1fa) to pwd (faye:1fa)`.
+For the password only flow in [The IR by example](ir-examples.md#a-password-only-flow), the checker reports `login: 3 success paths, 5 failure paths; assurance pwd (faye:1fa) to pwd (faye:1fa)`.
 
 On those paths the checker proves, among other rules:
 

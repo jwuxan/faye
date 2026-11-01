@@ -4,7 +4,7 @@ description: Build a flow in the Admin UI's Blocks tab and block inspector, with
 
 # Build a flow with blocks
 
-This page explains the **Blocks** tab of the **Login flow** page and the block inspector beside it. It is for flow authors who build flows without writing YAML. Everything you do here changes the same draft as the **YAML** tab; see [Edit and publish a flow](flow-editor.md) for the rest of the workspace.
+This page explains the **Blocks** tab of the **Login flow** page and the block inspector beside it. It is for flow authors who build flows without writing YAML. Everything you do here changes the same draft as the **YAML** tab; see [The workspace layout](flow-editor.md#the-workspace-layout) for the graph and the floating panel, and [Edit and publish a flow](flow-editor.md) for the rest.
 
 ## The Blocks tab
 

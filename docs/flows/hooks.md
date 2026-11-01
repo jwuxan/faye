@@ -375,5 +375,5 @@ To find out why a hook failed:
 ## Next steps
 
 - [Preview a draft](../console/preview.md): try a hook in a real sign in, with the **High risk** switch.
-- [Edit and publish a flow](../console/flow-editor.md): attach hooks to blocks.
+- [Build a flow with blocks](../console/blocks.md#hooks): attach hooks to blocks.
 - [Flow DSL reference](../reference/dsl.md): every key of a flow, hooks included.
