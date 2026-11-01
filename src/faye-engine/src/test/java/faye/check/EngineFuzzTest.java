@@ -449,8 +449,12 @@ class EngineFuzzTest {
                                 .isEqualTo(bound);
                     }
                 }
-                assertThat(Acr.satisfies(outcome.acr(), params.get("acr_values")))
-                        .as("meets acr_values " + params.get("acr_values"))
+                // The acr_values of the request this outcome answers: the phone's approval (ADR 0032)
+                // carries none, the waiting device's login enforces its own (fuzz finding)
+                List<String> requested = a.request().params().acrValues();
+                assertThat(Acr.satisfies(outcome.acr(), requested))
+                        .as("meets acr_values " + requested + " of a "
+                                + a.request().kind())
                         .isTrue();
                 if (policy.mfaRequired()) assertThat(outcome.acr()).isEqualTo(Acr.TWO_FACTOR);
             }

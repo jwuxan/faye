@@ -294,6 +294,8 @@ Removing "at least one credential verified" from the success check is not caught
 | F7 | O1, O3 | Success required a recorded verification rather than a proved `amr`; one with none reached the host's accept with a null `acr` | Success requires an `acr` | F7 corpus only |
 | F11 | O1 | `/consent` for a request without a subject was a 5xx | Rejected with `no_subject` | vector `consent-without-subject` |
 | F11 | O1 | A malformed host redirect was a 5xx (seed finding 3) | See seed finding 3 | `FlowApiFuzzTest.onlySafeRedirectsReachTheBrowser` |
+| F2 (CI) | a diagnostic points inside the source | NEL, LS and PS break lines in YAML 1.1, which SnakeYAML reads, but not in an editor or YAML 1.2: a diagnostic pointed past the document's last line, and `hi<NEL>mfa: false` compiled to a key the author cannot see | The surface refuses the three characters, at the line and column an editor shows | `FlowCompilerTest.refusesALineBreakOnlyYaml11Sees` |
+| F6 (CI) | O4 | The harness held the phone's approval (ADR 0032) to the `acr_values` of the login request it had registered, not of the approve request the engine ran; no product change, the waiting device's login enforces them | The oracle reads the answered request's `acr_values` | vector `qr-approve-ignores-acr-values` |
 
 The research for this record also found that Spring Boot 3.5.16 manages jackson-core 2.21.4, which three High advisories of 2026 affect (GHSA-649p-m576-vr99, GHSA-p6pp-m3f8-5c89, GHSA-7hhh-6rmp-j9qf, fixed in 2.21.7); the build now imports `jackson-bom` 2.21.8.
 

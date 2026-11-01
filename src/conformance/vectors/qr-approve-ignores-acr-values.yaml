@@ -1,0 +1,18 @@
+name: the phone's approval is held to the tenant's policy, not to acr_values, which the waiting device's login enforces on its own (qr-approver-pwd-is-1fa); a fuzz finding (ADR 0032)
+ir: flows/qr.json
+host:
+  kind: approve
+  params: { acr_values: [faye:2fa] }
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+  qr.approve: [{ ok: { effects: [g1] } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: qr_approve
+  - submit: { number: 42 }
+  - expect_commits: [qr.approve:g1]
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

@@ -443,6 +443,24 @@ class FlowCompilerTest {
                                 .isEqualTo("broken.yaml"));
     }
 
+    /**
+     * Fuzz finding: SnakeYAML reads YAML 1.1, which breaks lines at NEL, LS and PS, so {@code hi<NEL>mfa:
+     * false} was two keys on what an editor shows as one line, and diagnostics pointed past its last line.
+     */
+    @Test
+    void refusesALineBreakOnlyYaml11Sees() {
+        for (String hidden : List.of("\u0085", "\u2028", "\u2029")) {
+            String yaml = "flow: f\r\nversion: 1\ndescription: hi" + hidden + "mfa: false\nlogin: {}\n";
+            assertThatThrownBy(() -> compile("f.yaml", yaml))
+                    .isInstanceOfSatisfying(
+                            DslException.class,
+                            e -> assertThat(e.diagnostics()).singleElement().satisfies(d -> {
+                                assertThat(d.source()).isEqualTo(new SourceRef("f.yaml", 3, 16));
+                                assertThat(d.message()).contains("YAML 1.1");
+                            }));
+        }
+    }
+
     @Test
     void refusesYamlPastItsLimitsAsADiagnostic() {
         String deep = "a: ".repeat(200) + "b\n";
