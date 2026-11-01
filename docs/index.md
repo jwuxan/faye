@@ -120,7 +120,7 @@ Faye has a narrow job on purpose. The [charter](../CHARTER.md), the project's fo
 | An OAuth2 or OpenID Connect provider | The authorization server serves the protocol, registers clients and talks to applications. |
 | A token service | The authorization server issues and signs tokens and owns sessions. Faye reports the result of a flow. |
 | A general UI platform | Faye shows only the screens that sign people in and ask for consent, and later the screens that sign people up. Account settings belong elsewhere. |
-| A general workflow engine | Faye runs only sign in, sign up and consent flows. Other processes, such as orders or approvals at work, belong in other tools. |
+| A general purpose workflow engine | Faye runs only sign in, sign up and consent flows. Other processes, such as orders or approvals at work, belong in other tools. |
 | A programming language | The flow language is closed and every flow ends. Hooks make decisions inside a flow. They cannot replace the flow. |
 
 ## Where to go next
