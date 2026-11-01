@@ -6,11 +6,29 @@ on:
   pull_request:
 
 jobs:
+  src:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew build publishToMavenLocal
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-src
+          path: src/*/build/reports/jacoco/test/html
+
   server:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: server
+        working-directory: apps/server
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -24,17 +42,17 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: web
+        working-directory: apps/web
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          package_json_file: web/package.json
+          package_json_file: apps/web/package.json
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: apps/web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
       - name: Generated contract (screen types, IR grammar facts) matches schema/
         run: pnpm generate && git diff --exit-code -- packages/contract/src
@@ -45,14 +63,14 @@ jobs:
       # Browser tests of the Login UI (ADR 0033): the build above against a stub of Faye's screen
       # API, in the Chromium build this Playwright version pins, with its system libraries
       - name: Install Chromium for the Login UI's browser tests
-        working-directory: web/apps/login
+        working-directory: apps/web/apps/login
         run: PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright" pnpm exec playwright install --with-deps chromium
       - run: pnpm e2e
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: login-e2e-traces
-          path: web/apps/login/test-results/
+          path: apps/web/apps/login/test-results/
           if-no-files-found: ignore
 
   # M2 to M6 checks: the compose stack signs in through every tenant and application and the Admin UI (deploy/smoke.sh).

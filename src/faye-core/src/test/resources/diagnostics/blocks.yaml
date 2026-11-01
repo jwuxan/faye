@@ -1,0 +1,35 @@
+flow: f
+version: 1
+login:
+  steps:
+    welcome: { set: { greeted: true } }
+    identify:
+      if: user.exists
+      block: identifier
+      with: { passkey: true, password: true }
+    credential: { block: password, set: { x: 1 } }
+    pick-one:
+      alternative:
+        only: { block: totp }
+    two:
+      alternative:
+        group: { steps: { inner: { fail: no_way } } }
+        resolve: { block: identifier }
+    nested:
+      steps:
+        grant: { block: consent }
+    deny: { fail: denied, after: audit }
+    register: { block: add-passkey, with: { register: false } }
+
+# Each body is one block, which takes only its own keys, in the places it may go.
+# expect: 5:5: the first step is the Identifier ('block: identifier'), not a Set block
+# expect: 6:5: the Identifier is the first step and the only one; remove this block
+# expect: 7:7: the Identifier always runs: it takes no 'if'
+# expect: 8:14: the Identifier asks for the password with no other option, not 'passkey'
+# expect: 10:36: a Password block takes 'if', 'before', 'block', 'with', 'path', 'after', not 'set'
+# expect: 13:9: a choice needs two options or more; with one, use that block as the step
+# expect: 16:9: an option is one credential block or a 'fail', not a Group block
+# expect: 17:9: the Identifier is the first step and the only one; remove this block
+# expect: 20:9: Consent is a step of its own, not inside a group
+# expect: 21:27: a Fail block takes 'if', 'before', 'fail', not 'after'
+# expect: 22:37: an Add passkey block takes 'if', 'before', 'block', 'path', 'after', not 'with'

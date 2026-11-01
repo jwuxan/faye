@@ -1,0 +1,14 @@
+name: an entry can be answered until its lifetime from the start has passed, then it is refused as expired and the host hears nothing
+ir: flows/default-login.json
+tenant: { flows: { authenticate: { lifetime_s: 600 } } }
+handlers:
+  identity.resolve: [ok]
+events:
+  - expect_screen: identifier
+  - wait: 599
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - wait: 1
+  - submit: { password: right }
+  - expect_refused: flow_expired
+  - expect_accepted: 0

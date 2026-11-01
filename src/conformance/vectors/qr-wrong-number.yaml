@@ -1,0 +1,17 @@
+name: picking the wrong number on the phone fails the approve entry and approves nothing (ADR 0032)
+ir: flows/qr.json
+host:
+  kind: approve
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+  qr.approve: [{ fail: wrong_number }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: qr_approve
+  - submit: { number: 17 }
+  - expect_commits: []
+  - expect_result: { succeed: false, reason: wrong_number }

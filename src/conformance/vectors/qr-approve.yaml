@@ -1,0 +1,18 @@
+name: the phone runs the approve entry, a password then the matching number, and the host is told it approved (ADR 0032)
+ir: flows/qr.json
+host:
+  kind: approve
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+  qr.approve: [{ ok: { effects: [g1] } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: qr_approve
+    expect_step: confirm
+  - submit: { number: 42 }
+  - expect_commits: [qr.approve:g1]
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

@@ -1,0 +1,9 @@
+# The server image needs only the product build and the application build (ADR 0001)
+**
+!src/**
+!apps/server/**
+src/.gradle/**
+src/**/build/**
+apps/server/.gradle/**
+apps/server/**/build/**
+apps/server/dump.rdb

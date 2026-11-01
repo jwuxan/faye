@@ -1,7 +1,0 @@
-# The server image needs only the Gradle build and the repo's schema/ (ADR 0001)
-**
-!server/**
-!schema/**
-server/.gradle/**
-server/**/build/**
-server/dump.rdb

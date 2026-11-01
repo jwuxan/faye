@@ -16,7 +16,7 @@ The first request was to add users from the console, with a user pool per tenant
 
 * Tenant isolation: users of one tenant must be unknown to the applications of another; a tenant's applications share its users.
 * Credentials stay out of the repo and out of Faye's reach beyond what verifying needs (an Argon2 hash; a TOTP seed).
-* Charter, "What Faye is not" 3, and the risk "scope creep toward a full IdP" in [decisions-and-risks.md](../roadmap/decisions-and-risks.md).
+* Charter, "What Faye is not" 3, and the risk "scope creep toward a full IdP" of the decision log ([ADR 0036](0036-retire-the-roadmap.md)).
 * Charter principle 2: only built in handlers create accounts and enroll credentials, inside a flow.
 * Charter principle 5: a flow can be tried before it is published. Knowing which accounts exist and what they have enrolled (a password, TOTP, a passkey) is how an author picks the right account to try a branch with.
 * No secret leaves the server: no password hash, TOTP secret or passkey key.

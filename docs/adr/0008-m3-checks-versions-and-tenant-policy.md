@@ -8,7 +8,7 @@ decision-makers: Josh Wu
 
 ## Context and Problem Statement
 
-M3 ([milestones.md](../roadmap/milestones.md)) adds `faye-check` (the checks in [dsl-and-ir.md](../roadmap/dsl-and-ir.md), path enumeration, `acr` reachability), immutable versions with a current pointer, pinning and rollback, tenant allowlists and MFA policy, and conformance vectors generated from path enumeration. The charter requires that Faye "checks every flow before it runs anywhere" and refuses any flow with a path to success that does not verify a credential (principle 1). Before M3, `FlowVersions` was an in memory map filled from YAML at startup with no checks, so a version published at run time would be lost on restart while flows pinned to it were still in Redis.
+M3 adds `faye-check` (the DSL's checks, path enumeration, `acr` reachability), immutable versions with a current pointer, pinning and rollback, tenant allowlists and MFA policy, and conformance vectors generated from path enumeration. The charter requires that Faye "checks every flow before it runs anywhere" and refuses any flow with a path to success that does not verify a credential (principle 1). Before M3, `FlowVersions` was an in memory map filled from YAML at startup with no checks, so a version published at run time would be lost on restart while flows pinned to it were still in Redis.
 
 Exit: a flow missing a credential on one branch is rejected with a pointer to the YAML line; publishing a new version while a user is mid login does not affect that user.
 
@@ -17,7 +17,7 @@ Exit: a flow missing a credential on one branch is rejected with a pointer to th
 * Soundness first: a check that passes must hold on every run. False alarms are acceptable; missed unsafe paths are not.
 * Errors point at the YAML a human wrote.
 * A publish or a restart never breaks a flow in progress (D5, M1 exit).
-* Small: no new dependency, no new boundary the roadmap does not already name.
+* Small: no new dependency, no new boundary the plan does not already name.
 
 ## Considered Options
 
@@ -31,7 +31,7 @@ Exit: a flow missing a credential on one branch is rejected with a pointer to th
 3. Version store
    * A. In memory, rebuilt from YAML at startup (status quo).
    * B. Redis, next to flow state.
-   * C. Postgres, the config store [architecture.md](../roadmap/architecture.md) plans.
+   * C. Postgres, the planned config store.
 4. Configured YAML at startup
    * A. Always publish it.
    * B. Publish only when the tenant has no current version.
@@ -69,7 +69,7 @@ Exit: a flow missing a credential on one branch is rejected with a pointer to th
 * Good, because the engine's runtime checks (`unauthenticated`, `mfa_required`, `acr_not_satisfied`) back the static ones, so a checker bug cannot by itself produce an unsafe sign in.
 * Bad, because the checker over-approximates. A flow whose second factor depends on `user.*` cannot pass under an MFA tenant; it must branch on `tenant.mfa_required` (as `conformance/flows/mfa-policy.json` does). Some failure paths no input can take get no vector (two in `passkey-totp`).
 * Bad, because stored versions keep canonical IR, which has no source map. Errors about a version read back from Redis (a rollback after a restart) have no YAML line. Storing the YAML source alongside the IR would fix it.
-* Bad, because versions are never deleted. Retention bounded by flow state TTL ([engine.md](../roadmap/engine.md)) needs a reference count or a sweep; not needed at prototype scale.
+* Bad, because versions are never deleted. Retention bounded by flow state TTL needs a reference count or a sweep; not needed at prototype scale.
 * Bad, because a configured YAML that matches an older version in the tenant's history does not become current on restart; roll back through the admin API instead.
 * Bad, because the admin API trusts one static token, and compose ships a local default. Fine for local and CI; not for anything shared.
 * Bad, because some guarantees are static only. Nothing at run time checks that `identity.resolve` ran before a credential handler (the shipped credential handlers fail closed without it), and allowlists are not re-applied to an already published version when they change, only on rollback and restart. `user.*` merges across retry attempts, so a retry around `identify` can carry one account's fields into another's (M2 engine behavior; the shipped flows keep `identify` outside any retry). Each is a follow up that changes engine behavior and needs a conformance vector.

@@ -124,7 +124,7 @@ interface FlowHost {
 - `Completion` extends `EngineResponse`, so `start` and `submit` return a `Completion` directly; which variant is the host's fixed choice, never the browser's.
 - `challenge` is renamed `ref`. It is the host's opaque id for the request (a Hydra challenge, or an id the existing system created).
 
-The embedding contract is in `docs/roadmap/engine.md` (Embedding):
+The embedding contract:
 - `start(kind, ref, request, binder)`, `view(flowId, binder)` and `submit(flowId, binder, nonce, submission)`.
 - What each returns.
 - The binder rules from ADR 0024 10B: the caller creates the binder, keeps it from the page's scripts, and presents it on every call.

@@ -1,0 +1,23 @@
+name: an action the waiting screen does not declare, input it does not take, or a stale nonce is refused and changes nothing (ADR 0032)
+ir: flows/delivered-codes.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: false, has_phone: false, email_verified: true } } }]
+  password.verify: [ok]
+  email_code.verify: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - act: resend
+  - expect_refused: unknown_action
+  - submit: { password: right }
+  - expect_screen: code_sent
+  - act: poll
+  - expect_refused: unknown_action
+  - act: { action: resend, input: { to: someone@example.com } }
+  - expect_refused: unknown_action
+  - act: resend
+    nonce: not-this-screen
+  - expect_refused: stale_nonce
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd, email], acr: "faye:1fa" }

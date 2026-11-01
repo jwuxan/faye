@@ -1,0 +1,70 @@
+# Acme's applications: a password, or a code sent to the account's verified email or phone, or a QR
+# code approved on a phone; plus a second factor when a risk hook scores the sign in as high risk,
+# an offer to add a phone for texted codes, and a consent screen for third party applications.
+#
+# The risk hook asks the ip-reputation service (a named egress target the tenant grants) about the
+# request and sets vars.risk. A hook can only set vars, fail, or pick; it cannot sign anyone in, so
+# the checker still sees a credential on every path and a second factor on the high risk ones. A
+# code from an authenticator app is only ever that second factor; an emailed or texted code may
+# stand in for the password (ADR 0032). First party applications (registered with
+# metadata.first_party = true) are not asked for consent.
+flow: acme
+version: 1
+
+hooks:
+  risk:
+    file: risk.js
+    capabilities: { http: [ip-reputation] }
+    timeout_ms: 500
+
+login:
+  steps:
+    identify:
+      block: identifier
+      after: risk
+    credential:
+      alternative:
+        password:
+          block: password
+        email:
+          if: user.email_verified
+          block: email-code
+        phone:
+          if: user.has_phone
+          block: sms-code
+        # Scanned and approved on a phone, which runs the approve steps below
+        qr:
+          block: qr
+    second-factor:
+      if: { eq: [vars.risk, high] }
+      alternative:
+        totp:
+          if: user.has_totp
+          block: totp
+        enroll:
+          if: { not: user.has_totp }
+          block: enroll-totp
+    # Offered to people without phone codes; "Not now" skips it
+    add-phone:
+      if: { not: user.has_phone }
+      block: add-phone
+      with: { attempts: 1 }
+    # Consent runs once the sign in is accepted, on the authorization server's consent challenge
+    grant:
+      if: { not: client.first_party }
+      block: consent
+
+# The phone's side of a QR code sign in: who, a credential, then the number the other device shows
+approve:
+  steps:
+    who:
+      block: identifier
+    prove:
+      alternative:
+        passkey:
+          if: user.has_passkey
+          block: passkey
+        password:
+          block: password
+    confirm:
+      block: qr-approve

@@ -1,0 +1,18 @@
+name: a QR code approved on a phone with a user verified passkey signs the waiting device in with what the phone proved (ADR 0032)
+ir: flows/qr.json
+handlers:
+  identity.resolve: [ok]
+  qr.redeem: [{ ok: { amr: [hwk, user] } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: method_picker
+    expect_options: [qr, password]
+  - submit: { method: qr }
+  - expect_screen: qr
+    expect_qr_status: pending
+  - act: poll
+  - expect_screen: qr
+    expect_qr_status: approved
+  - submit: {}
+  - expect_result: { succeed: true, subject: alice, amr: [hwk, user], acr: "faye:2fa" }

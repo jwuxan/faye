@@ -1,0 +1,21 @@
+name: with the person's phone codes off, a texted code is not offered and only email runs (ADR 0032)
+ir: flows/delivered-codes.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: false, has_phone: false, email_verified: true } } }]
+  password.verify: [ok]
+  email_code.verify: [{ fail: invalid_code }, ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: code_sent
+    expect_channel: email
+  - submit: { code: "000000" }
+  - expect_screen: code_sent
+    expect_channel: email
+    expect_error: invalid_code
+    expect_attempts_left: 2
+    expect_resend: true
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd, email], acr: "faye:1fa" }

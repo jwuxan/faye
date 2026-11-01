@@ -1,0 +1,12 @@
+# A password, then a code emailed to the account's verified address (ADR 0032).
+flow: email-code
+version: 1
+
+login:
+  steps:
+    identify: { block: identifier }
+    credential: { block: password }
+    second-factor:
+      alternative:
+        phone: { if: user.has_phone, block: sms-code }
+        email: { if: user.email_verified, block: email-code }

@@ -8,8 +8,9 @@ JAVA_HOME := $(JDK21)
 endif
 export JAVA_HOME
 
-GRADLE := cd server && ./gradlew
-PNPM := pnpm -C web
+GRADLE_SRC := cd src && ./gradlew
+GRADLE_APP := cd apps/server && ./gradlew
+PNPM := pnpm -C apps/web
 
 .PHONY: help setup build test lint check format generate dev up down smoke clean
 
@@ -24,32 +25,38 @@ setup: ## Check the toolchain, install web deps, fetch server deps and compile
 	done
 	@command -v docker >/dev/null || echo "note: docker not found; only needed for make up/down"
 	$(PNPM) install --frozen-lockfile
-	$(GRADLE) assemble
+	$(GRADLE_SRC) assemble
+	$(GRADLE_APP) assemble
 	@echo "setup done; next: make dev"
 
 build: ## Compile the server and build the web apps (no tests)
-	$(GRADLE) assemble
+	$(GRADLE_SRC) assemble
+	$(GRADLE_APP) assemble
 	$(PNPM) build
 
 test: ## Server unit and conformance tests, web tests
-	$(GRADLE) test
+	$(GRADLE_SRC) test
+	$(GRADLE_APP) test
 	$(PNPM) -r test
 
 lint: ## Server format and Checkstyle, web typecheck and lint
-	$(GRADLE) spotlessCheck checkstyleMain checkstyleTest
+	$(GRADLE_SRC) spotlessCheck checkstyleMain checkstyleTest checkstyleTestFixtures
+	$(GRADLE_APP) spotlessCheck checkstyleMain checkstyleTest
 	$(PNPM) typecheck
 	$(PNPM) lint
 
 check: ## What CI runs, minus the compose e2e: full server build, contract diff, web checks
-	$(GRADLE) build
+	$(GRADLE_SRC) build
+	$(GRADLE_APP) build
 	$(PNPM) generate
-	git diff --exit-code -- web/packages/contract/src
+	git diff --exit-code -- apps/web/packages/contract/src
 	$(PNPM) typecheck
 	$(PNPM) lint
 	$(PNPM) build
 
 format: ## Apply the Java and Gradle formatting
-	$(GRADLE) spotlessApply
+	$(GRADLE_SRC) spotlessApply
+	$(GRADLE_APP) spotlessApply
 
 generate: ## Regenerate the TS contract types from schema/screen.schema.json
 	$(PNPM) generate
@@ -67,5 +74,6 @@ smoke: ## Scripted sign ins against a freshly started stack (make dev or make up
 	deploy/smoke.sh
 
 clean: ## Remove server and web build outputs (keeps node_modules and deploy/.bin)
-	$(GRADLE) clean
-	rm -rf web/apps/*/.next web/apps/*/*.tsbuildinfo web/packages/*/*.tsbuildinfo
+	$(GRADLE_SRC) clean
+	$(GRADLE_APP) clean
+	rm -rf apps/web/apps/*/.next apps/web/apps/*/*.tsbuildinfo apps/web/packages/*/*.tsbuildinfo

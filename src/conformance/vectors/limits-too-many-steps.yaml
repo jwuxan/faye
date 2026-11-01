@@ -1,0 +1,4 @@
+name: a flow over a hard limit never runs; the host is told the flow is unavailable
+ir: flows/limits-too-many-steps.json
+events:
+  - expect_result: { succeed: false, reason: flow_unavailable }

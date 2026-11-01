@@ -16,7 +16,7 @@ A person who failed to sign in should hear about it on the sign in screens, whic
 
 * Charter: the authorization server keeps the protocol; Faye owns every screen a person sees. Faye must still tell the host the outcome.
 * Rule 1 of AGENTS.md: the screen protocol changes in `schema/` first.
-* The browser must learn nothing it did not already learn: the failure reason already rides on Hydra's redirect, but the Login UI shows only a generic message (login-experience.md: unknown and known accounts fail alike).
+* The browser must learn nothing it did not already learn: the failure reason already rides on Hydra's redirect, but the Login UI shows only a generic message (unknown and known accounts fail alike).
 * No loops: a refusal that would fail again the same way must not restart itself.
 
 ## Considered Options

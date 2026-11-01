@@ -1,0 +1,48 @@
+# The product's catalog: src/ and src/build-logic only. Application libraries live in the
+# application's own catalog.
+[versions]
+json-schema-validator = "1.5.9"
+jspecify = "1.0.1"
+errorprone = "2.51.0"
+nullaway = "0.14.3"
+errorprone-plugin = "5.1.1"
+spotless-plugin = "8.10.4"
+palantir-java-format = "2.103.0"
+checkstyle = "14.3.0"
+quickjs4j = "0.1.1"
+jakarta-annotation = "2.1.1"
+# Coverage guided fuzzing, test only (ADR 0007)
+jazzer = "0.30.0"
+# Pinned explicitly: shippable libraries carry no BOM but jackson's. These are exactly the
+# versions the previous build resolved (managed at the time by the platform that build applied).
+snakeyaml = "2.5"
+slf4j = "2.0.18"
+junit = "5.12.2"
+assertj = "3.27.7"
+# Above the managed 2.21.4: jackson-core advisories GHSA-649p-m576-vr99, GHSA-p6pp-m3f8-5c89, GHSA-7hhh-6rmp-j9qf (ADR 0007)
+jackson = "2.21.8"
+
+[libraries]
+jackson-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind" }
+jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations" }
+jackson-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml" }
+snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+assertj = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
+jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
+errorprone-core = { module = "com.google.errorprone:error_prone_core", version.ref = "errorprone" }
+quickjs4j = { module = "io.roastedroot:quickjs4j", version.ref = "quickjs4j" }
+nullaway = { module = "com.uber.nullaway:nullaway", version.ref = "nullaway" }
+jazzer-junit = { module = "com.code-intelligence:jazzer-junit", version.ref = "jazzer" }
+# Pulled transitively by json-schema-validator; the old platform managed it at 2.0.18
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+# The generated classes carry these annotations; javac needs them to read the classes (compile only)
+jakarta-annotation-api = { module = "jakarta.annotation:jakarta.annotation-api", version.ref = "jakarta-annotation" }
+
+[plugins]
+errorprone = { id = "net.ltgt.errorprone", version.ref = "errorprone-plugin" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless-plugin" }

@@ -1,0 +1,12 @@
+name: a consent entry is bounded by the settings of its own kind
+ir: flows/partner-consent.json
+tenant: { flows: { consent: { lifetime_s: 60 } } }
+host:
+  kind: consent
+  client: { client_id: partner-app, first_party: false }
+  params: { subject: alice, requested_scope: [openid, email] }
+events:
+  - expect_screen: consent
+  - wait: 60
+  - submit: { decision: allow }
+  - expect_refused: flow_expired

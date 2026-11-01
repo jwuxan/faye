@@ -1,0 +1,8 @@
+# The Admin UI's docs sidebar, in order. Paths are relative to docs/. A section with `dir` lists every .md in it (README.md first, then by name).
+sections:
+  - title: Guide
+    pages: [index.md, guide/getting-started.md, guide/admin-console.md, guide/flow-syntax.md, guide/hooks.md, guide/login-page.md]
+  - title: Reference
+    pages: [ir-spec.md]
+  - title: Decisions
+    dir: adr

@@ -1,5 +1,6 @@
 .gradle/
-server/gradle/wrapper/gradle-wrapper.jar
+src/gradle/wrapper/gradle-wrapper.jar
+apps/server/gradle/wrapper/gradle-wrapper.jar
 build/
 out/
 .idea/
@@ -29,6 +30,6 @@ brand/.venv/
 __pycache__/
 
 # Browser tests of the Login UI: the browser Playwright downloads (pinned by its version), and its output
-web/apps/login/.playwright/
-web/apps/login/test-results/
-web/apps/login/playwright-report/
+apps/web/apps/login/.playwright/
+apps/web/apps/login/test-results/
+apps/web/apps/login/playwright-report/

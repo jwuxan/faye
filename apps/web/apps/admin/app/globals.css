@@ -1,0 +1,375 @@
+@import "@faye/ui/globals.css";
+/* The login page preview in Settings draws from the login screens' own theme */
+@import "@faye/ui/login-theme.css";
+
+/* Admin console tokens on top of the shared theme. A cool gray frame (the sidebar and the margin
+   around the page) holds the page on one white, rounded sheet. One accent (blue) for primary
+   actions, selection, focus and the highlighted path; each kind of block has its own hue (--tone-*),
+   so a flow reads as a sequence of colored steps; semantic colors only where they carry meaning. */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.21 0.006 285.9);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.006 285.9);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.006 285.9);
+  --primary: oklch(0.5 0.19 259);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.955 0.002 286);
+  --secondary-foreground: oklch(0.27 0.006 286);
+  --muted: oklch(0.962 0.002 286);
+  --muted-foreground: oklch(0.47 0.014 286);
+  --accent: oklch(0.962 0.002 286);
+  --accent-foreground: oklch(0.21 0.006 285.9);
+  --border: oklch(0.885 0.004 286);
+  --input: oklch(0.665 0.006 286);
+  --ring: oklch(0.5 0.19 259);
+  --sidebar: oklch(0.962 0.002 286);
+  --sidebar-foreground: oklch(0.27 0.008 286);
+  --sidebar-primary: oklch(0.21 0.006 285.9);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.915 0.004 286);
+  --sidebar-accent-foreground: oklch(0.18 0.006 286);
+  --sidebar-border: oklch(0.88 0.004 286);
+  --sidebar-ring: oklch(0.5 0.19 259);
+  --surface-2: oklch(0.982 0.001 286);
+  /* The flow graph's connectors: structure, so 3:1 on the graph's canvas (unlike --border) */
+  --edge: oklch(0.63 0.01 286);
+  --warning: oklch(0.64 0.15 62);
+  --danger: oklch(0.52 0.2 27);
+  --warm: oklch(0.5 0.09 55);
+  --accent-ui: oklch(0.5 0.19 259);
+  --success: oklch(0.48 0.13 152);
+  --warning-text: oklch(0.5 0.12 60);
+  --destructive: oklch(0.52 0.2 27);
+  /* Block hues: filled tiles with a white glyph */
+  --tone-blue: oklch(0.53 0.19 255);
+  --tone-violet: oklch(0.53 0.2 292);
+  --tone-amber: oklch(0.55 0.13 62);
+  --tone-teal: oklch(0.53 0.1 195);
+  --tone-green: oklch(0.53 0.14 150);
+  --tone-pink: oklch(0.55 0.2 350);
+  --tone-orange: oklch(0.55 0.16 42);
+  --tone-red: oklch(0.54 0.2 25);
+  --tone-slate: oklch(0.5 0.025 265);
+}
+
+:root[data-theme="dark"] {
+  --background: oklch(0.185 0.004 286);
+  --foreground: oklch(0.97 0.001 286);
+  --card: oklch(0.205 0.005 286);
+  --card-foreground: oklch(0.97 0.001 286);
+  --popover: oklch(0.215 0.005 286);
+  --popover-foreground: oklch(0.97 0.001 286);
+  --primary: oklch(0.74 0.14 259);
+  --primary-foreground: oklch(0.17 0.02 262);
+  --secondary: oklch(0.26 0.006 286);
+  --secondary-foreground: oklch(0.95 0.001 286);
+  --muted: oklch(0.25 0.006 286);
+  --muted-foreground: oklch(0.76 0.012 286);
+  --accent: oklch(0.255 0.006 286);
+  --accent-foreground: oklch(0.97 0.001 286);
+  --border: oklch(1 0 0 / 13%);
+  --input: oklch(1 0 0 / 36%);
+  --ring: oklch(0.74 0.14 259);
+  --sidebar: oklch(0.145 0.004 286);
+  --sidebar-foreground: oklch(0.9 0.006 286);
+  --sidebar-primary: oklch(0.97 0.001 286);
+  --sidebar-primary-foreground: oklch(0.18 0.004 286);
+  --sidebar-accent: oklch(0.24 0.006 286);
+  --sidebar-accent-foreground: oklch(0.98 0 0);
+  --sidebar-border: oklch(1 0 0 / 14%);
+  --sidebar-ring: oklch(0.74 0.14 259);
+  --surface-2: oklch(0.2 0.005 286);
+  --edge: oklch(0.56 0.01 286);
+  --warning: oklch(0.8 0.14 80);
+  --danger: oklch(0.74 0.17 22);
+  --warm: oklch(0.78 0.08 60);
+  --accent-ui: oklch(0.74 0.14 259);
+  --success: oklch(0.76 0.15 150);
+  --warning-text: oklch(0.82 0.14 80);
+  --destructive: oklch(0.74 0.17 22);
+  --tone-blue: oklch(0.53 0.17 255);
+  --tone-violet: oklch(0.53 0.18 292);
+  --tone-amber: oklch(0.55 0.12 62);
+  --tone-teal: oklch(0.53 0.09 195);
+  --tone-green: oklch(0.53 0.12 150);
+  --tone-pink: oklch(0.55 0.18 350);
+  --tone-orange: oklch(0.55 0.15 42);
+  --tone-red: oklch(0.54 0.19 25);
+  --tone-slate: oklch(0.48 0.02 265);
+}
+
+/* The console's whole type scale: four sizes, nothing else compiles. Shared components from
+   @faye/ui use the same names, so in the admin they land on this scale too (the login app keeps
+   Tailwind's). No arbitrary sizes (text-[Npx], fontSize): lib/type-scale.test.ts fails on them.
+     xs    12/16  meta, chips, kbd, mono detail
+     sm    13/20  body and controls (the default)
+     base  14/20  section, empty state and breadcrumb titles
+     lg    18/28  page and dialog headings */
+@theme {
+  --text-*: initial;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.25rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.75rem;
+}
+
+@theme inline {
+  --color-tone-blue: var(--tone-blue);
+  --color-tone-violet: var(--tone-violet);
+  --color-tone-amber: var(--tone-amber);
+  --color-tone-teal: var(--tone-teal);
+  --color-tone-green: var(--tone-green);
+  --color-tone-pink: var(--tone-pink);
+  --color-tone-orange: var(--tone-orange);
+  --color-tone-red: var(--tone-red);
+  --color-tone-slate: var(--tone-slate);
+  --color-surface-2: var(--surface-2);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-warm: var(--warm);
+  /* A filled tile's hairline edge, and the page sheet on the sidebar's frame */
+  --shadow-tile: inset 0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 1px rgb(0 0 0 / 0.06);
+  --shadow-sheet: 0 0 0 1px var(--sidebar-border), 0 1px 3px rgb(0 0 0 / 0.04);
+  --shadow-sheet-flat: 0 0 0 1px var(--sidebar-border);
+}
+
+/* The console's faces: Inter for UI text, Paper Mono for code (next/font/local in layout.tsx sets
+   --font-inter and --font-paper-mono on <html>). The login and demo client apps keep the shared
+   system stacks. */
+@theme inline {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-paper-mono), ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  /* The login app's own face, for the login page preview */
+  --font-login: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  body {
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--accent-ui) 22%, transparent);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 35%, transparent) transparent;
+  }
+  input,
+  textarea,
+  [contenteditable] {
+    caret-color: var(--accent-ui);
+  }
+  /* Chips are soft rounded rectangles; a class on one still wins */
+  [data-slot="badge"] {
+    border-radius: var(--radius-sm);
+  }
+}
+
+/* A graph node whose block the last edit changed. */
+@keyframes graph-flash {
+  0% {
+    opacity: 0;
+    stroke-width: 6;
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    stroke-width: 2;
+  }
+}
+.graph-flash {
+  animation: graph-flash 1.4s ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .graph-flash {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* Console motion: every spatial part is multiplied by --motion (0 under prefers-reduced-motion),
+   so reduced motion keeps fades and color changes. */
+
+/* Each page settles in fast on navigation instead of cutting. */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(5px * var(--motion, 1)));
+  }
+}
+.page-enter {
+  animation: page-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* A live event appends to the preview trace. */
+@keyframes trace-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(3px * var(--motion, 1)));
+  }
+}
+.trace-in {
+  animation: trace-in 200ms ease-out;
+}
+
+/* A swapped icon (copy -> check) pops in. */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(calc(1 - 0.4 * var(--motion, 1)));
+  }
+}
+.pop-in {
+  animation: pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* A count that just changed flashes foreground once, then rests (re-run by remounting on change). */
+@keyframes count-tick {
+  from {
+    color: var(--foreground);
+  }
+}
+.count-tick {
+  animation: count-tick 0.7s ease-out;
+}
+
+/* Syntax colors for read only code (lib/highlight.ts), matching the editor's. */
+.tok-propertyName {
+  color: var(--accent-ui);
+}
+.tok-keyword {
+  color: var(--warm);
+  font-weight: 500;
+}
+.tok-string {
+  color: var(--success);
+}
+.tok-number,
+.tok-bool,
+.tok-null,
+.tok-atom,
+.tok-labelName,
+.tok-typeName {
+  color: var(--warning-text);
+}
+.tok-comment {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.tok-punctuation,
+.tok-meta {
+  color: var(--muted-foreground);
+}
+
+/* Rendered docs markdown (app/docs). Sizes stay on the console's scale; colors stay on tokens. */
+.docs-prose {
+  font-size: var(--text-base);
+  line-height: 1.7;
+  color: var(--foreground);
+}
+.docs-prose h1 {
+  font-size: var(--text-lg);
+  line-height: var(--text-lg--line-height);
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+.docs-prose h2 {
+  font-size: var(--text-base);
+  font-weight: 600;
+  margin: 2rem 0 0.75rem;
+}
+.docs-prose h3 {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  margin: 1.5rem 0 0.5rem;
+}
+.docs-prose p {
+  margin: 0.75rem 0;
+}
+.docs-prose a {
+  color: var(--accent-ui);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.docs-prose .docs-anchor {
+  margin-left: 0.4em;
+  color: var(--muted-foreground);
+  text-decoration: none;
+  opacity: 0;
+}
+.docs-prose h2:hover .docs-anchor,
+.docs-prose h3:hover .docs-anchor,
+.docs-prose .docs-anchor:focus-visible {
+  opacity: 1;
+}
+.docs-prose ul,
+.docs-prose ol {
+  margin: 0.75rem 0;
+  padding-left: 1.5rem;
+}
+.docs-prose ul {
+  list-style: disc;
+}
+.docs-prose ol {
+  list-style: decimal;
+}
+.docs-prose li {
+  margin: 0.25rem 0;
+}
+.docs-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: var(--text-sm);
+}
+.docs-prose th,
+.docs-prose td {
+  border: 1px solid var(--border);
+  padding: 0.375rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+.docs-prose th {
+  background: var(--surface-2);
+}
+.docs-prose blockquote {
+  margin: 1rem 0;
+  padding-left: 1rem;
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
+}
+.docs-prose :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.35em;
+}
+.docs-prose pre {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+.docs-prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.5rem 0;
+}

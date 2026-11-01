@@ -1,0 +1,14 @@
+name: flow settings apply by entry kind; a limit on authenticate entries does not bound a consent
+ir: flows/partner-consent.json
+tenant: { flows: { authenticate: { lifetime_s: 60, idle_timeout_s: 60 } } }
+host:
+  kind: consent
+  client: { client_id: partner-app, first_party: false }
+  params: { subject: alice, requested_scope: [openid, email] }
+handlers:
+  consent.record: [ok]
+events:
+  - expect_screen: consent
+  - wait: 3600
+  - submit: { decision: allow }
+  - expect_result: { succeed: true, subject: alice, grant_scope: [openid, email] }

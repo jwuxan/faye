@@ -1,0 +1,16 @@
+name: adding a phone may be declined with "Not now"; nothing is written (ADR 0032)
+ir: flows/add-phone.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_phone: false } } }]
+  password.verify: [ok]
+  phone.enroll: [ok]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: phone_enroll
+    expect_required: false
+  - submit: { skip: true }
+  - expect_commits: []
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

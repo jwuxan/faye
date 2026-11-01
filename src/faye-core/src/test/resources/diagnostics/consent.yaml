@@ -1,0 +1,13 @@
+flow: f
+version: 1
+login:
+  steps:
+    identify: { block: identifier }
+    credential: { block: password }
+    consent: { block: consent }
+consent:
+  steps:
+    grant: { block: consent }
+
+# Consent is a step of 'login'; the section it used to have is refused with the fix.
+# expect: 8:1: consent is a step of 'login' now: move these steps to the end of 'login.steps'

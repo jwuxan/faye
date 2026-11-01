@@ -1,6 +1,6 @@
 # Architecture decision records
 
-Format: [MADR 4](https://adr.github.io/madr/). One file per decision, `NNNN-title.md`, numbered in order and never renumbered. Change a decision by adding a new record that supersedes the old one. Status is `Proposed` (planned, not implemented), `In progress` (started, or gaps remain), `Accepted` (implemented, every gap closed, confirmation passes; set by a human), or `Superseded by NNNN`; see [AGENTS.md](../../AGENTS.md#decisions). The short decision log D1 to D13 is in [roadmap/decisions-and-risks.md](../roadmap/decisions-and-risks.md).
+Format: [MADR 4](https://adr.github.io/madr/). One file per decision, `NNNN-title.md`, numbered in order and never renumbered. Change a decision by adding a new record that supersedes the old one. Status is `Proposed` (planned, not implemented), `In progress` (started, or gaps remain), `Accepted` (implemented, every gap closed, confirmation passes; set by a human), or `Superseded by NNNN`; see [AGENTS.md](../../AGENTS.md#decisions). The founding decision log D1 to D13 is in [ADR 0036](0036-retire-the-roadmap.md).
 
 | # | Decision | Status |
 |---|---|---|
@@ -35,5 +35,10 @@ Format: [MADR 4](https://adr.github.io/madr/). One file per decision, `NNNN-titl
 | [0029](0029-screen-paths.md) | A URL path for every screen, set in the flow | In progress |
 | [0030](0030-blocks-with-fixed-screens-and-handlers.md) | Blocks with fixed screens and handlers: a flow orchestrates, it does not assemble | In progress |
 | [0031](0031-failed-sign-in-stays-on-faye.md) | A failed sign in stays on Faye | In progress |
-| [0032](0032-delivered-one-time-codes-and-qr-sign-in.md) | Delivered one time codes (email, SMS) beside TOTP, and QR code sign in, as blocks | Proposed |
+| [0032](0032-delivered-one-time-codes-and-qr-sign-in.md) | Delivered one time codes (email, SMS) beside TOTP, and QR code sign in, as blocks | Accepted |
 | [0033](0033-login-page-customization-and-keep-me-signed-in.md) | Login page customization, and "keep me signed in" | In progress |
+| [0034](0034-two-shippable-modules-under-src.md) | Two shippable modules under `src/`, the prototype under `apps/` | In progress |
+| [0035](0035-flow-settings-per-entry-kind.md) | Flow settings: a time limit and an idle timeout per entry kind, set per tenant | In progress |
+| [0036](0036-retire-the-roadmap.md) | Retire the roadmap: the founding decisions it held and the gaps it leaves open | Proposed |
+| [0037](0037-hard-limits-on-flows-and-hooks.md) | Hard limits on flows and hooks | In progress |
+| [0038](0038-required-enrollment.md) | Required enrollment: adding a passkey or a phone, with or without "Not now" | In progress |

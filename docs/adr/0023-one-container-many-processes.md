@@ -126,7 +126,7 @@ docker run -d --name faye -v faye-data:/var/lib/faye -e FAYE_DEMO=true \
   -p 4444:4444 -p 8080:8080 -p 3000:3000 -p 3001:3001 -p 127.0.0.1:3002:3002 faye
 ```
 
-This supersedes ADR 0019's arrangement of services (not ADR 0017's one database, nor ADR 0020's migrations). When this record moves to `in progress`, set ADR 0019's status to `superseded by 0023` and update `AGENTS.md`'s Layout and Commands, `README.md`, and `docs/roadmap/architecture.md` in the same change.
+This supersedes ADR 0019's arrangement of services (not ADR 0017's one database, nor ADR 0020's migrations). When this record moves to `in progress`, set ADR 0019's status to `superseded by 0023` and update `AGENTS.md`'s Layout and Commands and `README.md` in the same change.
 
 ### Consequences
 
@@ -168,6 +168,6 @@ Implementation order, each step leaving CI green:
 1. Root `Dockerfile` on Alpine with s6-overlay pinned by checksum, the product services and `init`; verify Next on musl (or switch to 2B and amend this record).
 2. Demo services behind `FAYE_DEMO`, their uid and `/var/lib/faye/demo/`.
 3. `deploy/compose.yaml` down to one service; `smoke.sh` and CI's wait loop updated (the loop reads Hydra's readiness through `docker exec`, since `4445` is no longer published).
-4. Docs: `AGENTS.md`, `README.md`, `docs/roadmap/architecture.md`, ADR 0019's status.
+4. Docs: `AGENTS.md`, `README.md`, ADR 0019's status.
 
 Out of scope: one public port behind a reverse proxy (4B), TLS termination in the image, and a Helm chart; each gets its own record if wanted.

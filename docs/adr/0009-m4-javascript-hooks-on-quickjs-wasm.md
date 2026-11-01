@@ -8,7 +8,7 @@ decision-makers: Josh Wu
 
 ## Context and Problem Statement
 
-M4 ([milestones.md](../roadmap/milestones.md)) adds tenant JavaScript hooks ([hooks.md](../roadmap/hooks.md)): a `HookRuntime` with deadlines, memory limits and no host access; a hook store by hash; capability grants and named HTTP egress targets; `pick` in `choose`; and the licensing decision on the GraalVM edition (open question 1 in [decisions-and-risks.md](../roadmap/decisions-and-risks.md)), with a Wasm fallback spiked if needed.
+M4 adds tenant JavaScript hooks: a `HookRuntime` with deadlines, memory limits and no host access; a hook store by hash; capability grants and named HTTP egress targets; `pick` in `choose`; and the licensing decision on the GraalVM edition (open question 1 of the decision log ([ADR 0036](0036-retire-the-roadmap.md))), with a Wasm fallback spiked if needed.
 
 Exit: a risk hook routes high risk sign ins to TOTP; a malicious hook (infinite loop, an attempt to return `{ succeed: true }`, an attempt to read `auth`) fails safely and is covered by tests.
 
@@ -75,7 +75,7 @@ The GraalVM sandboxing guide (https://www.graalvm.org/latest/security-guide/sand
 
 **Capabilities**: `cap.http.getJson(target, query)` and `cap.log.info(...)`. The host function checks every call against the targets the hook declared and its tenant granted (`faye.tenants.<id>.egress`, none when unset), so calling the raw host function (`faye_cap.getJson`) gains nothing. Targets are named base URLs in `faye.egress.<name>`; `HttpEgress` sends a `GET` with the query, does not follow redirects, refuses responses over 64 KiB, and times out at what is left of the deadline.
 
-**Store and checks**: `HookStore` by hash (`hook:{hash}` in Redis, never expiring, verified on read). `Publisher` checks a flow against the hooks that come with it plus those stored, and stores the hooks before the version. The checker adds two errors: a hook not stored ("hooks pinned", check 6 in [dsl-and-ir.md](../roadmap/dsl-and-ir.md)), and a hook declaring an egress target the tenant does not grant (check 5). For paths, a step hook either fails or may set any `vars`, which are unknown from then on; a choose's hook either fails (once an option may be enabled) or picks one of the options that may be enabled. The credential checks never depend on what a hook returns.
+**Store and checks**: `HookStore` by hash (`hook:{hash}` in Redis, never expiring, verified on read). `Publisher` checks a flow against the hooks that come with it plus those stored, and stores the hooks before the version. The checker adds two errors: a hook not stored ("hooks pinned"), and a hook declaring an egress target the tenant does not grant. For paths, a step hook either fails or may set any `vars`, which are unknown from then on; a choose's hook either fails (once an option may be enabled) or picks one of the options that may be enabled. The credential checks never depend on what a hook returns.
 
 **Demo**: tenant `risk` (client `demo-risk`) runs `risk-totp.yaml`: password, plus TOTP (or enrolling it) when `risk.js` scores the sign in high through the `ip-reputation` target. The hook scores high when the service fails. Compose runs a stub of that service (`deploy/ip-reputation/`) on the JDK image the server already builds with.
 
