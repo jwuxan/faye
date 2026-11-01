@@ -140,7 +140,7 @@ Shown by the `add-phone` block, for the signed in person.
 - **First, the number:** **Add a phone number**, the text "We'll text a code to this number. Include the country code.", a field labeled **Phone number, e.g. +1 555 123 4567**, a **Text me a code** button and a **Not now** button. With `with: { required: true }`, **Not now** is gone ([ADR 0038](../adr/0038-required-enrollment.md)).
 - **Then, the code:** "We texted a 6 digit code to {number}.", the six code boxes with **Verify**, the resend countdown, and **Use a different number**.
 - **Answers:** `{code}`, or `{skip: true}` for **Not now**.
-- **Action:** `send`, with `{phone}` in E.164 format, such as `+15551234567`. It texts a code and keeps the same screen. The Login UI checks the format before it sends. A wrong format shows "Enter the number with its country code, starting with +."
+- **Action:** `send`, with `{phone}` in the international E.164 format, such as `+15551234567`. It texts a code and keeps the same screen. The Login UI checks the format before it sends. A wrong format shows "Enter the number with its country code, starting with +."
 
 ### qr
 
@@ -172,7 +172,7 @@ Shown by the `consent` block. It must be a top level step of `login:`. It runs a
 
 ### error
 
-No block of the flow DSL shows this screen today. It exists in the protocol for flows written in the IR, as `["screen", "error", {"code": "blocked"}]`.
+No block of the flow DSL shows this screen today. It exists in the protocol for flows written directly in the intermediate representation (IR), as `["screen", "error", {"code": "blocked"}]`.
 
 - **What the person sees:** **Can't sign in**, a message for the code, and a **Back to the app** button. The code `blocked` shows "Sign in is not available for this account." Any other code shows "We couldn't sign you in."
 - **Answer:** an empty payload.

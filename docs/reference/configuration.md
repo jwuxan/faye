@@ -26,7 +26,7 @@ The server reads these variables through [`application.yaml`](../../apps/server/
 | `FAYE_ADMIN_TOKEN` | `faye.admin-token` | empty | The bearer token of the admin API. If empty, the admin API is off. |
 | `FAYE_ADMIN_SOCKET` | `faye.admin-socket` | empty | The path of the Unix socket that serves the admin API. Faye never serves the admin API on its TCP port. If empty, the admin API is off ([ADR 0028](../adr/0028-admin-api-on-a-unix-domain-socket.md)). |
 | `FAYE_PREVIEW_ENABLED` | `faye.preview-enabled` | `false` | If `true`, a client registered with `metadata.preview: true` runs its tenant's draft, and Faye records a trace for the Admin UI. If `false`, Faye refuses sign ins from preview clients. |
-| `FAYE_CODE_KEY` | `faye.code-key` | empty | A base64 key of at least 32 bytes. Faye uses it to MAC the one time codes that it delivers ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)). If empty, Faye generates a key once and keeps it in the database. |
+| `FAYE_CODE_KEY` | `faye.code-key` | empty | A base64 key of at least 32 bytes. Faye computes a message authentication code (MAC) with it over each one time code that it delivers ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)). If empty, Faye generates a key once and keeps it in the database. |
 | `FAYE_DEMO_OUTBOX` | `faye.demo-outbox` | `build/outbox` | A folder. Faye writes each code to a file here for every tenant channel that has no webhook. If empty, such a channel is off, and Faye refuses to publish a flow that uses its blocks. |
 | `FAYE_IP_REPUTATION_URL` | `faye.egress.ip-reputation` | empty | The URL of the egress target `ip-reputation`, which Acme's risk hook calls. If empty, the hook cannot reach it and scores every sign in as high risk. |
 | `FAYE_WEBAUTHN_RP_ID` | `faye.webauthn.rp-id` | `localhost` | The passkey relying party ID: the Login UI's registrable domain. |
@@ -185,7 +185,7 @@ A webhook takes three keys:
 | Key | Default | Meaning |
 |---|---|---|
 | `url` | required | Where Faye posts each code as JSON. It must be `https`, or `http` to a loopback address. |
-| `secret` | required | The key of the HMAC in the `Faye-Signature` header. |
+| `secret` | required | The key that signs each post. Faye sends an HMAC SHA-256 signature of the body in the `Faye-Signature` header. |
 | `per-hour` | `100` | The most codes that this tenant may send on this channel in one hour. |
 
 A channel without a webhook uses the outbox folder, `FAYE_DEMO_OUTBOX`. If that is also empty, the channel is off.

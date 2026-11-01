@@ -10,10 +10,10 @@ This page is a guided tour of the repository for new contributors, human or agen
 
 The repository holds two things ([ADR 0034](../adr/0034-two-shippable-modules-under-src.md)):
 
-- **The product** lives in `src/`. It is two Java libraries, `faye-core` and `faye-engine`, plus the schemas and the conformance suite. A host embeds these libraries. This build has the strictest gates: all Error Prone checks, NullAway, published sources and javadoc, reproducible jars and coverage floors.
+- **The product** lives in `src/`. It is two Java libraries, `faye-core` and `faye-engine`, plus the schemas and the conformance suite. Flows compile to an intermediate representation (IR), which the engine runs. A host embeds these libraries. This build has the strictest gates: all Error Prone checks, NullAway, published sources and javadoc, reproducible jars and coverage floors.
 - **The prototype** lives in `apps/`. It is a Spring Boot server, its adapters, and three web apps. It shows the product working with Ory Hydra, and it is what the Docker image runs.
 
-A host integrates Faye by implementing the interfaces in `faye.engine.spi`. The product knows no host. `BoundaryTest` fails the build if code under `src/` names an authorization server or a credential library ([ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)).
+A host integrates Faye by implementing the interfaces in `faye.engine.spi`. The product knows no host. `BoundaryTest` fails the build if code under `src/` names an authorization server, or if its build references anything in `apps/`, a host library or a credential library ([ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)).
 
 ## How the modules depend on each other
 
@@ -79,7 +79,7 @@ Every file in the "Read first" column exists at the path shown.
 | `src/faye-core` | `faye.ir` (IR node types and JSON codec), `faye.dsl` (YAML to IR compiler), `faye.hooks` (the JavaScript sandbox). | [`Node.java`](../../src/faye-core/src/main/java/faye/ir/Node.java), [`FlowCompiler.java`](../../src/faye-core/src/main/java/faye/dsl/FlowCompiler.java), [`HookRuntime.java`](../../src/faye-core/src/main/java/faye/hooks/HookRuntime.java) |
 | `src/faye-engine` | The interpreter, the host interfaces (`spi`), the checker, the built in screens, handlers and blocks. | [`FlowHost.java`](../../src/faye-engine/src/main/java/faye/engine/spi/FlowHost.java), [`Engine.java`](../../src/faye-engine/src/main/java/faye/engine/Engine.java), [`Checker.java`](../../src/faye-engine/src/main/java/faye/check/Checker.java), [`BuiltinBlock.java`](../../src/faye-engine/src/main/java/faye/handlers/BuiltinBlock.java) |
 | `src/build-logic` | The Gradle convention plugins that both builds share. | [`faye.java-conventions.gradle.kts`](../../src/build-logic/src/main/kotlin/faye.java-conventions.gradle.kts) |
-| `apps/server/faye-identity` | The credential adapters over a user store: passwords (Argon2), TOTP, passkeys. | [`LocalCredentials.java`](../../apps/server/faye-identity/src/main/java/faye/identity/LocalCredentials.java) |
+| `apps/server/faye-identity` | The credential adapters over a user store: passwords (Argon2), authenticator apps (TOTP) and passkeys. | [`LocalCredentials.java`](../../apps/server/faye-identity/src/main/java/faye/identity/LocalCredentials.java) |
 | `apps/server/faye-clients` | A read only view of the authorization server's clients, for the Admin UI. | [`ClientDirectory.java`](../../apps/server/faye-clients/src/main/java/faye/clients/ClientDirectory.java) |
 | `apps/server/faye-host-hydra` | The host for Ory Hydra: maps login and consent challenges to the engine and back. | [`HydraFlowHost.java`](../../apps/server/faye-host-hydra/src/main/java/faye/host/hydra/HydraFlowHost.java) |
 | `apps/server/faye-app` | Spring Boot wiring, the screen API, the admin API, the preview API, the SQLite stores and the shipped tenants. | [`EngineConfiguration.java`](../../apps/server/faye-app/src/main/java/faye/app/EngineConfiguration.java), [`FlowController.java`](../../apps/server/faye-app/src/main/java/faye/app/FlowController.java), [`application.yaml`](../../apps/server/faye-app/src/main/resources/application.yaml) |
@@ -126,7 +126,7 @@ These rules come from [AGENTS.md](../../AGENTS.md). CI and the build enforce mos
 ## Where decisions live
 
 - **[CHARTER.md](../../CHARTER.md)** sets the mission, the non goals and the principles. If a task or a record conflicts with the charter, the charter wins. Only a human changes it, through a decision record.
-- **[Decision records](../adr/README.md)** in `docs/adr/` record each breaking change in MADR 4 format: a change to a boundary, the charter, the IR, the screen protocol, persisted state or a public contract. Other changes need no record.
+- **[Decision records](../adr/README.md)** in `docs/adr/` record each breaking change in the MADR 4 format (Markdown Architectural Decision Records): a change to a boundary, the charter, the IR, the screen protocol, persisted state or a public contract. Other changes need no record.
 - **[ADR 0036](../adr/0036-retire-the-roadmap.md)** holds the founding decisions D1 to D13 and the work that is still open.
 
 Read the record behind a boundary before you change that boundary.

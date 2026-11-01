@@ -207,7 +207,7 @@ deploy/smoke.sh
 [`smoke.sh`](../../deploy/smoke.sh) is the acceptance test of the whole stack. It signs in through every tenant and every application, publishes through the Admin UI, runs hooks, previews a draft, and signs in with an emailed code and a QR code. It needs curl and python3.
 
 > [!IMPORTANT]
-> Run `smoke.sh` against a fresh stack. One of its steps enrolls TOTP for an account, so a second run finds it already enrolled and fails. Reset with `docker compose -f deploy/compose.yaml down -v && make up` first.
+> Run `smoke.sh` against a fresh stack. One of its steps enrolls an authenticator app (TOTP) for an account, so a second run finds it already enrolled and fails. Reset with `docker compose -f deploy/compose.yaml down -v && make up` first.
 
 To test the stack that `make dev` runs, point the script at its database. It then reads the secrets from `~/.local/state/faye/secrets/`:
 
@@ -221,7 +221,7 @@ FAYE_DATABASE=deploy/.data/faye.db deploy/smoke.sh
 deploy/fuzz.sh 2m [harness]
 ```
 
-[`fuzz.sh`](../../deploy/fuzz.sh) runs coverage guided fuzzing with Jazzer, one harness per JVM ([ADR 0007](../adr/0007-fuzz-and-adversarial-testing.md)). The first argument is the time per harness, `2m` by default. The second argument filters the 11 harnesses by name, for example `FlowCompilerFuzzTest`. `./gradlew build` only replays the stored inputs. It does not search for new ones.
+[`fuzz.sh`](../../deploy/fuzz.sh) runs coverage guided fuzzing with Jazzer, one harness per Java virtual machine (JVM) ([ADR 0007](../adr/0007-fuzz-and-adversarial-testing.md)). The first argument is the time per harness, `2m` by default. The second argument filters the 11 harnesses by name, for example `FlowCompilerFuzzTest`. `./gradlew build` only replays the stored inputs. It does not search for new ones.
 
 > [!CAUTION]
 > A fuzz finding is a security bug until someone triages it. Do not attach the crash input to a public issue or log. Turn it into a readable regression test: a conformance vector, a named test or a text seed.

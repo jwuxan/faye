@@ -130,7 +130,7 @@ second-factor:
           - { has: [host.acr_values, "faye:2fa"] }
 ```
 
-Quote a literal that contains a colon, such as `"faye:2fa"`. The checker refuses `host.*` and `client.*` paths that the host contract does not have. The prototype also accepts `hydra.` as another name for `host.`.
+Quote a literal that contains a colon, such as `"faye:2fa"`. The checker refuses a `host.*` or `client.*` path that the host contract does not list. The prototype also accepts `hydra.` as another name for `host.`.
 
 ## Choices with `alternative`
 

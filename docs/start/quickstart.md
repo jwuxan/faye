@@ -75,7 +75,7 @@ acme,chloe.park.0003@acme.example,chloe.park,<base32 secret>
 | `tenant` | The tenant whose user pool holds the account: `acme` (600 accounts) or `bank` (400 accounts). |
 | `identifier` | The email address you type on the sign in screen. |
 | `password` | The account's password. It is always the person's name as `first.last`, in lowercase. |
-| `totp_secret` | The account's authenticator app secret, in base32. Every third account has one. The others leave it empty. |
+| `totp_secret` | The account's secret for an authenticator app, which makes time based one time passwords (TOTP). It is in base32. Every third account has one. The others leave it empty. |
 
 The database stores only Argon2 hashes. The plain passwords exist only in this file, inside the container's volume.
 

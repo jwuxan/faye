@@ -51,7 +51,7 @@ Leave a field empty to keep the block's own default, which the field shows in gr
 
 **Handlers** lists every handler the server has, and **Screens** every screen type. Each list is an allowlist: a flow that uses an item you clear fails the check. In the blocks editor, **Add block** shows such a block as **Disallowed in General settings**.
 
-Each handler shows the amr it can prove, or **binds subject** for the handler that finds the account. Each screen shows its options. The badge next to a list's title says **All allowed**, or how many items are allowed. Select **Allow all** to allow every item again.
+Each handler shows the amr values it can prove, if any. Each screen shows its options. The badge next to a list's title says **All allowed**, or how many items are allowed. Select **Allow all** to allow every item again.
 
 ### Egress
 
