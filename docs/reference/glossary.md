@@ -44,7 +44,7 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 ## D
 
-- **delivery channel**: Where a tenant's emailed or texted codes go: the tenant's webhook, or the outbox folder of the demo. Without one, the code blocks are off.
+- **delivery channel**: One of the two ways that Faye sends a one time code: `email` or `sms`. A channel is on when the tenant has a webhook for it, or when the demo's outbox folder is set. When a channel is off, its code blocks are off.
 - **demo client**: A small OpenID Connect application at port 3001 that comes with the demo stack. It starts sign ins and shows the resulting ID token.
 - **draft**: The version of a tenant's flow that you are editing. The console saves it as you type, and it is not live until you publish it.
 - **DSL** (domain specific language): The YAML language for flow files. See [Flow DSL reference](dsl.md).

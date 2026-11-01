@@ -64,7 +64,7 @@ Each fact lives on one page. Other pages give a one line summary and link to tha
 - Settings and environment variables live in [Configuration](../reference/configuration.md).
 - Words live in the [Glossary](../reference/glossary.md).
 
-Keep a page under about 3,000 words. If a page grows past that, split it.
+Keep a guide or an explanation under about 3,000 words. If one grows past that, split it. Reference pages, such as the DSL reference and the IR specification, may be longer: a reader looks things up in them, and one page keeps search and links simple.
 
 ## Use these Markdown features
 

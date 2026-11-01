@@ -317,8 +317,7 @@ The defaults are `localhost` and `http://localhost:3000`. A passkey that someone
 **Fix.**
 
 - For local use, open every URL at `localhost`, not at `127.0.0.1`.
-- For another host in the image, set `FAYE_PUBLIC_HOST`. The image then derives `FAYE_WEBAUTHN_RP_ID` as the host and `FAYE_WEBAUTHN_ORIGINS` as `http://<host>:3000`.
-- Serve the Login UI over `https` on any host other than `localhost`. Then set `FAYE_WEBAUTHN_ORIGINS` to the `https` origin that the browser shows, because the derived origin uses `http`. For this host, Hydra also needs an `https` `URLS_SELF_ISSUER`.
+- For another host in the image, serve the Login UI over `https`. Browsers allow passkeys only on `localhost` or over `https`. Then set `FAYE_PUBLIC_HOST` to the host, `FAYE_WEBAUTHN_ORIGINS` to the `https` origin of the Login UI, and `URLS_SELF_ISSUER` to an `https` URL. The image refuses a plain `http` issuer on any host other than `localhost`.
 
 See [Image and container](configuration.md#image-and-container) and [Server](configuration.md#server).
 

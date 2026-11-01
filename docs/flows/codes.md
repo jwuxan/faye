@@ -12,11 +12,11 @@ Faye ships no mail client and no text message (SMS) client. Your own endpoint, a
 
 Three blocks use delivered codes:
 
-| Block | Handler | Screen | What it does | amr |
-|---|---|---|---|---|
-| `email-code` | `email_code.verify` | `code_sent` | Sends a code to the account's verified email address, then checks the code. | `email` |
-| `sms-code` | `sms_code.verify` | `code_sent` | Sends a code to the account's verified phone, then checks the code. | `sms` |
-| `add-phone` | `phone.enroll` | `phone_enroll` | Asks the signed in person for a phone number, texts a code to it, and saves the number once the code matches. | none |
+- `email-code` sends a code to the account's verified email address, then checks it. It proves `email`.
+- `sms-code` sends a code to the account's verified phone, then checks it. It proves `sms`.
+- `add-phone` asks the signed in person for a phone number, texts a code to it, and saves the number once the code matches. It proves nothing.
+
+The [Flow DSL reference](../reference/dsl.md#blocks) lists each block's screen, handler and settings.
 
 The destination of `email-code` and `sms-code` always comes from the account. It never comes from the answer, the flow or a hook. `add-phone` is the only block that takes a number from the person, because that number is what the person proves.
 
@@ -72,7 +72,7 @@ Keep these facts in mind when you use the blocks:
 
 ## How a code reaches the person
 
-Faye never sends a code while the person waits for a screen. The screen writes the code to an outbox table, and a separate worker delivers it. So a slow provider never slows a sign in.
+Faye never calls your webhook inside the request that shows a screen. That request writes the code to an outbox table, and a separate worker delivers it. So a slow provider never slows a sign in.
 
 This diagram shows one emailed code, from the answer that leads to `code_sent` to the check of the code.
 
@@ -203,7 +203,7 @@ createServer((req, res) => {
 }).listen(8090);
 ```
 
-> [!CAUTION]
+> [!IMPORTANT]
 > Answer `2xx` only after your provider accepted the code. Faye treats a `2xx` as delivered and does not try again.
 
 ## Limits
@@ -238,7 +238,7 @@ The code screen does not show whether an account exists. Suppose that a flow rea
 - It writes an outbox row, so the request costs the same and counts toward the same limits. The row has no code and no destination, and the worker never delivers it.
 - It stores an HMAC that no code can match, so every answer fails with `invalid_code`.
 
-For such a row, the limits count what the person typed. So an unknown address reaches a limit like a real one.
+For such a row, the limits count the email address or number that the person typed. So an unknown address reaches a limit like a real one.
 
 > [!NOTE]
 > A condition runs before the block. `user.email_verified` and `user.has_phone` are not true for an unknown account. So an option with such a guard, like the ones in [`acme.yaml`](../../apps/server/faye-app/src/main/resources/flows/acme.yaml), is not offered to an unknown account. A step with `block: email-code` and no `if:` shows the code screen to every account that reaches it.

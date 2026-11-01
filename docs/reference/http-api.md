@@ -156,7 +156,7 @@ When the engine refuses a request, the stored flow does not change. The body is 
 
 ### Read a preview run
 
-`GET /api/preview/flows/{flowId}` returns what a preview run did and what the checker predicted for it. The demo client shows it after a sign in through a preview client. The flow id is the only credential, because it cannot be guessed. The route answers `404` when previews are off (`FAYE_PREVIEW_ENABLED` is not `true`) or when the flow has no trace. See [Preview a draft](../console/preview.md).
+`GET /api/preview/flows/{flowId}` returns what a preview run did and what the checker predicted for it. The demo client shows it after a sign in through a preview client. The route checks no token or cookie. Only someone who knows the flow id can read the run, and nobody can guess a flow id. The route answers `404` when previews are off (`FAYE_PREVIEW_ENABLED` is not `true`) or when the flow has no trace. See [Preview a draft](../console/preview.md).
 
 ## Admin API
 
@@ -187,7 +187,7 @@ Every path is on the socket. `{tenant}` is a tenant id such as `acme`. The **Wri
 |---|---|---|
 | `GET /admin/catalog` | no | The handlers with their amr, the screen types, and the named egress targets. |
 | `GET /admin/tenants` | no | Every tenant id with the hash of its current version. |
-| `GET /admin/tenants/{tenant}/clients` | no | The tenant's OAuth clients, read from the authorization server. `502` if it cannot list them. |
+| `GET /admin/tenants/{tenant}/clients` | no | The tenant's applications, read from the authorization server. `502` if it cannot list them. |
 | `GET /admin/tenants/{tenant}/users` | no | The accounts that the tenant's flows can sign in, without their secrets. Preview accounts are left out. |
 | `GET /admin/tenants/{tenant}/draft` | no | The saved draft. Without one, the YAML of the current version, else the configured flow file. `origin` says which. |
 | `PUT /admin/tenants/{tenant}/draft` | yes | Saves a draft. Body: `{ "yaml": "..." }`. At most 256 KiB, else `413`. |
@@ -227,22 +227,27 @@ A hook in the YAML can carry its code inline as `source:`. If a hook names a `fi
 
 ### The Admin UI proxy
 
-The Admin UI serves the admin API to the browser at `/api/admin/...` on its own port, 3002. This proxy forwards each request to the socket with the server's token ([`route.ts`](../../apps/web/apps/admin/app/api/admin/[...path]/route.ts)). The proxy has no sign in, so keep the Admin UI on localhost.
+The Admin UI serves the admin API to the browser at `/api/admin/...` on its own port, 3002. This proxy forwards each request to the socket with the server's token ([`route.ts`](../../apps/web/apps/admin/app/api/admin/[...path]/route.ts)). The proxy has no sign in. See [Keep the Admin UI on your own machine](../console/overview.md#keep-the-admin-ui-on-your-own-machine).
 
-The proxy refuses every request except `GET` with `403` unless the request carries the header `x-faye-admin: 1`. A cross site form cannot send this header. This header belongs only to the proxy. The admin API on the socket does not ask for it.
+The proxy answers `403` to a request other than `GET` that does not carry the header `x-faye-admin: 1`. A cross site form cannot send this header. This header belongs only to the proxy. The admin API on the socket does not ask for it.
 
 ## Publish from CI
 
-This procedure checks a flow file and publishes it from a script. The script uses `curl` and `jq`. Run it on the machine where the socket is, as a user that may open the socket.
+This procedure checks a flow file and publishes it from a script. The script uses `curl` and `jq`. Run it where the admin socket is, as a user that may open the socket.
+
+> [!NOTE]
+> In the container image, the socket is inside the container, and the image has no `curl` or `jq`. From the host, call the Admin UI's proxy instead, as `deploy/smoke.sh` does. Use the same paths under `http://localhost:3002/api/admin/`, with the header `x-faye-admin: 1` and no token. For example: `curl -H 'x-faye-admin: 1' -H 'Content-Type: application/yaml' --data-binary @flows/acme.yaml http://localhost:3002/api/admin/tenants/acme/validate`.
 
 ### 1. Set the socket and the token
 
-These are the paths in the image. Only root can read the token file. For a server that `dev.sh` runs, see [Where state lives](configuration.md#where-state-lives).
+With `deploy/dev.sh`, the socket and the default token are:
 
 ```bash
-export FAYE_ADMIN_SOCKET=/run/faye/admin.sock
-export FAYE_ADMIN_TOKEN="$(cat /var/lib/faye/secrets/admin-token)"
+export FAYE_ADMIN_SOCKET=deploy/.data/run/admin.sock
+export FAYE_ADMIN_TOKEN=dev-admin-token
 ```
+
+For your own deployment, use the values you gave the server. [Where state lives](configuration.md#where-state-lives) lists the paths.
 
 ### 2. Check the flow
 

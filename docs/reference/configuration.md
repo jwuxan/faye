@@ -110,7 +110,7 @@ The [Dockerfile](../../Dockerfile) also sets `SERVE_ADMIN_HOST=127.0.0.1`, so Hy
 | `FAYE_DOCS_DIR` | the repository's `docs/` | The folder of the docs site at `/docs`. The image sets it to `/opt/faye/docs`. |
 
 > [!CAUTION]
-> The Admin UI has no sign in. Anyone who can reach the Admin UI can use the admin API. Serve the Admin UI only on a loopback address, as the compose file does with `127.0.0.1:3002`.
+> The Admin UI has no sign in. Serve it only on a loopback address, as the compose file does with `127.0.0.1:3002`. See [Keep the Admin UI on your own machine](../console/overview.md#keep-the-admin-ui-on-your-own-machine).
 
 ## Demo client
 

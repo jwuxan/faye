@@ -17,7 +17,7 @@ Faye does not trust a flow author or a hook author to keep this promise. The des
 1. **A closed language.** A flow can only arrange built in blocks, handlers and screens. It cannot define new ones.
 2. **The checker.** Before a version runs anywhere, the checker proves rules about every path through it.
 3. **The engine.** At run time, the engine does not let an entry succeed if the entry did not verify a credential, whatever the flow says.
-4. **The hook sandbox.** Tenant JavaScript runs in a sandbox. A hook can only return one of four closed results.
+4. **The hook sandbox.** Tenant JavaScript runs in a sandbox. A hook can return nothing, or one of three closed results: set values, fail the step, or pick an option.
 
 The diagram shows where each layer sits between a flow file and the authorization server.
 
@@ -112,12 +112,9 @@ Faye secures the sign in flow. Some parts of a deployment are outside that scope
 
 - **Protocol and tokens.** Faye is not an OAuth2 or OpenID Connect provider and not a token service. It does not issue or sign tokens, register clients, or own the authorization server's sessions. The authorization server turns Faye's result into tokens.
 - **The authorization server's own security.** Hydra's endpoints, client authentication, signing keys and session storage are Hydra's responsibility. Faye trusts what the host reports, such as the client, the tenant (`metadata.tenant`) and the remembered subject.
-- **The Admin UI on a shared network.** The Admin UI has no sign in. The Admin UI proxies the admin API with the server's token. So anyone who reaches the Admin UI can manage every tenant. The Admin UI must stay on localhost, and the compose stack binds it to `127.0.0.1` ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md), [ADR 0028](../adr/0028-admin-api-on-a-unix-domain-socket.md)). Operator sign in and per tenant roles are not built yet (gap R11 in [ADR 0036](../adr/0036-retire-the-roadmap.md)).
+- **The Admin UI on a shared network.** The Admin UI has no sign in, and it proxies the admin API with the server's token. So anyone who reaches the Admin UI can manage every tenant. See [Keep the Admin UI on your own machine](../console/overview.md#keep-the-admin-ui-on-your-own-machine).
 - **Production hardening.** High availability, rate limiting at scale and key rotation are not built. [ADR 0036](../adr/0036-retire-the-roadmap.md#open-gaps) plans a decision on them after a second host proves the design (gap R1). Faye limits attempts within one flow. It also limits code sends per screen and across flows. It has no account lockout and no rate limit on sign in attempts across flows. The production tenant model is not decided yet (gap R9).
 - **Accessibility checks.** No automated accessibility check runs on the Login UI yet (gap R8 in [ADR 0036](../adr/0036-retire-the-roadmap.md)).
-
-> [!WARNING]
-> Never expose the Admin UI port (3002) beyond the local machine. Anyone who can reach it can publish flows for every tenant.
 
 ## Next steps
 

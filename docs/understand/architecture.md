@@ -187,7 +187,7 @@ flowchart LR
 
 - `FAYE_SERVICES` picks which processes run. The default is `hydra,faye,login,admin`.
 - `FAYE_DEMO=true` adds the demo client, the IP reputation stub, and two one time jobs that register demo applications and seed demo users.
-- The compose file publishes the Admin UI on `127.0.0.1` only.
+- The compose file publishes the Admin UI on `127.0.0.1` only. See [Keep the Admin UI on your own machine](../console/overview.md#keep-the-admin-ui-on-your-own-machine).
 
 The single container is how the prototype ships and how the demo runs. It is not a production setup: high availability, several regions and rate limiting at scale are not built yet. See [Vision and north star](vision.md#where-faye-is-today).
 

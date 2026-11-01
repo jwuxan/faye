@@ -37,7 +37,7 @@ This is the most important difference. If custom code can end a sign in successf
 
 | Product | What custom code can do |
 |---|---|
-| **Faye** | A hook runs in a WebAssembly sandbox and returns one of four results: nothing, set values, fail, or pick an option. It never sees or writes the authentication state. Only built in handlers verify credentials. |
+| **Faye** | A hook runs in a WebAssembly sandbox and returns nothing, or one of three results: set values, fail the step, or pick an option. It never sees or writes the authentication state. Only built in handlers verify credentials. |
 | **Keycloak** | A custom authenticator is Java code that calls `context.setUser(...)` and `context.success()`, so it decides the outcome by itself ([Authenticator SPI](https://github.com/keycloak/keycloak/blob/main/docs/documentation/server_development/topics/auth-spi.adoc)). |
 | **Auth0** | Post login Actions can deny access, and `api.authentication.challengeWith` overrides the tenant's multi factor authentication (MFA) policy ([post login API](https://auth0.com/docs/customize/actions/explore-triggers/signup-and-login-triggers/login-trigger/post-login-api-object)). A custom database login script verifies the password in your code ([login script](https://auth0.com/docs/authenticate/database-connections/custom-db/templates/login.md)). |
 | **Okta** | Inline hooks call your HTTP service during a flow. The password import hook answers whether the password is `VERIFIED` ([password import](https://developer.okta.com/docs/guides/migrate-to-okta-password-hooks/main)). |
