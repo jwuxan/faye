@@ -270,23 +270,11 @@ login:
 
 **Notes:**
 
-- The tenant needs delivery for each channel. Configure one webhook for each channel under `faye.tenants.<id>.delivery`. Faye calls the webhook with each code:
-
-  ```yaml
-  faye:
-    tenants:
-      bank:
-        delivery:
-          email: { url: https://mail-relay.example/faye, secret: "${FAYE_BANK_EMAIL_SECRET}" }
-          sms: { url: https://sms-relay.example/faye, secret: "${FAYE_BANK_SMS_SECRET}", per-hour: 100 }
-  ```
-
-- If the demo outbox `FAYE_DEMO_OUTBOX` is set, a channel without a webhook uses it. Faye then writes each code to a file there instead of sending it. In the demo stack, read the codes with `docker exec faye sh -c 'cat /var/lib/faye/outbox/*'`.
-- If a channel has neither, the channel is off. The console shows its block as disabled. The server refuses to publish a flow that uses the block, with `handler 'sms_code.verify' is not enabled for this tenant`.
+- The tenant needs a delivery channel for each kind of code: a webhook, or the demo's outbox folder. Without one, the server refuses to publish a flow that uses the block. [Send codes by email and text message](codes.md) explains the setup and the webhook.
 - `user.has_phone` is true only when the account has a verified phone and the person turned on texted codes.
-- An unknown email address gets the same screen and timing, but no code ever matches.
+- The `if:` guards in this recipe are false for an unknown email address, so an unknown address sees only the password option. That difference shows which addresses have an account with a verified email. To avoid it, offer the code block without a guard: then every address gets the same code screen, and no code ever matches for an unknown one. See [Unknown accounts](codes.md#unknown-accounts).
 - An emailed code never counts as a second factor. A password and an emailed code give `faye:1fa`. A texted code after a password gives `faye:2fa`.
-- [ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md) has the code length, lifetime and sending limits.
+- [Send codes by email and text message](codes.md#limits) lists the code length, lifetime and sending limits.
 
 ## Offer to add a phone or a passkey
 

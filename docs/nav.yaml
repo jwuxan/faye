@@ -4,14 +4,16 @@
 sections:
   - title: Get started
     pages: [index.md, start/quickstart.md, start/concepts.md]
-  - title: Understand Faye
-    pages: [understand/vision.md, understand/design-goals.md, understand/architecture.md, understand/ir-design.md, understand/engine.md, understand/host-spi.md, understand/security.md, understand/compare.md]
   - title: Build flows
-    pages: [flows/first-flow.md, flows/flow-syntax.md, flows/recipes.md, flows/hooks.md]
+    pages: [flows/first-flow.md, flows/flow-syntax.md, flows/recipes.md, flows/hooks.md, flows/codes.md]
   - title: Use the Admin UI
     pages: [console/overview.md, console/flow-editor.md, console/preview.md, console/login-page.md, console/tenant-settings.md]
+  - title: Understand Faye
+    pages: [understand/vision.md, understand/design-goals.md, understand/compare.md, understand/architecture.md, understand/ir-design.md, understand/engine.md, understand/security.md]
+  - title: Integrate
+    pages: [understand/host-spi.md, reference/http-api.md]
   - title: Reference
-    pages: [reference/dsl.md, ir-spec.md, reference/screens.md, reference/configuration.md, reference/glossary.md]
+    pages: [reference/dsl.md, ir-spec.md, reference/screens.md, reference/configuration.md, reference/troubleshooting.md, reference/glossary.md]
   - title: Develop Faye
     pages: [develop/build-from-source.md, develop/codebase.md, develop/write-docs.md]
   - title: Decisions

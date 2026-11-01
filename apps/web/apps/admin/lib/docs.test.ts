@@ -232,7 +232,7 @@ test("the repo's docs: every nav.yaml page exists, has a description, and every 
     const slug = (text: string) =>
       text
         .toLowerCase()
-        .replace(/`|\*\*|\*|_/g, "")
+        .replace(/`|\*\*|\*/g, "")
         .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
         .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
         .replace(/ /g, "-");
@@ -244,8 +244,8 @@ test("the repo's docs: every nav.yaml page exists, has a description, and every 
         if (/^(`{3,}|~{3,})/.test(line)) fence = !fence;
         const heading = !fence && /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
         if (!heading) continue;
-        // A numbered step heading ("### 1. Build it") loses its number on the site
-        const base = slug(heading[1].replace(/^\d+\.\s+/, ""));
+        // A numbered step heading ("### 1. Build it") keeps its number in the id, as on GitHub
+        const base = slug(heading[1]);
         const n = seen.get(base) ?? 0;
         seen.set(base, n + 1);
         ids.add(n === 0 ? base : `${base}-${n}`);

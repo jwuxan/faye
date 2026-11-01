@@ -8,8 +8,12 @@ import { remark } from "remark";
 import { absoluteLinks, allPages, docIndex, docsVersion, loadDoc, REPO_BRANCH, REPO_URL, type Doc, type DocSection } from "./docs";
 import { MDX_NODE_TYPES, remarkGithubAlerts, remarkMermaid } from "./docs-markdown";
 
-/** The remark plugins every doc goes through, in order. Shared by the renderer and the TOC. */
-const REMARK = [remarkGfm, remarkGithubAlerts, remarkMermaid, remarkSteps];
+/**
+ * The remark plugins every doc goes through, in order. Heading ids come before steps, so a step
+ * heading ("### 6. Add a factor") keeps the id GitHub gives it ("6-add-a-factor"), and a link to it
+ * works on GitHub and here alike.
+ */
+const REMARK = [remarkGfm, remarkGithubAlerts, remarkMermaid, remarkHeading, remarkSteps];
 
 /**
  * The docs' Markdown renderer: GitHub flavored Markdown, GitHub alerts as callouts, ```mermaid as
@@ -17,7 +21,7 @@ const REMARK = [remarkGfm, remarkGithubAlerts, remarkMermaid, remarkSteps];
  * and a dark theme. Raw HTML in a doc is not rendered.
  */
 export const renderer = createMarkdownRenderer({
-  remarkPlugins: [...REMARK, remarkHeading],
+  remarkPlugins: REMARK,
   remarkRehypeOptions: { passThrough: MDX_NODE_TYPES } as MarkdownRendererOptions["remarkRehypeOptions"],
   rehypePlugins: [[rehypeCode, { themes: { light: "github-light", dark: "github-dark" }, fallbackLanguage: "text" }]],
 });
@@ -30,7 +34,6 @@ export async function tocOf(doc: Doc): Promise<TOCItemType[]> {
   let toc: TOCItemType[] = [];
   const processor = remark()
     .use(REMARK)
-    .use(remarkHeading)
     .use(() => (_tree, file) => {
       toc = (file.data.toc as TOCItemType[] | undefined) ?? [];
     });
