@@ -189,15 +189,7 @@ The saved state is a [`FlowState`](../../src/faye-engine/src/main/java/faye/engi
 
 Two submits of the same screen can race: they arrive at the same time, for example after a double click. Only one save wins. The losing submit applies nothing that it staged. It gets the screen that the winning answer led to, as if it had won. If the winning submit finished the flow, the losing submit gets `flow_finished`. Only the winning submit carries the host's redirect. If the stored revision did not change, the losing submit gets `conflict`.
 
-The server maps each refusal to an HTTP status:
-
-| Code | Status | Meaning |
-|---|---|---|
-| `flow_not_found` | 404 | No such flow, a wrong or missing binder, or a state that does not fit its version. |
-| `flow_finished` | 410 | The flow already ended. |
-| `flow_expired` | 410 | The flow passed a time limit. |
-| `stale_nonce`, `conflict` | 409 | An old nonce, or a lost race. |
-| `invalid_submission`, `unknown_action` | 400 | An answer or action that the screen does not take. |
+A refusal has a code. `flow_not_found` means no such flow, a wrong or missing binder, or a state that does not fit its version. `flow_finished` means the flow already ended, and `flow_expired` means it passed a time limit. `stale_nonce` and `conflict` mean an old nonce or a lost race. `invalid_submission` and `unknown_action` mean an answer or an action that the screen does not take. The [HTTP API reference](../reference/http-api.md#refusals) gives the HTTP status of each code.
 
 Some screens also take actions: `resend` on `code_sent`, `send` on `phone_enroll`, `poll` on `qr`. The screen's issuer answers an action. No handler runs, no attempt is spent, and the flow stays on the same screen. The engine saves the result under the same compare and set as an answer.
 

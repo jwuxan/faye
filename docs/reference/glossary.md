@@ -28,15 +28,19 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 ## C
 
 - **challenge**: The opaque id that the authorization server gives Faye for one login or consent request, such as Hydra's `login_challenge`.
+- **charter**: The project's founding document, [CHARTER.md](../../CHARTER.md). It sets Faye's mission, non goals and principles, and it wins over any other doc or decision.
 - **checker**: The part of Faye that lists every path through a flow and refuses unsafe flows, before publish and before preview.
 - **choice**: A step with several options, written with `alternative:`. A hook, an earlier answer, or the person picks one option.
+- **Choose**: The Admin UI's name for a *choice*, in the Logic group of **Add block**.
 - **client**: OAuth2's word for an *application*. The docs use "application", except in fixed names such as *demo client* and *preview client*.
+- **Code by**: A ready made choice in the Logic group of the Admin UI's **Add block**. It offers each one time code that the account can use: the authenticator app if enrolled, a texted code if phone codes are on, and an emailed code if the email is verified. If more than one is offered, the person picks.
 - **compare and set**: Saving a sign in's state only if no other request saved it first. This makes a double submit safe.
 - **condition**: A test written with `if:`. If the condition is false, the engine skips the step, or does not offer the option.
 - **conformance vector**: A test, written as data, that says how any engine must run a given IR. The vectors are in `src/conformance/`.
 - **consent**: The screen where a person allows a third party application to access their account. In a flow file, consent is a step of `login` that runs when the authorization server asks for consent.
 - **continuation**: The saved state of a sign in between two screens: where the flow is, what it knows, and what it waits for. It is plain data in the database.
-- **credential**: A handler that verifies something about the person, such as a password or a passkey, and proves an `amr` value.
+- **credential**: The proof that a person gives to show who they are, such as a password, a passkey or a one time code.
+- **credential handler**: A built in handler that verifies a credential, such as `password.verify` or `webauthn.assert`, and proves an `amr` value. The checker requires one on every path of a sign in that succeeds.
 
 ## D
 
@@ -102,7 +106,8 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 - **one time code**: A short code that works once: from an authenticator app (TOTP), or sent by email or text message.
 - **option**: One branch of a choice. An option is one credential block, or a `fail`.
-- **outbox**: The queue of codes that wait to be emailed or texted. A separate worker delivers them.
+- **outbox**: The database table of one time codes that wait to be emailed or texted. A worker in the server delivers them through each channel's webhook, or writes them to the *outbox folder*.
+- **outbox folder**: The folder that `FAYE_DEMO_OUTBOX` names. For a channel with no webhook, Faye writes each code to a file there instead of sending it, as the demo does.
 
 ## P
 
@@ -140,9 +145,10 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 ## U
 
-- **user pool**: The accounts of one tenant. An account in one tenant's pool is unknown to other tenants' applications.
+- **user pool**: The accounts of one tenant. An account in one tenant's pool is unknown to other tenants' applications. A shared account has no tenant, so every tenant's applications can see it, and the **Users** page shows its pool as **Shared**.
 
 ## V
 
 - **vars**: Values that a flow writes with `set:` or that a hook sets, for later conditions to test.
+- **verifier**: The first part of the checker, which checks a flow against the catalogs of handlers and screens and against the hard limits. The engine also runs the verifier whenever it runs a version.
 - **version**: A published flow, addressed by the hash of its IR. A sign in keeps the version it started with.

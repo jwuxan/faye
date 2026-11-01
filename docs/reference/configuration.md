@@ -184,11 +184,11 @@ A webhook takes three keys:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `url` | required | Where Faye posts each code as JSON. It must be `https`, or `http` to a loopback address. |
-| `secret` | required | The key that signs each post. Faye signs a timestamp and the body with hash based message authentication code (HMAC) SHA-256, and sends both in the `Faye-Signature` header. |
+| `url` | required | Where Faye posts each code. It must be `https`, or `http` to a loopback address. Otherwise the server does not start. |
+| `secret` | required | The key that signs each post. |
 | `per-hour` | `100` | The most codes that this tenant may send on this channel in one hour. |
 
-A channel without a webhook uses the outbox folder, `FAYE_DEMO_OUTBOX`. If `FAYE_DEMO_OUTBOX` is also empty, the channel is off.
+A channel without a webhook uses the outbox folder, `FAYE_DEMO_OUTBOX`. If `FAYE_DEMO_OUTBOX` is also empty, the channel is off. [Send codes by email and text message](../flows/codes.md) describes the request, its signature, retries and limits.
 
 > [!NOTE]
 > An admin can change `mfa-required`, `handlers`, `screens` and `blocks` at run time on the tenant's **General** settings page. Saved settings replace the values in `application.yaml`. Egress grants are the exception. Only `application.yaml` sets them, because egress grants decide which services tenant code may reach. Branding, "keep me signed in" and flow time limits exist only as saved settings. See [Tenant settings](../console/tenant-settings.md) and [Customize the login page](../console/login-page.md).

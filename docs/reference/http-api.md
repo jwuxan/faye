@@ -46,6 +46,8 @@ Both routes answer with `302 Found`. The `Location` is one of these:
 - **The error page.** `{Login UI}/error?reason=failed`, when the sign in failed before its first screen ([ADR 0031](../adr/0031-failed-sign-in-stays-on-faye.md)).
 - **The authorization server's redirect.** When the entry ended at once without a screen. For example, a consent entry ends at once when its only step is skipped for a first party application.
 
+If the authorization server's redirect is not a URL that a browser may safely follow, the route answers `502` with `host_error` instead.
+
 ### The flow cookie
 
 When a flow shows its first screen, the response sets a cookie named `faye_flow_{flowId}`. The cookie holds the flow's binder: a random secret that ties the flow to this browser. Every request to the screen API must carry the cookie. Without the right value, the server answers as if the flow does not exist.
@@ -192,7 +194,7 @@ Every path is on the socket. `{tenant}` is a tenant id such as `acme`. The **Wri
 | `POST /admin/tenants/{tenant}/validate` | no | Compiles and checks a flow. Body: the flow's YAML. Query: `offset`, `limit` and `succeeds` page the paths. |
 | `POST /admin/tenants/{tenant}/publish` | yes | Compiles, checks and publishes a flow. Body: the flow's YAML. |
 | `GET /admin/tenants/{tenant}/versions` | no | The current version's hash, every published hash, and when each was published. |
-| `GET /admin/tenants/{tenant}/versions/{hash}` | no | One version: its YAML, its IR and whether it is current. |
+| `GET /admin/tenants/{tenant}/versions/{hash}` | no | One version: its YAML, its intermediate representation (IR) and whether it is current. |
 | `POST /admin/tenants/{tenant}/current` | yes | Rolls back, or forward, to a version that the tenant published before. Body: `{ "versionHash": "sha256:..." }`. |
 | `POST /admin/tenants/{tenant}/hooks/test` | no | Runs a hook once in the same sandbox as published hooks. Body: `source`, `http`, `timeoutMs`, `ctx`, `options`. Stores nothing. |
 | `GET /admin/tenants/{tenant}/settings` | no | The settings in effect, the configured ones, the egress grants, the flow time limits and the handlers whose codes cannot be delivered. |

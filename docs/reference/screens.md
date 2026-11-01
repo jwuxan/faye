@@ -37,18 +37,7 @@ sequenceDiagram
   F-->>L: next screen, or a redirect
 ```
 
-A screen response has these fields:
-
-| Field | Meaning |
-|---|---|
-| `flowId` | The flow, `f_` and random characters. |
-| `nonce` | Used once. The next answer must send it back, so an old page cannot answer. |
-| `step` | The id of the innermost step around the screen, when there is one. |
-| `path` | The URL path where the screen appears. |
-| `screen` | The screen: its `type` and its own fields. |
-| `branding` | The tenant's branding, when the tenant set any. |
-
-Faye binds the flow to the browser that started it. When the flow starts, Faye sets a cookie named `faye_flow_{flowId}`. Faye answers only requests that carry this cookie.
+A screen response carries the flow id, a nonce that the next answer sends back, the screen's URL path, the screen itself and the tenant's branding. Faye answers only requests that carry the flow's cookie, `faye_flow_{flowId}`. The [HTTP API reference](http-api.md#screen-api) lists every field, every response and every refusal.
 
 ## Screens at a glance
 
