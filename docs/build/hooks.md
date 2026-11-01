@@ -275,7 +275,7 @@ These controls write `capabilities` and `timeout_ms` in the draft.
 
 Hooks are part of the draft. Select **Publish** in the header to publish them with the flow. See [Publish](../console/flow-editor.md#publish).
 
-To delete a hook, select the bin above the source. If steps still use the hook, the console warns that they will fail the check until you change them. Press `⌘Z` to undo.
+To delete a hook, select **Delete hook** above the source, then **Delete**. If steps still use the hook, the console warns that they will fail the check until you change them. Press `⌘Z` to undo.
 
 ## Egress
 
@@ -322,7 +322,7 @@ Every limit is fixed. A flow cannot raise one ([ADR 0037](../adr/0037-hard-limit
 | Deadline (`timeout_ms`) | 200 ms by default, from 1 to 2,000 ms | `hook_error` |
 | Memory | 16 MiB | `hook_error` |
 | Source size | 64 KiB | The flow does not compile. |
-| First compile of a hook | 2,000 ms, once per hook | `hook_error` |
+| Compiling a hook | 2,000 ms, the first time the server runs it | `hook_error` |
 | Egress calls | 4 per run | The call throws. |
 | Egress response | 64 KiB, no redirects, 2 s to connect | The call throws. |
 | Log lines | 20 per run, each up to 500 characters | Further lines are dropped. |
@@ -340,7 +340,7 @@ Every limit is fixed. A flow cannot raise one ([ADR 0037](../adr/0037-hard-limit
 
 ### Limits of a flow, at check time
 
-The checker applies these when you validate, preview or publish. For each entry, it adds up the hook runs on any path, counting a hook inside retries once per possible attempt.
+The checker applies these when you validate, preview or publish. For each entry, it adds up the entry's hook attachments. An attachment inside retries counts once for each attempt the retries allow. Hook time weights each attachment by its hook's deadline.
 
 | Limit | Value |
 |---|---|
@@ -370,7 +370,7 @@ A hook that returns `{ fail: "reason" }` fails its step with that reason. Every 
 - A picker returned `{ set }`, or picked an option that is not enabled.
 - The request's hook budget is spent, or too many hooks are running on the server.
 
-In the IR, a hook failure is retryable: a retry around the hook runs it again ([Core IR specification](../ir-spec.md#failures)). In a flow written in YAML, though, a block's attempts wrap only its screen and handler, never a hook. So in practice a failing hook ends the entry, and the sign in fails.
+In the IR, a hook failure is retryable: a retry around the hook runs it again ([Core IR specification](../ir-spec.md#failures)). In a flow written in YAML, though, a block's attempts wrap only its screen and handler, never a hook. So in practice a failing hook ends the entry with that failure.
 
 To keep a slow or broken service from failing sign ins, catch the errors of `cap.http.getJson` and choose a safe result, as `risk.js` does. A picker that cannot decide can return `{}` and let the person choose.
 
@@ -378,7 +378,7 @@ To find out why a hook failed:
 
 - Run it in the **Test run** tab with the same `ctx`.
 - Preview the draft. The trace shows a `hook` event with `ok` or the failure reason. See [Preview a draft](../console/preview.md#read-the-trace).
-- Read the server log. Faye logs each hook failure with the tenant and hook id.
+- Read the server log. Faye logs a hook that throws or passes a limit, with the tenant and the hook id.
 
 ## Next steps
 

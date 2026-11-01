@@ -62,11 +62,11 @@ The compiler refuses any other top level key:
 
 ### What each section becomes
 
-| Section | Becomes | IR format |
-|---|---|---|
-| `login`, up to the first consent step | the entry `login` of kind `authenticate` | 1 |
-| `login`, from the first consent step on | the entry `consent` of kind `consent` | 1 |
-| `approve` | the entry `approve` of kind `approve` | 2 |
+| Section | Becomes |
+|---|---|
+| `login`, up to the first consent step | the entry `login` of kind `authenticate` |
+| `login`, from the first consent step on | the entry `consent` of kind `consent` |
+| `approve` | the entry `approve` of kind `approve` |
 
 A flow with an `approve` section is written in IR format 2. Every other flow is format 1. The compiler adds `(succeed)` at the end of each entry.
 
@@ -412,7 +412,7 @@ A path is a namespace and one or more lowercase segments, matching `^(request|cl
 | `user.mfa_required` | Whether the account must use two factors |
 | `user.email`, `user.email_verified`, `user.name` | Only for a known account; `name` only when it has one |
 
-Later blocks add to `user.*`: Enroll TOTP sets `has_totp`, Add passkey sets `has_passkey` and Add phone sets `has_phone`, each to `true` when it succeeds.
+Later blocks add to `user.*`: Enroll TOTP sets `has_totp`, Add passkey sets `has_passkey` and Add phone sets `has_phone`, each to `true` once the person enrolls.
 
 ### Operators
 
@@ -490,7 +490,8 @@ A block with `attempts` above 1 runs again after a failure, up to that many time
 - The block's `before` and `after` hooks are outside the retry, so they run once.
 - A screen action, such as sending another code, does not spend an attempt.
 - When the last attempt fails, the step fails with that code, and so does the sign in.
-- `subject_mismatch` is never retried: a credential that proved someone other than the subject already bound ends the sign in. A `fail` body and a `hook_error` are not retried either, because nothing in the YAML puts them inside a retry.
+- `subject_mismatch` is never retried: a credential that proved someone other than the subject already bound ends the sign in.
+- A `fail` body is never retried. A hook is outside every retry, so a hook that fails ends the sign in.
 
 ## Consent split
 
@@ -562,10 +563,10 @@ The compiler reads YAML strictly, so a value means what it looks like.
 |---|---|
 | No anchors (`&a`) or aliases (`*a`) | `anchors and aliases are not supported; write the value out` |
 | No duplicate keys in a mapping | `duplicate key '<key>'` |
-| Keys are strings | `keys must be strings` |
+| A key is a single value, not a mapping or a list | `keys must be strings` |
 | A boolean is `true` or `false`. `yes`, `no`, `on`, `off` and other spellings are refused | `write a boolean as true or false, or quote 'yes'` |
 | An integer is decimal and fits in 64 bits. Hex (`0x1F`), octal (`010`) and other forms are refused | `write an integer in decimal within 64 bits, or quote '0x1F'` |
-| A literal is a string, an integer or a boolean. A decimal number such as `1.5` is refused | `value of <name>: number found, [string, integer, boolean] expected` |
+| A literal is a string, an integer or a boolean. A decimal number such as `1.5` is refused | for a `set` value: `value of <name>: number found, [string, integer, boolean] expected` |
 | The file is at most 1,048,576 characters and nests at most 64 levels | refused before anything else |
 
 To use one of these refused values as a string, quote it: `"yes"`, `"0x1F"`.
@@ -597,7 +598,7 @@ In YAML, a hook is never inside a retry, so each attachment counts once toward t
 The engine also stops a single request at 32 hook runs or 10,000 ms of hook time, `vars` at 64 names, and a saved flow at 256 KiB. One hook run makes at most 4 egress calls.
 
 > [!TIP]
-> Paths multiply with every choice, condition and attempt. If the checker reports more than 10,000 paths, lower the attempts of a block that does not need many, or move rare options into a separate flow. `acme.yaml` sets `with: { attempts: 1 }` on Add phone for this reason ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)).
+> Paths multiply with every choice, condition and attempt. If the checker reports more than 10,000 paths, lower the attempts of a block that does not need many, or remove an option that few people use. `acme.yaml` sets `with: { attempts: 1 }` on Add phone for this reason ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)).
 
 ## Messages
 
