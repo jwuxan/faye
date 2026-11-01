@@ -5,7 +5,7 @@ sections:
   - title: Get started
     pages: [index.md, start/quickstart.md, start/concepts.md]
   - title: Understand Faye
-    pages: [understand/vision.md, understand/design-goals.md, understand/architecture.md, understand/engine.md, understand/ir-design.md, understand/security.md]
+    pages: [understand/vision.md, understand/design-goals.md, understand/architecture.md, understand/ir-design.md, understand/engine.md, understand/host-spi.md, understand/security.md, understand/compare.md]
   - title: Build flows
     pages: [build/first-flow.md, build/flow-syntax.md, build/recipes.md, build/hooks.md]
   - title: Use the Admin UI
