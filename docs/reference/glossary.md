@@ -27,9 +27,11 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 ## C
 
+- **challenge**: The opaque id that the authorization server gives Faye for one login or consent request, such as Hydra's `login_challenge`.
 - **checker**: The part of Faye that lists every path through a flow and refuses unsafe flows, before publish and before preview.
 - **choice**: A step with several options, written with `alternative:`. A hook, an earlier answer, or the person picks one option.
 - **client**: OAuth2's word for an *application*. The docs use "application", except in fixed names such as *demo client* and *preview client*.
+- **compare and set**: Saving a sign in's state only if no other request saved it first. This makes a double submit safe.
 - **condition**: A test written with `if:`. If the condition is false, the engine skips the step, or does not offer the option.
 - **conformance vector**: A test, written as data, that says how any engine must run a given IR. The vectors are in `src/conformance/`.
 - **consent**: The screen where a person allows a third party application to access their account. In a flow file, consent is a step of `login` that runs when the authorization server asks for consent.
@@ -41,9 +43,11 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 - **delivery channel**: Where a tenant's emailed or texted codes go: the tenant's webhook, or the outbox folder of the demo. Without one, the code blocks are off.
 - **demo client**: A small OpenID Connect application at port 3001 that comes with the demo stack. It starts sign ins and shows the resulting ID token.
 - **draft**: The version of a tenant's flow that you are editing. The console saves it as you type, and it is not live until you publish it.
+- **DSL** (domain specific language): The YAML language for flow files. See [Flow DSL reference](dsl.md).
 
 ## E
 
+- **effect**: A lasting change that a handler asks for, such as enrolling a phone. The engine applies it only when the entry succeeds.
 - **egress**: A network call that a hook makes. A hook can call only a named target that both the hook and the tenant allow.
 - **engine**: The part of Faye that runs flows, one screen at a time.
 - **entry**: A part of a flow that the host can start. Each entry has a kind: `authenticate` (sign in), `consent`, or `approve` (the phone's side of a QR code sign in).
@@ -52,6 +56,7 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 ## F
 
 - **factor**: A kind of proof: a password is knowledge; app codes, text message codes and hardware keys are possession; user verification, such as a fingerprint, is inherence. Two factors of different kinds give `faye:2fa`, but an emailed code counts as one factor alone, never as a second.
+- **fail closed**: When something is unclear or broken, refuse rather than continue. For example, a saved state that cannot be read ends the sign in.
 - **first party**: An application that belongs to the same owner as the tenant, registered with `metadata.first_party = true`. The shipped flows do not ask a first party application for consent.
 - **flow**: The recipe for a sign in: the steps, their order and their conditions.
 - **flow file**: The YAML file that describes a flow.
@@ -72,7 +77,7 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 - **identifier**: What a person types to say who they are, such as an email address. Also the name of the first block of every sign in.
 - **idle timeout**: How long a sign in may wait for the next answer before it ends. Set per entry kind, in a flow's Settings tab.
 - **IR** (intermediate representation): The small JSON form that a flow file compiles to. The checker and the engine read the IR. See [How the IR is designed](../understand/ir-design.md).
-- **issuer**: Built in code that makes the server side data a screen needs, such as a passkey challenge or a QR code.
+- **issuer** (credential issuer): Built in code that makes the server side data a screen needs, such as a passkey challenge or a QR code.
 
 ## K
 
@@ -82,6 +87,7 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 - **live version**: The published version that new sign ins of a tenant use.
 - **Login UI**: The web app at port 3000 that draws each screen of a sign in.
+- **lower**: To compile a part of the flow file into IR. For example, a `block` lowers to a `screen` and a `call`.
 
 ## M
 
@@ -112,12 +118,14 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 ## R
 
+- **relying party**: OpenID Connect's word for an *application*.
 - **roll back**: To make an earlier version live again. The noun is rollback.
 
 ## S
 
 - **scenario**: The settings of a preview run: which account, which `acr_values`, which IP address.
 - **screen**: One page of a sign in, of a fixed type, such as `password` or `consent`. See [Sign in screens](screens.md).
+- **SPI** (service provider interface): The Java interfaces that a host implements to run Faye. See [Embed Faye: the host SPI](../understand/host-spi.md).
 - **step**: One stage of a flow, with a name, such as `identify` or `second-factor`.
 - **step up**: Asking a person who already signed in for a stronger factor, for example because an application asked for `faye:2fa`.
 - **subject**: The account that a sign in proves, as an identifier that the authorization server puts in the tokens.

@@ -408,7 +408,7 @@ When a rule fails, the finding names the path. For example: `a path succeeds wit
 
 Two tests check that the checker agrees with the engine. The path generator takes each enumerated path of the conformance flows that some input can take. It turns the path into a vector and runs the engine along it. If the engine ends differently, the build fails ([`src/conformance/generated/`](../../src/conformance/README.md)). A fuzz harness, `EngineFuzzTest`, searches for flows that the checker accepts and the engine then cannot run. The build replays its stored inputs ([ADR 0007](../adr/0007-fuzz-and-adversarial-testing.md)).
 
-Enumeration has a cost. The number of paths multiplies with every choice, condition and retry. An entry with more than 10,000 paths is an error, not a partial check. The message says `entry 'login' has more than 10000 paths or a path longer than 10000 steps; split it`. Acme's flow is close to this limit. A texted code as a second factor and three attempts at adding a phone took the flow over the limit. So the flow has neither ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)).
+Enumeration has a cost. The number of paths multiplies with every choice, condition and retry. An entry with more than 10,000 paths is an error, not a partial check. The message says `entry 'login' has more than 10000 paths or a path longer than 10000 steps; split it`. Acme's flow, the largest shipped one, has 5,980 paths. It allows one attempt at adding a phone to keep that number down: with the default three attempts, it would have 8,752.
 
 ## Alternatives that were rejected
 

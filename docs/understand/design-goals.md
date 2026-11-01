@@ -35,7 +35,7 @@ Faye does not issue or sign tokens and does not own the authorization server's s
 
 ### Not a general UI platform
 
-Faye shows end users only the screens that sign them in, sign them up and ask for consent. Faye also shows the logout confirmation that the authorization server hands off. Profile pages and account settings belong in your product. The Admin UI exists only to build, check and try flows.
+Faye shows end users only the screens that sign them in, sign them up and ask for consent. The charter also allows a logout confirmation that the authorization server hands off. That screen is planned and not built yet ([ADR 0036](../adr/0036-retire-the-roadmap.md#open-gaps), R2). Profile pages and account settings belong in your product. The Admin UI exists only to build, check and try flows.
 
 ### Not a general purpose language
 
@@ -51,7 +51,7 @@ Every goal has a cost. These are the costs that we chose to accept.
 | A closed language | Arbitrary logic in a flow | The checker can list every path and prove the safety rules hold. |
 | Hooks with a closed result | Hooks that can do anything | The checks stay true without reading the hook's JavaScript. |
 | Blocks with fixed screens and handlers | Assembling any screen with any handler | A step reads as one idea, and a block cannot be connected the wrong way ([ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md)). |
-| One SQLite database | Horizontal scale today | One file is simple to run, back up and understand ([ADR 0017](../adr/0017-one-sqlite-database.md)). Scale out is future work. |
+| One SQLite database | Horizontal scale today | One file is simple to run, back up and understand ([ADR 0017](../adr/0017-one-sqlite-database.md)). Scale out is not built yet ([ADR 0036](../adr/0036-retire-the-roadmap.md#open-gaps), R1). |
 | An Admin UI without sign in | Use by a team over a network | The Admin UI stays on one machine until operator accounts and roles exist ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)). |
 
 ## Founding decisions
