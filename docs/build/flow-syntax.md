@@ -44,7 +44,7 @@ A flow file has these top level keys. Any other key is refused with `unknown key
 - The first step of `login` is always the Identifier block. It takes no condition.
 - When the last step finishes, the compiler adds success. The engine accepts that success only if a credential verified for the person. You never write "sign in" yourself.
 
-Each step is one kind of thing. The first of these keys that the step has decides its kind, and the kind decides the other keys it takes:
+Each step is one kind of thing. One key decides the step's kind, and the kind decides the other keys that the step takes:
 
 | Kind | Key | Also takes |
 |---|---|---|
@@ -53,6 +53,8 @@ Each step is one kind of thing. The first of these keys that the step has decide
 | Group | `steps` | `if`, `before`, `after` |
 | Set | `set` | `if`, `before`, `after` |
 | Fail | `fail` | `if`, `before` |
+
+The Identifier block takes no `if`. A block takes `with` only when it has settings. A key that the kind does not take is refused, and the message lists the keys it does take.
 
 Inside a step, the parts run in this order: the `before` hook, then the block, choice, group, set or fail, then the `after` hook. A condition on the step decides whether any of it runs.
 
@@ -88,7 +90,7 @@ Settings go under `with`. A setting you leave out keeps the block's default.
 | `password` | `identifier` | `false` | Asks for the password on the identifier screen. No `password` block may follow. |
 | `required` | `add-passkey`, `add-phone` | `false` | Removes "Not now", so the person must enroll ([ADR 0038](../adr/0038-required-enrollment.md)). |
 
-A tenant can change a block's defaults in **General settings**. A setting in the flow wins over the tenant's default. The [flow DSL reference](../reference/dsl.md) has every block, setting and failure code.
+A tenant can change a block's defaults in **General settings**. A setting in the flow wins over the tenant's default. The [flow DSL reference](../reference/dsl.md) has the full rules for each block.
 
 ## Conditions with `if`
 
@@ -130,7 +132,7 @@ second-factor:
           - { has: [host.acr_values, "faye:2fa"] }
 ```
 
-Quote a literal that contains a colon, such as `"faye:2fa"`. The checker refuses a `host.*` or `client.*` path that the host contract does not list. The prototype also accepts `hydra.` as another name for `host.`.
+Quote a literal that contains a colon, such as `"faye:2fa"`. The checker refuses a `host.*` or `client.*` path that the host and client contracts do not list. The prototype also accepts `hydra.` as another name for `host.`.
 
 ## Choices with `alternative`
 
@@ -371,5 +373,5 @@ Each block became a `screen` and a `call` of its handler. The password's 3 attem
 
 - [Flow recipes](recipes.md): copyable flows for common goals.
 - [Hooks](hooks.md): write the JavaScript that a step runs.
-- [Flow DSL reference](../reference/dsl.md): every key, block, setting and error.
+- [Flow DSL reference](../reference/dsl.md): the full rules for every key and block.
 - [The flow editor](../console/flow-editor.md): build the same flow without YAML.

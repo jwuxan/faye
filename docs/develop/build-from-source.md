@@ -42,15 +42,6 @@ The repository has no Gradle wrapper jar, because it holds no binaries ([ADR 001
 
 `make setup` checks the toolchain, installs the web dependencies, and compiles both Gradle builds.
 
-> [!WARNING]
-> `make setup` still requires `redis-server` and `redis-cli`, although Faye no longer uses Redis ([ADR 0017](../adr/0017-one-sqlite-database.md)). If you do not have Redis, run the same steps by hand:
->
-> ```bash
-> pnpm -C apps/web install --frozen-lockfile
-> (cd src && ./gradlew assemble)
-> (cd apps/server && ./gradlew assemble)
-> ```
-
 ## Run the stack
 
 Pick one of three ways. They run the same code.
@@ -271,15 +262,6 @@ Run `make help` to list them.
 | `e2e` | Builds and starts the compose stack, waits for the seed and the client registrations, runs `deploy/smoke.sh`, and checks that Hydra's admin API is not published. |
 
 [`fuzz.yml`](../../.github/workflows/fuzz.yml) fuzzes each harness for 2 minutes on pull requests that touch `src/`, `apps/server/` or the fuzz script. It fuzzes each harness for 30 minutes every night.
-
-## Known rough edges
-
-These are true of the code today:
-
-- `make setup` requires `redis-server` and `redis-cli`, and the help text of `make dev` still lists Redis. Faye moved every store to SQLite in [ADR 0017](../adr/0017-one-sqlite-database.md), and `dev.sh` starts no Redis.
-- The help text of `make generate` names `schema/screen.schema.json`. The schema now lives at `src/schema/screen.schema.json`.
-- `src/conformance/README.md` says to regenerate with `:faye-check:test`. The task is `:faye-engine:test`.
-- The repository's `README.md` names a `faye-host-mock` module. The mock host is now `MockFlowHost`, in the test fixtures of `faye-engine`.
 
 ## Next steps
 

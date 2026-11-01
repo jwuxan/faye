@@ -24,7 +24,7 @@ Wait for the container to be healthy (`docker compose -f deploy/compose.yaml ps`
    docker exec faye cat /var/lib/faye/demo/users.csv
    ```
 
-4. You land back on the demo client, which shows the decoded ID token, its `amr`/`acr`, and the trace of the steps the flow ran.
+4. You land back on the demo client, which shows the decoded ID token and its `amr`/`acr`. A preview sign in from the Admin UI also shows the trace of the steps the flow ran.
 
 That is the whole loop: Hydra (`:4444`) sends the browser to Faye (`:8080`), Faye runs the flow in the login UI (`:3000`), and the demo client (`:3001`) shows the result.
 
