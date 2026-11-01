@@ -36,6 +36,22 @@ Many readers do not speak English as a first language. Many use a translation to
 14. Do not use a dash to join two sentences. Use two sentences.
 15. Never claim what the code does not do. If something is planned, say "planned" and link the record that tracks it.
 
+## What we learned from frontier docs
+
+Before writing these docs, we studied how other developer products write theirs. This table lists what we took from each, and where you see it on this site.
+
+| Source | What they do | What this site does |
+|---|---|---|
+| [Diátaxis](https://diataxis.fr), used by Canonical, Cloudflare and others | Separate tutorials, how to guides, explanation and reference | Each page is one kind, listed in [Shape each page](#shape-each-page) |
+| [Google developer documentation style guide](https://developers.google.com/style/translation) | Write for a global audience: short sentences, one term per idea, no idioms, condition before instruction | The rules in [Write plain English](#write-plain-english) |
+| [Anthropic's Claude docs](https://docs.claude.com/llms.txt), [Stripe](https://docs.stripe.com/building-with-llms), [Vercel](https://vercel.com/docs/agent-resources) | An `llms.txt` index, every page as Markdown, and a way to copy a page or open it in an AI assistant | `/llms.txt`, `/llms-full.txt`, `.md` URLs, **Copy Markdown** and the **Open** menu |
+| [The llms.txt proposal](https://llmstxt.org) | A Markdown index with a summary, then sections of links, and an "Optional" section | The shape of `/llms.txt`; decision records sit under Optional |
+| [OpenAI](https://developers.openai.com/api/docs) and [Claude](https://platform.claude.com/docs/en/intro) docs | Open with what the product is and a recommended path, then a quickstart with steps and next steps | [What is Faye?](../index.md) and the [Quickstart](../start/quickstart.md) |
+| [Devin's DeepWiki](https://cognition.ai/blog/deepwiki) | An AI that has read a public repository and answers questions about it | The **Ask Devin** button |
+| [Ory's docs](https://github.com/ory/docs) | Mermaid sequence diagrams for OAuth2 login and consent | The sequence diagrams in [Architecture](../understand/architecture.md) and [How the engine works](../understand/engine.md) |
+
+We also chose what not to copy. Many docs sites offer "Open in ChatGPT" with the page's own URL. Faye's docs usually run on your own machine, where an AI assistant cannot read them. So the **Open** menu hands the assistant the page's public copy on GitHub instead.
+
 ## Shape each page
 
 Every page has the same parts, in this order:
