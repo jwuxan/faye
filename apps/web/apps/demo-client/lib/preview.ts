@@ -2,7 +2,15 @@
  * A preview run as the Faye server reports it (GET /api/preview/flows/{flowId}), for tokens a
  * preview client got: they carry the login's flow id as faye_flow_id. Server only.
  */
-export type TraceEvent = { event: string; id?: string; outcome?: string; amr?: string[]; acr?: string };
+/** source: the YAML line the event's node came from (ADR 0027), absent when the version has none. */
+export type TraceEvent = {
+  event: string;
+  id?: string;
+  outcome?: string;
+  amr?: string[];
+  acr?: string;
+  source?: { origin: string; line: number; column: number; kind: string } | null;
+};
 export type PredictedPath = { path: string; succeeds: boolean; amr: string[]; acr: string | null };
 export type PreviewRun = {
   flowId: string;

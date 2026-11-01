@@ -17,6 +17,7 @@ import faye.engine.Acr;
 import faye.engine.Effect;
 import faye.engine.Engine;
 import faye.engine.Env;
+import faye.engine.FailureSite;
 import faye.engine.FlowException;
 import faye.engine.FlowState;
 import faye.engine.FlowStateCodec;
@@ -140,6 +141,7 @@ class EngineFuzzTest {
         assertThat(REACHED.getOrDefault("engine refused unauthenticated", 0))
                 .as(reached)
                 .isGreaterThan(SWEEP / 15);
+        assertThat(REACHED.getOrDefault("failure site", 0)).as(reached).isGreaterThan(SWEEP / 15);
     }
 
     @FuzzTest(maxDuration = "120s")
@@ -240,8 +242,28 @@ class EngineFuzzTest {
                     .tenants(TenantPolicies.of(Map.of(TENANT, policy)))
                     .hooks(new FuzzedHooks(this))
                     .previews(Previews.NONE)
+                    .failures(this::failed)
                     .screens(Fixtures.screens())
                     .build();
+        }
+
+        /**
+         * Every failure site names a node of the version its flow ran, so the version's source map
+         * can resolve it (ADR 0027), and carries a well formed reference.
+         */
+        void failed(FlowState state, FailureSite site) {
+            reached("failure site");
+            assertThat(site.reference()).matches(FailureSite.REFERENCE);
+            faye.ir.Entry entry = versions.get(state.versionHash())
+                    .orElseThrow()
+                    .flow()
+                    .entries()
+                    .get(site.entry());
+            assertThat(entry).as("entry of " + site.site()).isNotNull();
+            assertThat(faye.ir.NodePaths.find(
+                            java.util.Objects.requireNonNull(entry).body(), site.path()))
+                    .as("node at " + site.site())
+                    .isPresent();
         }
 
         void drive() {

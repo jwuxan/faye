@@ -235,6 +235,19 @@ class MilestoneSixTest {
         assertThat(texts(run.get("visits"))).containsExactly("identify", "credential", "second-factor");
         assertThat(run.at("/events/0/event").asText()).isEqualTo("start");
         assertThat(texts(run.get("events"), "event")).contains("retry", "end");
+        // Each event but start names its node and the line of the draft it came from (ADR 0027)
+        for (JsonNode e : run.get("events")) {
+            if ("start".equals(e.get("event").asText())) continue;
+            assertThat(e.at("/at/entry").asText()).as(e.toString()).isEqualTo("login");
+            assertThat(e.at("/source/origin").asText()).as(e.toString()).isEqualTo("traced.yaml");
+            assertThat(e.at("/source/line").asInt()).as(e.toString()).isPositive();
+        }
+        JsonNode verify = java.util.stream.Stream.of(run.get("events"))
+                .flatMap(events -> java.util.stream.StreamSupport.stream(events.spliterator(), false))
+                .filter(e -> "password.verify".equals(e.path("id").asText()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(verify.at("/source/kind").asText()).isEqualTo("use");
         assertThat(run.at("/result/succeeded").asBoolean()).isTrue();
         assertThat(texts(run.at("/result/amr"))).containsExactly("pwd", "otp");
         assertThat(run.at("/result/acr").asText()).isEqualTo("faye:2fa");

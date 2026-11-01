@@ -1,0 +1,26 @@
+name: every traced event names its node, and a failed call that no retry catches is the failure site
+ir: flows/password-only.json
+host:
+  client: { client_id: preview-default }
+  preview: true
+preview:
+  draft: flows/two-credentials.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [{ fail: invalid_credentials }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: wrong }
+  - expect_result: { succeed: false, reason: invalid_credentials }
+expect_trace:
+  - start login
+  - step identify @login/0
+  - screen identifier @login/0.0.0
+  - call identity.resolve ok @login/0.0.1
+  - step first @login/1
+  - screen password @login/1.0.0
+  - call password.verify invalid_credentials @login/1.0.1
+  - end invalid_credentials @login/1.0.1
+expect_failure: { entry: login, path: "1.0.1", step: first, code: invalid_credentials }

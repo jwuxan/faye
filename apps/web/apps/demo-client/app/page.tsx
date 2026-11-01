@@ -183,9 +183,12 @@ function PreviewResult({ run, claims }: { run: Awaited<ReturnType<typeof preview
         </Alert>
         <ol className="grid gap-1 font-mono text-xs" id="trace">
           {run.events.map((e, i) => (
-            <li key={i} className="grid grid-cols-[--spacing(16)_1fr] gap-2">
+            <li key={i} className="grid grid-cols-[--spacing(16)_1fr_auto] gap-2">
               <span className="text-muted-foreground">{e.event}</span>
               <span className="min-w-0 break-words">{describe(e)}</span>
+              <span className="text-muted-foreground" title={e.source ? e.source.kind : undefined}>
+                {e.source ? `${e.source.origin}:${e.source.line}:${e.source.column}` : ""}
+              </span>
             </li>
           ))}
         </ol>

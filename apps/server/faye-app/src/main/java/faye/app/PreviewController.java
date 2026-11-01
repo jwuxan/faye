@@ -1,5 +1,6 @@
 package faye.app;
 
+import com.fasterxml.jackson.annotation.JsonUnwrapped;
 import faye.check.FlowPath;
 import faye.check.Publisher;
 import faye.engine.FlowVersion;
@@ -86,11 +87,18 @@ class PreviewController {
             String entry,
             String versionHash,
             boolean draft,
-            List<TraceEvent> events,
+            List<Traced> events,
             List<String> visits,
             @Nullable Result result,
             List<AdminController.PathView> expected,
             @Nullable Boolean matches) {}
+
+    /**
+     * A traced event and the YAML its node came from (ADR 0027).
+     *
+     * @param source null when the version has no line for the node, or the event has none ({@code start})
+     */
+    record Traced(@JsonUnwrapped TraceEvent event, SourceLines.@Nullable Located source) {}
 
     record Refusal(String error) {}
 
@@ -237,7 +245,7 @@ class PreviewController {
                 entry,
                 hash,
                 !versions.history(tenant).contains(hash),
-                events,
+                recorded.stream().map(r -> new Traced(r.event(), r.source())).toList(),
                 visits(events),
                 result,
                 expected,

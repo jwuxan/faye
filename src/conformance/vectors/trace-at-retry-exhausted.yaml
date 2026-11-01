@@ -1,0 +1,40 @@
+name: a retry names itself on each rerun, and its last failure is the failure site
+ir: flows/password-only.json
+host:
+  client: { client_id: preview-default }
+  preview: true
+preview:
+  draft: flows/password-only.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [{ fail: invalid_credentials }, { fail: invalid_credentials }, { fail: invalid_credentials }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: wrong }
+  - expect_screen: password
+    expect_error: invalid_credentials
+    expect_attempts_left: 2
+  - submit: { password: wrong }
+  - expect_screen: password
+    expect_error: invalid_credentials
+    expect_attempts_left: 1
+  - submit: { password: wrong }
+  - expect_result: { succeed: false, reason: invalid_credentials }
+expect_trace:
+  - start login
+  - step identify @login/0
+  - screen identifier @login/0.0.0
+  - call identity.resolve ok @login/0.0.1
+  - step credential @login/1
+  - screen password @login/1.0.0.0
+  - call password.verify invalid_credentials @login/1.0.0.1
+  - retry invalid_credentials @login/1.0
+  - screen password @login/1.0.0.0
+  - call password.verify invalid_credentials @login/1.0.0.1
+  - retry invalid_credentials @login/1.0
+  - screen password @login/1.0.0.0
+  - call password.verify invalid_credentials @login/1.0.0.1
+  - end invalid_credentials @login/1.0.0.1
+expect_failure: { entry: login, path: "1.0.0.1", step: credential, code: invalid_credentials }

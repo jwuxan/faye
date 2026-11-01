@@ -1,5 +1,7 @@
 package faye.app;
 
+import faye.ir.SourceMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,6 +11,7 @@ final class InMemoryTenantConfigStore implements TenantConfigStore {
 
     private final Map<String, String> drafts = new ConcurrentHashMap<>();
     private final Map<String, String> sources = new ConcurrentHashMap<>();
+    private final Map<String, SourceMap> maps = new ConcurrentHashMap<>();
     private final Map<String, TenantSettings> settings = new ConcurrentHashMap<>();
     private final Map<String, PreviewScenario> scenarios = new ConcurrentHashMap<>();
 
@@ -28,13 +31,32 @@ final class InMemoryTenantConfigStore implements TenantConfigStore {
     }
 
     @Override
-    public void saveSource(String versionHash, String yaml) {
-        sources.putIfAbsent(versionHash, yaml);
+    public synchronized void saveSource(String versionHash, String yaml, SourceMap map) {
+        if (sources.putIfAbsent(versionHash, yaml) == null) maps.put(versionHash, map);
     }
 
     @Override
-    public void replaceSource(String versionHash, String yaml) {
+    public Optional<SourceMap> sourceMap(String versionHash) {
+        return Optional.ofNullable(maps.get(versionHash));
+    }
+
+    @Override
+    public void saveSourceMap(String versionHash, SourceMap map) {
+        maps.putIfAbsent(versionHash, map);
+    }
+
+    @Override
+    public List<String> unmappedSources() {
+        return sources.keySet().stream()
+                .filter(h -> !maps.containsKey(h))
+                .sorted()
+                .toList();
+    }
+
+    @Override
+    public synchronized void replaceSource(String versionHash, String yaml, SourceMap map) {
         sources.put(versionHash, yaml);
+        maps.put(versionHash, map);
     }
 
     @Override

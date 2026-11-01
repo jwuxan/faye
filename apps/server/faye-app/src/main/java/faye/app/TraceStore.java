@@ -2,6 +2,7 @@ package faye.app;
 
 import faye.engine.TraceEvent;
 import java.util.List;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Preview traces: each preview flow's events, and a feed per tenant that the Admin UI follows
@@ -12,10 +13,17 @@ interface TraceStore {
     /**
      * @param seq position in the tenant's feed, from 1
      * @param at when it was appended, epoch milliseconds
+     * @param source the YAML the event's node came from, or null when its version has no line for it
      */
-    record Recorded(long seq, String tenantId, String flowId, long at, TraceEvent event) {}
+    record Recorded(
+            long seq,
+            String tenantId,
+            String flowId,
+            long at,
+            TraceEvent event,
+            SourceLines.@Nullable Located source) {}
 
-    void append(String tenantId, String flowId, TraceEvent event);
+    void append(String tenantId, String flowId, TraceEvent event, SourceLines.@Nullable Located source);
 
     /** A flow's events, oldest first; empty for a flow that was not a preview, or has expired. */
     List<Recorded> flow(String flowId);

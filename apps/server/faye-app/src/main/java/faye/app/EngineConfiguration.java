@@ -36,6 +36,7 @@ import faye.identity.UserStore;
 import faye.identity.WebAuthnSettings;
 import faye.ir.Entry;
 import faye.ir.Flow;
+import faye.ir.SourceMap;
 import faye.screens.BuiltinScreen;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -74,8 +75,8 @@ class EngineConfiguration {
     }
 
     @Bean
-    TenantConfigStore tenantConfigStore(JdbcClient db) {
-        return new SqliteTenantConfigStore(db);
+    TenantConfigStore tenantConfigStore(JdbcClient db, TransactionTemplate tx) {
+        return new SqliteTenantConfigStore(db, tx);
     }
 
     @Bean
@@ -149,10 +150,13 @@ class EngineConfiguration {
                 publisher.publish(id, flow, compiled.hooks());
             }
             String yaml = read(tenant.flow());
-            store.saveSource(hash, yaml);
+            SourceMap map = SourceMap.of(flow);
+            store.saveSource(hash, yaml, map);
             // A source kept from before a DSL change that left the IR alone (consent moving into
             // login.steps, ADR 0026) no longer compiles; this file compiles to the same version
-            if (!compiles(tenant.flow(), id, store.source(hash).orElse(yaml), options)) store.replaceSource(hash, yaml);
+            if (!compiles(tenant.flow(), id, store.source(hash).orElse(yaml), options)) {
+                store.replaceSource(hash, yaml, map);
+            }
             FlowVersion current = versions.current(id).orElseThrow();
             refuse(id, "current version " + current.hash(), publisher.check(id, current.flow()));
         });
@@ -326,8 +330,41 @@ class EngineConfiguration {
             Publisher publisher,
             Tenants tenants,
             TraceStore traces,
+            SourceLines lines,
             FlowCompiler.Options dsl) {
-        return new DraftPreviews(props, store, versions, hooks, publisher, tenants, traces, dsl);
+        return new DraftPreviews(props, store, versions, hooks, publisher, tenants, traces, lines, dsl);
+    }
+
+    /**
+     * Resolves the sites the engine reports to YAML lines; once the publisher has stored every
+     * configured flow, gives older versions their maps (ADR 0027).
+     */
+    @Bean
+    @DependsOn("publisher")
+    SourceLines sourceLines(
+            TenantConfigStore store,
+            FlowVersions versions,
+            FayeProperties props,
+            Tenants tenants,
+            FlowCompiler.Options dsl) {
+        SourceLines lines = new SourceLines(store, versions);
+        Map<String, Resource> configured = new HashMap<>();
+        props.tenants().forEach((id, tenant) -> configured.put(id, tenant.flow()));
+        // A version was compiled with whatever block defaults the tenant had then (ADR 0030): try
+        // the ones saved now, the configured ones, and none
+        lines.backfill(
+                configured,
+                tenant -> List.of(
+                        forTenant(dsl, tenants, tenant),
+                        dsl.withDefaults(tenants.configured(tenant).blocks()),
+                        dsl));
+        return lines;
+    }
+
+    /** Logs every abnormal end with its YAML line and reference (ADR 0027). */
+    @Bean
+    FailureLog failureLog(SourceLines lines) {
+        return new FailureLog(lines);
     }
 
     @Bean
@@ -394,7 +431,8 @@ class EngineConfiguration {
             HookRunner hooks,
             Tenants tenants,
             DraftPreviews previews,
-            ObjectProvider<Clock> clock) {
+            ObjectProvider<Clock> clock,
+            FailureLog failures) {
         return Engine.builder()
                 // Flow settings' limits run on the system clock; a test may supply its own (ADR 0035)
                 .clock(clock.getIfAvailable(Clock::systemUTC))
@@ -406,6 +444,7 @@ class EngineConfiguration {
                 .tenants(tenants)
                 .hooks(hooks)
                 .previews(previews)
+                .failures(failures)
                 .screens(screens)
                 .build();
     }

@@ -30,7 +30,7 @@ Format: [MADR 4](https://adr.github.io/madr/). One file per decision, `NNNN-titl
 | [0024](0024-core-ir-as-a-narrow-waist.md) | The Core IR as a narrow waist: entries, format versions, handler and screen catalogs, effects after the compare and set, browser bound flows | In progress |
 | [0025](0025-host-neutral-boundaries-for-embedding.md) | Host neutral boundaries for embedding: host parameters, credential issuers and flow outcomes | In progress |
 | [0026](0026-consent-as-a-step.md) | Consent as a step of the sign in, not a section of its own | In progress |
-| [0027](0027-source-lines-at-run-time.md) | Source lines at run time: a source map per version, IR paths in traces and logs | Proposed |
+| [0027](0027-source-lines-at-run-time.md) | Source lines at run time: a source map per version, IR paths in traces and logs | In progress |
 | [0028](0028-admin-api-on-a-unix-domain-socket.md) | The admin API on a Unix domain socket only | In progress |
 | [0029](0029-screen-paths.md) | A URL path for every screen, set in the flow | In progress |
 | [0030](0030-blocks-with-fixed-screens-and-handlers.md) | Blocks with fixed screens and handlers: a flow orchestrates, it does not assemble | In progress |

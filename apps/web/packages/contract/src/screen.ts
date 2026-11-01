@@ -452,6 +452,10 @@ export interface ErrorResponse {
     | "invalid_submission"
     | "unknown_action"
     | "host_error";
+  /**
+   * With host_error after a flow ended: a reference to the failure the person can hand support, naming the operator's log line and nothing about the flow (ADR 0027).
+   */
+  reference?: string;
 }
 
 /**

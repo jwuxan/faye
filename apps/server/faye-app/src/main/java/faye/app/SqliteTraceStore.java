@@ -8,6 +8,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import org.jspecify.annotations.Nullable;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -26,7 +27,8 @@ final class SqliteTraceStore implements TraceStore {
             new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     /** An entry without its number, which the table assigns. */
-    private record Entry(String tenantId, String flowId, long at, TraceEvent event) {}
+    private record Entry(
+            String tenantId, String flowId, long at, TraceEvent event, SourceLines.@Nullable Located source) {}
 
     private final JdbcClient db;
     private final TransactionTemplate tx;
@@ -42,11 +44,11 @@ final class SqliteTraceStore implements TraceStore {
     }
 
     @Override
-    public void append(String tenantId, String flowId, TraceEvent event) {
+    public void append(String tenantId, String flowId, TraceEvent event, SourceLines.@Nullable Located source) {
         long now = clock.millis();
         String json;
         try {
-            json = JSON.writeValueAsString(new Entry(tenantId, flowId, now, event));
+            json = JSON.writeValueAsString(new Entry(tenantId, flowId, now, event, source));
         } catch (JsonProcessingException e) {
             throw new IllegalStateException(e);
         }
@@ -95,7 +97,7 @@ final class SqliteTraceStore implements TraceStore {
     private static Optional<Recorded> parse(long seq, String json) {
         try {
             Entry e = JSON.readValue(json, Entry.class);
-            return Optional.of(new Recorded(seq, e.tenantId(), e.flowId(), e.at(), e.event()));
+            return Optional.of(new Recorded(seq, e.tenantId(), e.flowId(), e.at(), e.event(), e.source()));
         } catch (JsonProcessingException | RuntimeException e) {
             return Optional.empty();
         }

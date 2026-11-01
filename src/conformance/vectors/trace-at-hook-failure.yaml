@@ -1,0 +1,24 @@
+name: a hook that throws is the failure site, inside the step that ran it
+ir: flows/risk-hook.json
+host:
+  client: { client_id: preview-default }
+  preview: true
+preview:
+  draft: flows/risk-hook.json
+handlers:
+  identity.resolve: [ok]
+hooks:
+  risk: [{ throws: exceeded its 200 ms deadline }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_result: { succeed: false, reason: hook_error }
+expect_trace:
+  - start login
+  - step identify @login/0
+  - screen identifier @login/0.0.0
+  - call identity.resolve ok @login/0.0.1
+  - step risk @login/1
+  - hook risk hook_error @login/1.0
+  - end hook_error @login/1.0
+expect_failure: { entry: login, path: "1.0", step: risk, code: hook_error }

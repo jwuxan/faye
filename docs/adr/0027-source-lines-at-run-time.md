@@ -1,6 +1,6 @@
 ---
-status: proposed
-date: 2026-10-31
+status: in progress
+date: 2026-11-01
 decision-makers: Josh Wu
 ---
 
@@ -45,7 +45,7 @@ Chosen: **B**, with C used once as a backfill for versions published before this
 
 * `faye-ir` gains `NodePaths`, the one definition of a node's child index path within an entry (the same indexing `Frame` uses: `seq` children by position, the body of `step`, `when`, `retry` at index 0, a `choose` option by its index, then its body or guard). The engine's frame code and the source map both use it, so the two cannot drift.
 * `SourceMap.of(Flow)` walks every entry with `NodePaths` and records `entry id + path -> SourceRef` for every node whose source is not `NONE`. Its JSON form is `{"format": 1, "origin": "acme.yaml", "entries": {"login": {"": [3, 3], "0": [5, 5], "0.0": [6, 7], ...}}}`: line and column per path, one origin per map (a flow compiles from one file; hook files are pinned by hash and positioned at their declaration).
-* Stored in a new table, `faye_version_source_map (hash TEXT PRIMARY KEY, map TEXT NOT NULL)`, by Flyway migration `V3__version_source_map.sql` (ADR 0020), written in the same transaction as `faye_version_source`. The map belongs to the YAML stored for that hash: when two YAML texts lower to the same IR, the version keeps the first text and its map, and the Versions view already shows that text.
+* Stored in a new table, `faye_version_source_map (hash TEXT PRIMARY KEY, map TEXT NOT NULL)`, by Flyway migration `V7__version_source_map.sql` (ADR 0020; proposed as V3, numbered after V3 to V6 that landed first), written in the same transaction as `faye_version_source`. The map belongs to the YAML stored for that hash: when two YAML texts lower to the same IR, the version keeps the first text and its map, and the Versions view already shows that text.
 * Backfill (option C, once): on startup, for a version with a stored YAML and no map, the app compiles the YAML; if the compiled IR's hash equals the version's hash it stores the map, otherwise it stores none. A version without a map resolves every path to its step id only, as today. No existing row is rewritten.
 * The IR, its grammar, its format number and every version hash are unchanged.
 
@@ -64,9 +64,28 @@ Chosen: **B**, with C used once as a backfill for versions published before this
 | Operator | Server log | One structured `WARN` line per abnormal end: tenant, flow id, version hash, entry, step, path, resolved `file:line:column`, code, and the reference below. Ordinary outcomes a person caused (`invalid_credentials`, `invalid_code`, a retry) are not logged at `WARN`. |
 | Person signing in | Error screen | The existing safe `code`, plus a `reference`: a random `ref_` id, unique per failure, also written to the log line. No file, line, step id or handler name. |
 
-* The screen protocol change is additive: `ErrorScreen` gains an optional `reference` (`^ref_[A-Za-z0-9]{12}$`). Per AGENTS.md rule 1 it lands in `schema/screen.schema.json` first, then the Java types and `pnpm generate`.
+* The screen protocol change is additive (as implemented, on `ErrorResponse`; see As implemented): `ErrorScreen` gains an optional `reference` (`^ref_[A-Za-z0-9]{12}$`). Per AGENTS.md rule 1 it lands in `schema/screen.schema.json` first, then the Java types and `pnpm generate`.
 * A failure that ends in a redirect to the client through the host (the host's rejection) carries no reference in this record; Hydra's `error_debug` would put it in the relying party's hands. Open gap, decided separately if needed.
 * The map never reaches the Login UI: the screen API has no route to it, and the resolver lives in `faye-app` beside the preview and admin APIs (AGENTS.md rule 5).
+
+### As implemented
+
+Built as above, with these changes, each forced by something the proposal got wrong about the code:
+
+* **The reference goes on `ErrorResponse`, not `ErrorScreen`.** `ErrorScreen` is a typed screen a flow shows itself (`screen: error`); no abnormal end reaches it. An abnormal end either becomes the host's rejection (Hydra redirects to the relying party: the open gap above) or, when the host throws, the screen API's `502 host_error`. So `ErrorResponse` gains the optional `reference` (`^ref_[A-Za-z0-9]{12}$`, `schema/screen.schema.json`), set only for `host_error` after a flow ended, and the Login UI shows it with its copy for `host_error`. Still additive.
+* **`FailureSite` reaches the embedder through a `Failures` SPI** (`Engine.builder().failures(...)`, like `Previews`), **not inside `EngineResponse`.** `Redirect` and `Handoff` are records the host builds, and a host that throws leaves no response at all. A host that throws in `accept` or `reject` surfaces as `HostFailure`, which carries the site (already reported) and the host's exception as its cause; the app answers it `502 {error: host_error, reference}`. A failure followed by a host that throws is reported twice: the failure, then `host_error`, each with its own reference.
+* **Sites the proposal left open:** a write that fails to commit fails at the `succeed` that ran it (commits run when the entry succeeds); a `choose`'s pick hook is at the `choose` (the map positions nodes, and the pick hook is not a child); `incomplete` is at the entry's body (the empty path), with no step. The unknown handler error says `unknown handler <name> at <entry>/<path>`: it is a catalog bug, not a run failure, so it has no reference.
+* **A previewed draft's map is kept in memory** (`SourceLines`, the 64 most recent), not stored: a draft is not published, has no row in `faye_version_source`, and its lines are those of the YAML in the author's editor. After a restart, a preview flow still waiting on an old draft resolves no lines (its events keep `at` and step ids). A draft may lower to a published version (reformatted, a comment added): preview traces then take the draft's lines, while the log keeps the stored YAML's, so a preview never moves production lines. A `Failures` reporter that throws is logged and ignored, so the host is still told.
+* `TraceEvent` keeps a constructor without `at` for callers written before it.
+* **Clicking a trace event's line selects the block it is in; it does not move the YAML editor.** Since ADR 0030 the flow workspace shows YAML and Preview as separate tabs, so the editor is not on screen while a preview runs; the graph shows the selected block instead.
+* **A version's YAML replaced at startup takes its map with it.** `replaceSource` (a stored source that no longer compiles after a DSL change, ADR 0026) writes the new YAML and its map in one transaction, so a map never describes text other than the YAML kept.
+
+Open gaps (why this record is `in progress`):
+
+1. The Admin UI Versions view does not resolve failure sites against a version's map yet; production failure sites are only in the server log.
+2. `deploy/smoke.sh` has no check that a draft preview's trace shows a throwing hook at its line (needs the compose stack).
+3. The log line is tested by its content (`SourceLinesTest.theLogLineHoldsTheReferenceAndTheLine`), not by capturing the logger's output.
+4. A failed sign in now ends on Faye's own `/error?reason=failed` ([ADR 0031](0031-failed-sign-in-stays-on-faye.md)), which shows no reference yet; that page, not the host's rejection, is now the place to show one (the reference is in the log line already).
 
 ### Consequences
 
@@ -81,14 +100,12 @@ Chosen: **B**, with C used once as a backfill for versions published before this
 
 ### Confirmation
 
-Planned; none of this exists yet.
-
-1. `cd server && ./gradlew :faye-ir:test :faye-dsl:test`: `SourceMapTest.everyNodeOfTheShippedFlowsHasALine` (every node of `acme.yaml` and `bank.yaml` resolves to a line greater than 0), `SourceMapTest.reformattingYamlKeepsTheHashAndMovesTheLines`, `NodePathsTest` against `Frame` paths for every IR form.
-2. `cd server && ./gradlew :faye-engine:test`: new conformance vectors `trace-at-call-failure.yaml`, `trace-at-hook-failure.yaml`, `trace-at-fail.yaml`, `trace-at-retry-exhausted.yaml` that assert the `at` of each event and the `FailureSite`; `conformance/README.md` documents the optional `at` field.
-3. `cd server && ./gradlew :faye-app:test`: `SqliteFlowVersionsTest.publishStoresTheSourceMap`, `backfillSkipsAVersionWhoseYamlNoLongerCompilesToItsHash`, `PreviewControllerTest.traceEventsCarryTheYamlLine`, `ScreenControllerTest.errorScreenShowsAReferenceAndNoSource`, and a log capture test that the `WARN` line holds the reference and the line.
-4. Fuzz (ADR 0007): `SourceMapFuzzTest` reads arbitrary map JSON and arbitrary paths without an exception other than a refusal; `EngineFuzzTest` asserts every `FailureSite` path resolves in the map of the flow it ran.
-5. `cd web && pnpm typecheck && pnpm test`: the generated contract has `reference`; `apps/admin/lib` tests that a resolved trace event selects the right block and line.
-6. `deploy/smoke.sh`: a draft preview with a hook that throws shows `hook risk hook_error` at the hook's line in the trace (unverified until implemented; needs the compose stack).
+1. `cd src && ./gradlew build`: `SourceMapTest.everyNodeOfTheShippedFlowsHasALine` (every node of every shipped flow in `apps/server/faye-app/src/main/resources/flows/` resolves to a line greater than 0, through the map's JSON form), `SourceMapTest.reformattingYamlKeepsTheHashAndMovesTheLines`, `NodePathsTest` (every IR form's children, paths, canonical keys, and the map's JSON form). The engine resolves frame paths with `NodePaths` itself, so the two share one indexing by construction.
+2. `cd src && ./gradlew build`: conformance vectors `trace-at-call-failure.yaml`, `trace-at-hook-failure.yaml`, `trace-at-fail.yaml`, `trace-at-retry-exhausted.yaml` assert each event's `at` and the `FailureSite`; `effect-commit-fails.yaml` and `password-success.yaml` assert the failure site of a non preview run and its absence. Every vector checks that every traced event but `start` has an `at`, and every failure site, a node of the version that ran. `conformance/README.md` documents `@entry/path` and `expect_failure`.
+3. `cd apps/server && ./gradlew build`: `SourceLinesTest.publishStoresTheSourceMap`, `.backfillSkipsAVersionWhoseYamlNoLongerCompilesToItsHash`, `.aHostErrorShowsAReferenceAndNoSource` (validated against the screen protocol), `.theLogLineHoldsTheReferenceAndTheLine`; `MilestoneSixTest.aPreviewRunIsTracedAndCheckedAgainstThePredictedPaths` (every event of a draft preview carries its node and line); `FlywayMigrationTest` pins `V7__version_source_map.sql`.
+4. Fuzz (ADR 0007): F17 `SourceMapFuzzTest.parse` reads arbitrary map text, path keys and paths with no exception, only refusals; F6 `EngineFuzzTest` asserts every `FailureSite` names a node of the version its flow ran, and its sweep that failure sites are reached.
+5. `cd apps/web && pnpm generate && pnpm typecheck && pnpm lint && pnpm test`: the generated contract has `ErrorResponse.reference`; `apps/admin/lib/preview.test.ts` checks that a trace event's source selects the block its line is in.
+6. `deploy/smoke.sh`: not yet (open gap 2).
 
 ## Pros and Cons of the Options
 
@@ -122,7 +139,7 @@ Planned; none of this exists yet.
 
 ## More Information
 
-* Compile time positions: `server/faye-dsl/src/main/java/faye/dsl/FlowCompiler.java` (marks), `YamlReader.java`, `faye-ir/SourceRef.java`.
-* Where positions are lost today: `server/faye-app/src/main/java/faye/app/SqliteFlowVersions.java` (`IrCodec.readFlow(json)` without sources).
-* Continuation paths: `server/faye-engine/src/main/java/faye/engine/Frame.java`, ir-spec.md, Evaluation.
-* Docs to update with the implementation: `docs/ir-spec.md` is unaffected (the IR does not change); `conformance/README.md` (`at`), the screen protocol section for `reference`.
+* Compile time positions: `src/faye-core/src/main/java/faye/dsl/FlowCompiler.java` (marks), `YamlReader.java`, `faye/ir/SourceRef.java`.
+* Where positions were lost: `apps/server/faye-app/src/main/java/faye/app/SqliteFlowVersions.java` (`IrCodec.readFlow(json)` without sources).
+* Continuation paths: `src/faye-engine/src/main/java/faye/engine/Frame.java`, `docs/ir-spec.md`, Evaluation.
+* Docs to update with the implementation: `docs/ir-spec.md` is unaffected (the IR does not change); `src/conformance/README.md` (`at`, `expect_failure`), the screen protocol (`ErrorResponse.reference`). The roadmap's engine.md and dsl-and-ir.md, which the first draft of this record updated, were retired by [ADR 0036](0036-retire-the-roadmap.md); this record and the conformance README now hold what they would have said.

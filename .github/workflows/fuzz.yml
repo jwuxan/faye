@@ -27,6 +27,7 @@ jobs:
       matrix:
         harness:
           - IrCodecFuzzTest
+          - SourceMapFuzzTest
           - FlowCompilerFuzzTest
           - PredicatesFuzzTest.predicates
           - PredicatesFuzzTest.acr

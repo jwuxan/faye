@@ -22,6 +22,7 @@ import faye.identity.UserStore;
 import faye.ir.Flow;
 import faye.ir.HookDef;
 import faye.ir.IrCodec;
+import faye.ir.SourceMap;
 import faye.ir.SourceRef;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -464,7 +465,7 @@ class AdminController {
             FlowCompiler.Compiled compiled = compile(tenant, yaml);
             Flow flow = compiled.flow();
             FlowVersion version = publisher.publish(tenant, flow, compiled.hooks());
-            store.saveSource(version.hash(), yaml);
+            store.saveSource(version.hash(), yaml, SourceMap.of(flow));
             Report report = publisher.check(tenant, flow);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(new Published(

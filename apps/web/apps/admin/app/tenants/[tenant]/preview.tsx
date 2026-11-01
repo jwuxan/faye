@@ -12,7 +12,7 @@ import { Fragment, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type PreviewRun, type PreviewView, type Seeded } from "../../../lib/api";
 import { remaining, totp } from "../../../lib/totp";
-import { delta, describe, duration, stamp, timeOf, type LiveRun, type Recorded, type TraceEvent } from "../../../lib/trace";
+import { delta, describe, duration, sourceLabel, stamp, timeOf, type LiveRun, type Recorded, type Source, type TraceEvent } from "../../../lib/trace";
 import { Input } from "@faye/ui/components/input";
 import { Chip, Choice, CopyButton, denseMono, Help, PanelSection, Prop, Segmented, Switch } from "../../ui";
 
@@ -45,6 +45,7 @@ export function Preview({
   blocked,
   run,
   onEvent,
+  onSource,
   fail,
   reset = 0,
   onFollowing,
@@ -56,6 +57,8 @@ export function Preview({
   blocked: string | null;
   run: LiveRun | null;
   onEvent: (r: Recorded) => void;
+  /** Shows the block an event's YAML line is in (ADR 0027). */
+  onSource?: (s: Source) => void;
   fail: (e: unknown) => void;
   /** Bumped by Reset scenario. */
   reset?: number;
@@ -354,6 +357,16 @@ export function Preview({
                         <span className="truncate" title={describe(e)}>
                           {e.event === "start" ? (e.outcome ?? "") + " " + (e.id ?? "").slice(7, 15) : describe(e)}
                         </span>
+                        {r.source && (
+                          <button
+                            type="button"
+                            className="shrink-0 font-mono text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                            title={`${r.source.kind} at ${sourceLabel(r.source)}`}
+                            onClick={() => onSource?.(r.source!)}
+                          >
+                            {r.source.line}:{r.source.column}
+                          </button>
+                        )}
                         {e.event === "end" && (
                           <>
                             {e.amr?.map((a) => (

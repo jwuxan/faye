@@ -3,8 +3,22 @@
  * what the block tree highlights: the visit keys of the steps and options it went through (the
  * scheme of PathView.visits and visitKeys in flow.ts) and the one waiting on a screen.
  */
-export type TraceEvent = { event: string; id?: string; outcome?: string; amr?: string[]; acr?: string };
-export type Recorded = { seq: number; tenantId: string; flowId: string; at: number; event: TraceEvent };
+export type TraceEvent = {
+  event: string;
+  id?: string;
+  outcome?: string;
+  amr?: string[];
+  acr?: string;
+  /** The node the event is about: its entry and child index path (ADR 0027); absent on start. */
+  at?: { entry: string; path: number[] };
+};
+/**
+ * Where an event's node came from in the YAML the run was compiled from, resolved by the server
+ * from the version's source map; absent when the version has no line for it. kind is the YAML key
+ * (use, hook, screen, fail, succeed, step, retry, if, alternative, set, steps).
+ */
+export type Source = { origin: string; line: number; column: number; kind: string };
+export type Recorded = { seq: number; tenantId: string; flowId: string; at: number; event: TraceEvent; source?: Source | null };
 
 export type LiveRun = {
   flowId: string;
@@ -47,6 +61,11 @@ export function follow(run: LiveRun | null, r: Recorded): LiveRun {
     waiting: e.event === "screen" ? (visits.at(-1) ?? null) : e.event === "end" ? null : current.waiting,
     end: e.event === "end" ? e : current.end,
   };
+}
+
+/** `acme.yaml:14:7`, as compile errors show positions. */
+export function sourceLabel(s: Source): string {
+  return `${s.origin}:${s.line}:${s.column}`;
 }
 
 /** The event in a line: its id, outcome, amr and acr, whichever it has. */

@@ -6,9 +6,11 @@ import faye.dsl.FlowCompiler;
 import faye.engine.FlowState;
 import faye.engine.FlowVersion;
 import faye.engine.Previews;
+import faye.engine.Site;
 import faye.engine.TraceEvent;
 import faye.engine.spi.FlowVersions;
 import faye.engine.spi.HookStore;
+import faye.ir.SourceMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -18,7 +20,8 @@ import java.util.Optional;
  * Runs preview clients' flows on the tenant's draft, once it passes the checker under the tenant's
  * settings, or on the current version when there is no draft. The draft's version and hooks are
  * stored by hash, outside any history, so the flow can pin them. With previews off, or a draft that
- * does not compile or fails the checker, a preview client's sign in is refused.
+ * does not compile or fails the checker, a preview client's sign in is refused. Each traced event
+ * is stored with the YAML line its node came from ({@link SourceLines}).
  */
 final class DraftPreviews implements Previews {
 
@@ -29,6 +32,7 @@ final class DraftPreviews implements Previews {
     private final Publisher publisher;
     private final Tenants tenants;
     private final TraceStore traces;
+    private final SourceLines lines;
 
     private final FlowCompiler.Options dsl;
 
@@ -40,6 +44,7 @@ final class DraftPreviews implements Previews {
             Publisher publisher,
             Tenants tenants,
             TraceStore traces,
+            SourceLines lines,
             FlowCompiler.Options dsl) {
         this.dsl = dsl;
         this.props = props;
@@ -49,6 +54,7 @@ final class DraftPreviews implements Previews {
         this.publisher = publisher;
         this.tenants = tenants;
         this.traces = traces;
+        this.lines = lines;
     }
 
     boolean enabled() {
@@ -74,6 +80,8 @@ final class DraftPreviews implements Previews {
         compiled.hooks().values().forEach(hooks::put);
         FlowVersion version = FlowVersion.of(compiled.flow());
         versions.store(version);
+        // Its lines are those of the draft in the author's editor
+        lines.remember(version.hash(), SourceMap.of(compiled.flow()));
         return Optional.of(version);
     }
 
@@ -85,6 +93,11 @@ final class DraftPreviews implements Previews {
 
     @Override
     public void trace(FlowState state, TraceEvent event) {
-        traces.append(state.tenantId(), state.flowId(), event);
+        Site at = event.at();
+        traces.append(
+                state.tenantId(),
+                state.flowId(),
+                event,
+                at == null ? null : lines.locateInDraft(state.versionHash(), at).orElse(null));
     }
 }
