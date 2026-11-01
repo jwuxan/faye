@@ -238,9 +238,15 @@ public final class Checker {
                         .ifPresent(k -> error(
                                 screen.source(),
                                 "entry-needed",
-                                "screen '" + screen.type() + "' needs the flow to have a " + k.wireName() + " entry"));
+                                "screen '" + screen.type() + "' needs the flow to have " + article(k.wireName())
+                                        + " entry"));
             default -> {}
         }
+    }
+
+    /** "an approve", "a consent": the article an entry kind takes in a message. */
+    private static String article(String word) {
+        return ("aeiou".indexOf(word.charAt(0)) >= 0 ? "an " : "a ") + word;
     }
 
     // ---- checks on the tree ----
@@ -295,7 +301,7 @@ public final class Checker {
                         .ifPresent(spec -> error(
                                 screen.source(),
                                 "entry-screen",
-                                "screen '" + screen.type() + "' belongs in a " + kinds(spec.entries())
+                                "screen '" + screen.type() + "' belongs in " + article(kinds(spec.entries()))
                                         + " entry, not in this " + kind.wireName() + " entry"));
             }
             case Call call -> {
@@ -309,7 +315,7 @@ public final class Checker {
                     error(
                             call.source(),
                             "entry-call",
-                            call.handler() + " belongs in a " + kinds(meta.entries()) + " entry, not in this "
+                            call.handler() + " belongs in " + article(kinds(meta.entries())) + " entry, not in this "
                                     + kind.wireName() + " entry");
                 }
                 if (kind == Entry.Kind.CONSENT && (meta.credential() || meta.bindsSubject())) {
