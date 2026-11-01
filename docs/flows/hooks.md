@@ -214,7 +214,7 @@ Step by step:
 
 In `acme.yaml`, the hook runs `after` the **Identifier**. The `second-factor` step then runs only `if: { eq: [vars.risk, high] }`. The flow declares the target under `capabilities`, and gives the hook 500 ms instead of the default 200 ms, because the hook makes a network call.
 
-In the local stack, the target is a stub, `deploy/ip-reputation.mjs`. It scores 90 for an IP address in `203.0.113.0/24` or a user agent that contains "suspicious", and 10 otherwise. The **High risk** switch of a preview uses `203.0.113.7`. See [Preview a draft](../console/preview.md).
+In the local stack, the target is a stub, `deploy/ip-reputation.mjs`. It scores 90 for an IP address in `203.0.113.0/24` or a user agent that contains "suspicious", and 10 otherwise. The **High risk IP** switch of a preview uses `203.0.113.7`. See [Preview a draft](../console/preview.md).
 
 ## Write and test a hook in the Admin UI
 
@@ -381,6 +381,6 @@ To find out why a hook failed:
 
 ## Next steps
 
-- [Preview a draft](../console/preview.md): try a hook in a real sign in, with the **High risk** switch.
+- [Preview a draft](../console/preview.md): try a hook in a real sign in, with the **High risk IP** switch.
 - [Edit and publish a flow](../console/flow-editor.md): attach hooks to blocks.
 - [Flow DSL reference](../reference/dsl.md): every key of a flow, hooks included.

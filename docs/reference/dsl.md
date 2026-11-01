@@ -16,7 +16,7 @@ A flow file passes three gates before it runs. Each gate reports problems as `fi
 |---|---|---|
 | Compiler | YAML rules, keys, block placement, settings, and the IR grammar | Every validate, preview and publish |
 | Verifier | Screens and handlers exist, screen options and paths, the hard limits | The checker, and the engine whenever it runs a version |
-| Checker | Every path through the flow, against the safety rules and the tenant's policy | Publish, rollback, preview and startup |
+| Checker | Every path through the flow, against the safety rules and the tenant's policy | Validate, publish, rollback, preview and startup |
 
 An error at any gate stops a publish and a preview. A warning does not. The Admin UI shows both on the YAML tab and on the block they point at.
 
@@ -255,7 +255,7 @@ Every block with a screen may also fail with `issuer_error` when the server data
 
 - **What the person sees:** the `identifier` screen, at `/login`, which asks who they are. It is prefilled from `host.login_hint`. With `passkey: true` it also offers passkey autofill. With `password: true` it asks for the password on the same screen. When the tenant offers "keep me signed in", the screen shows it.
 - **Handler:** `identity.resolve`. It finds the account and fills `user.*`; see [User fields](#user-fields). It proves nothing.
-- **Settings:** `passkey` (default `false`), `password` (default `false`), `attempts` (default 3). `attempts` is allowed only with `password: true`, because an identifier alone never fails.
+- **Settings:** `passkey` (default `false`), `password` (default `false`), `attempts` (default 3). `attempts` is allowed only with `password: true`. Without the password, the Identifier runs once.
 - **With `password: true`:** the block also calls `password.verify` and proves `pwd`. It takes no other option: `passkey: true` is refused. No Password block may appear in the same section.
 - **Placement:** the first step of `login` and of `approve`, and nowhere else. It takes no `if`.
 - **Failure codes:** `wrong_account`, when a subject is already bound (a step up) and the person names another account. With `password: true`, also `invalid_credentials`.
@@ -598,7 +598,7 @@ In YAML, a hook is never inside a retry, so each attachment counts once toward t
 The engine also stops a single request at 32 hook runs or 10,000 ms of hook time, `vars` at 64 names, and a saved flow at 256 KiB. One hook run makes at most 4 egress calls.
 
 > [!TIP]
-> Paths multiply with every choice, condition and attempt. If the checker reports more than 10,000 paths, lower the attempts of a block that does not need many, or remove an option that few people use. `acme.yaml` sets `with: { attempts: 1 }` on Add phone for this reason ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)).
+> Paths multiply with every choice, condition and attempt. If the checker reports more than 10,000 paths, lower the attempts of a block that does not need many, or remove an option that few people use. `acme.yaml` sets `with: { attempts: 1 }` on Add phone, so that it has fewer paths ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)).
 
 ## Messages
 

@@ -4,11 +4,11 @@ description: What the Admin UI is for, how its pages fit together, and how a dra
 
 # Admin UI overview
 
-The Admin UI is the console where you build and run each tenant's sign in. This page explains what the console is for, how to move around in it, and how a draft becomes the version that people sign in with. Read it first if you are new to the console. Flow authors and the engineers who run Faye both use it.
+The Admin UI is the console where you build and run each tenant's sign in. This page explains what the console is for, how to move around in it, and how a draft becomes the version that people sign in with. Read this page first if you are new to the console. Flow authors and the engineers who run Faye both use the console.
 
 ## What the Admin UI is for
 
-The Admin UI runs on port 3002, at http://localhost:3002 in the local stack. With it you can:
+The Admin UI runs on port 3002, at http://localhost:3002 in the local stack. In the Admin UI, you can:
 
 - Edit a tenant's flow as blocks or as YAML, and see every path the checker finds.
 - Preview a draft against a real OAuth client before you publish it.
@@ -22,14 +22,14 @@ The console does not create users or OAuth clients. Both come from outside Faye,
 
 ## Keep the Admin UI on your own machine
 
-The Admin UI has no sign in. Anyone who can open it can publish, roll back and change settings for every tenant ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)).
+The Admin UI has no sign in. Anyone who can open the console can publish, roll back and change settings for every tenant ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)).
 
-The console talks to Faye's admin API through its own server. Faye serves the admin API only on a Unix domain socket (`FAYE_ADMIN_SOCKET`), never on a network port. It checks a bearer token (`FAYE_ADMIN_TOKEN`) on every call ([ADR 0028](../adr/0028-admin-api-on-a-unix-domain-socket.md)). The browser never sees the token. A request that changes something must also carry the header `x-faye-admin: 1`, which a form on another site cannot send.
+The console talks to Faye's admin API through its own server. Faye serves the admin API only on a Unix domain socket (`FAYE_ADMIN_SOCKET`), never on a network port. Faye checks a bearer token (`FAYE_ADMIN_TOKEN`) on every call ([ADR 0028](../adr/0028-admin-api-on-a-unix-domain-socket.md)). The browser never sees the token. A request that changes something must also carry the header `x-faye-admin: 1`. A form on another site cannot send this header.
 
 The compose stack publishes the console on `127.0.0.1:3002` only, so other machines cannot reach it.
 
 > [!CAUTION]
-> Do not publish port 3002 on a shared network or the internet. The console signs nobody in, so whoever reaches it controls every tenant's sign in. A shared deployment needs an authenticating proxy in front of the console.
+> Do not publish port 3002 on a shared network or the internet. The console has no sign in. Anyone who can reach the console controls every tenant's sign in. A shared deployment needs an authenticating proxy in front of the console.
 
 If the first page shows **Admin API request failed** with a status code, the console cannot use the admin API. Check that `FAYE_ADMIN_TOKEN` has the same value for the Faye server and for the Admin UI.
 
@@ -44,7 +44,7 @@ Select a tenant to open its **Login flow** page. The shipped configuration has t
 
 ## The console frame
 
-Inside a tenant, every page sits in the same frame. The diagram shows its parts: a sidebar on the left and the page on the right.
+Inside a tenant, every page has the same frame. The diagram shows the parts of the frame: a sidebar on the left and the page on the right.
 
 ```mermaid
 flowchart LR
@@ -66,7 +66,7 @@ flowchart LR
   Sidebar --- Page
 ```
 
-The top of the sidebar holds the Faye logo, which takes you back to all tenants. Next to it is **Hide sidebar**. Under them is the search field **Search or jump to…**, which opens the command palette.
+The Faye logo is at the top of the sidebar. Select the logo to go back to the list of all tenants. Next to the logo is **Hide sidebar**. Under the logo is the search field **Search or jump to…**. This field opens the command palette.
 
 The sidebar groups the tenant's pages:
 
@@ -80,7 +80,7 @@ The sidebar groups the tenant's pages:
 | Directory | **Users** | See the accounts in the tenant's user pool. |
 | Settings | **General** | Require MFA, set block defaults and allowlists, and see egress grants. |
 
-The foot of the sidebar holds three controls:
+The bottom of the sidebar has three controls:
 
 - **Docs** opens these docs inside the console.
 - The tenant switcher shows the current tenant. Open it to switch to another tenant, or choose **All tenants** to go back to the list.
@@ -99,7 +99,7 @@ Press `⌘K` (`Ctrl+K` on Windows and Linux), or select **Search or jump to…**
 
 ## See every keyboard shortcut
 
-Hold `⌘` (`Ctrl` on Windows and Linux) on its own for half a second. A sheet with every shortcut appears. Release the key, or press any other key, to close it.
+Hold `⌘` (`Ctrl` on Windows and Linux) alone for half a second. A sheet with every shortcut appears. Release the key, or press any other key, to close it.
 
 | Where | Keys | What it does |
 |---|---|---|
@@ -123,7 +123,7 @@ On Windows and Linux, press `Ctrl` wherever this table shows `⌘`. `Ctrl+Space`
 |---|---|
 | Add a step, such as a second factor | **Login flow**, **Blocks** tab, **Add block** |
 | Change a flow in text | **Login flow**, **YAML** tab |
-| See how many ways the flow can end, and the amr and acr of each | **Login flow**, **Paths** tab |
+| See how many ways the flow can end, and the amr (authentication methods references) and acr (authentication context class reference) of each | **Login flow**, **Paths** tab |
 | Try the draft with a real client before publishing | **Login flow**, **Preview** tab ([Preview a draft](preview.md)) |
 | Make the draft live | **Publish**, in the header of **Login flow**, **Hooks** or **Versions** |
 | Undo a bad publish | **Versions**, select an earlier version, **Make live** |
@@ -141,7 +141,7 @@ On Windows and Linux, press `Ctrl` wherever this table shows `⌘`. `Ctrl+Space`
 
 Each tenant has one draft: the flow's YAML, with its hooks. You change it in the **Blocks** tab, the **YAML** tab and the **Hooks** page. All three edit the same text.
 
-The Faye server stores the draft, not your browser. Everyone who opens the console for a tenant works on the same draft. The last save wins.
+The Faye server stores the draft, not your browser. Everyone who opens the console for a tenant works on the same draft. If two people save, the later save replaces the earlier one.
 
 ### Autosave and checking
 
@@ -154,7 +154,7 @@ The console saves the draft 400 ms after you stop editing. Each save also asks t
 | **No changes** | There is no saved draft yet. The editor shows the live flow. |
 | **Not saved** | The save failed. A red message in the corner says why. |
 
-The status bar at the foot of the **Login flow** and **Hooks** pages shows what the check found. See [Read the status bar](flow-editor.md#read-the-status-bar-and-the-problems-list).
+The status bar at the bottom of the **Login flow** and **Hooks** pages shows what the check found. See [Read the status bar](flow-editor.md#read-the-status-bar-and-the-problems-list).
 
 ### Draft and live version
 
@@ -173,9 +173,9 @@ flowchart LR
 
 ### Publish
 
-Select **Publish** in the header. The button is off while the check runs, and while the draft has errors. Hold the pointer over it to see why. Warnings do not stop a publish.
+Select **Publish** in the header. The button is turned off while the check runs, and while the draft has errors. Hold the pointer over the button to see why. Warnings do not stop a publish.
 
-The server compiles and checks the draft again before it publishes. If the check passes, a message says **Published** with the new hash, and the version is live at once. If the check fails, a message says **Not published: the flow has errors**.
+The server compiles and checks the draft again before it publishes. If the check passes, a message says **Published** with the new hash, and the new version is live immediately. If the check fails, a message says **Not published: the flow has errors**.
 
 Publishing does not clear the draft. Sign ins that started on the old version finish on that version.
 

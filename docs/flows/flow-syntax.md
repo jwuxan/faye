@@ -156,7 +156,7 @@ credential:
 The engine decides which option runs, in this order:
 
 1. An option with an `if` is enabled only while its condition holds. An option without one is always enabled.
-2. If the choice has a `pick` hook and an option is enabled, the hook picks one.
+2. If the choice has a `pick` hook and an option is enabled, the hook may pick one.
 3. If the person already answered an option's first screen, that option runs. A passkey chosen from autofill on the identifier screen works this way.
 4. If exactly one option is enabled, it runs. The person sees no choice.
 5. Otherwise, the person chooses on the method picker screen, "Choose how to continue".
@@ -187,7 +187,7 @@ A group cannot hold the Identifier, consent or QR approval blocks. Those are ste
 
 ## Set and fail
 
-A `set` step writes values into `vars`, where later conditions and hooks read them. A name is lowercase letters, digits and `_`. A value is a string, a whole number, or `true` or `false`.
+A `set` step writes values into `vars`, where later conditions and hooks read them. A name is lowercase letters, digits and `_`, and starts with a letter. A value is a string, a whole number, or `true` or `false`.
 
 ```yaml
 note:
