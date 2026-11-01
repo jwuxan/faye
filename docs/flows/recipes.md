@@ -11,7 +11,7 @@ Many recipes come from the flows that ship with the prototype, in [`apps/server/
 "What the checker proves" lists the `amr` and `acr` values of the paths that succeed, as the **Paths** tab shows them. `amr` lists the methods that verified. `acr` is the level of the sign in. The engine computes these values from the credentials that verified. A flow never sets them.
 
 > [!NOTE]
-> A recipe without a consent step has no consent screen. The authorization server grants consent without a screen. To ask third party applications for consent, add the step from [Consent for third party applications only](#consent-for-third-party-applications-only).
+> A recipe without a consent step has no consent screen. Faye then accepts every consent request at once, for every application, third party ones included. To ask third party applications for consent, add the step from [Consent for third party applications only](#consent-for-third-party-applications-only).
 
 ## Password only
 

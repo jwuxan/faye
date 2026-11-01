@@ -191,14 +191,14 @@ A preview runs your draft, not the live version, through the demo client. It wor
 
 1. Select the **Preview** tab.
 2. Under **Account**, choose **New user**. Faye creates a preview account and shows its identifier and password. Preview accounts sign in only through preview clients.
-3. Under **Request**, turn on **High risk IP**. The request then comes from `203.0.113.7`, which the demo's stub service scores as high risk.
+3. Under **Request**, turn on **High risk**. The request then comes from `203.0.113.7`, which the demo's stub service scores as high risk.
 4. Select **Preview**. The demo client opens in a popup or a new tab, with the tenant's preview client.
 5. Sign in with the identifier and password that the Preview tab shows.
 6. The new account has no TOTP, so the Enroll TOTP screen appears. Add the key to an authenticator app, and enter the code. If you have no app, paste the secret from that screen into **Secret** under **Authenticator**. The Preview tab then shows the current code.
 
 While you sign in, the **Trace** section lists what the engine does, and the graph highlights each block it visits. When the sign in ends, Faye compares it with the paths that the checker found. The result shows **Matches path**, followed by the path.
 
-Run the preview again with **High risk IP** off. The flow skips the second factor and ends with `faye:1fa`. Then choose `faye:2fa` under **acr_values**. The flow asks for the second factor again.
+Run the preview again with **High risk** off. The flow skips the second factor and ends with `faye:1fa`. Then choose `faye:2fa` under **acr_values**. The flow asks for the second factor again.
 
 > [!IMPORTANT]
 > If the preview says **Matches no enumerated path: the engine and the checker disagree**, you found a bug in Faye. Report it with the flow and the trace.

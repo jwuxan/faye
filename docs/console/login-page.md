@@ -85,7 +85,7 @@ The flow decides what happens and in what order. Change the flow on the **Login 
 The limit has three reasons:
 
 - **Security.** The login page runs no tenant scripts, so no tenant code sees what a person types. The Login UI also refuses to show inside a frame on another site.
-- **Accessibility.** Each screen type is built and tested once, for every tenant.
+- **Accessibility.** Each screen type is built once, for every tenant, so an accessibility fix reaches every tenant. No automated accessibility check runs yet ([ADR 0036](../adr/0036-retire-the-roadmap.md#open-gaps), R8).
 - **Checks.** Every screen is a typed template that the engine and the checker know. A free form page goes around what the checker proves about a flow.
 
 If a flow needs a screen that does not exist, Faye must add a new screen type to the screen protocol. This is a change to Faye, not a tenant setting.

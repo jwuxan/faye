@@ -13,7 +13,7 @@ The screens are defined in [`src/schema/screen.schema.json`](../../src/schema/sc
 Faye shows only screens from a fixed set of typed templates. A flow says which screen comes next. It never says how the screen looks.
 
 - [Charter](../../CHARTER.md) principle 6 says that tenants configure what happens and in what order, not how screens are built. Appearance is limited to branding.
-- Founding decision D6 in [ADR 0036](../adr/0036-retire-the-roadmap.md) chose typed screens instead of free form forms. One renderer serves every tenant, so accessibility and security are reviewed once.
+- Founding decision D6 in [ADR 0036](../adr/0036-retire-the-roadmap.md) chose typed screens instead of free form forms. One renderer serves every tenant, so each accessibility or security fix is made once.
 
 A tenant changes the look only through branding: a name, a logo, a primary color, a corner radius, a show password button and a sign up button ([ADR 0033](../adr/0033-login-page-customization-and-keep-me-signed-in.md)). See [Customize the login page](../console/login-page.md).
 

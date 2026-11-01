@@ -54,7 +54,7 @@ flowchart LR
 
 A step's condition, `if`, applies to its hooks too. When the condition is false, no hook of that step runs. A block's attempts repeat only its screen and its handler. So a hook runs once, however many times the person retries the password or the code. A `before` hook on the **Identifier** runs before Faye knows the account. So this hook sees no `user` values yet.
 
-In the Admin UI, you attach a hook in the block inspector. Use **Before** and **After** in the **Hooks** group. For a choice, set **Picked by** to **Hook** and choose the hook in **Picker**. See [Edit and publish a flow](../console/flow-editor.md#hooks).
+In the Admin UI, you attach a hook in the block inspector. Use **Before** and **After** in the **Hooks** group. For a choice, set **Picked by** to **Hook** and choose the hook in **Picker**. See [Build a flow with blocks](../console/blocks.md#hooks).
 
 ## Declare a hook in YAML
 
@@ -93,16 +93,7 @@ login:
           block: enroll-totp
 ```
 
-A hook takes these keys:
-
-| Key | Required | What it is |
-|---|---|---|
-| `file` | `file` or `source` | A JavaScript file next to the flow file, such as `risk.js`. The name matches `[a-z0-9][a-z0-9_-]*\.js`. |
-| `source` | `file` or `source` | The JavaScript, inline. |
-| `capabilities` | no | `{ http: [target, ...] }`: the egress targets that the hook may call. See [Egress](#egress). |
-| `timeout_ms` | no | The hook's deadline in milliseconds, from 1 to 2000. The default is 200. |
-
-A hook id starts with a lowercase letter and uses `a` to `z`, `0` to `9`, `-` and `_`.
+The [Flow DSL reference](../reference/dsl.md#hook-keys) lists the keys of a hook: `file` or `source`, `capabilities` and `timeout_ms`, with their values and defaults. `capabilities` names the egress targets that the hook may call; see [Egress](#egress).
 
 The hook's code exports one function as its default export. The function may be `async`. It receives `ctx` and `cap`, and returns one of the results in [What a hook can do](#what-a-hook-can-do). This example routes a sign in with a picker. The `route` hook is new. The `risk` hook is the shipped one:
 
@@ -214,7 +205,7 @@ Step by step:
 
 In `acme.yaml`, the hook runs `after` the **Identifier**. The `second-factor` step then runs only `if: { eq: [vars.risk, high] }`. The flow declares the target under `capabilities`. The flow also gives the hook 500 ms instead of the default 200 ms, because the hook makes a network call.
 
-In the local stack, the target is a stub, a small test service: `deploy/ip-reputation.mjs`. The stub gives a score of 90 for an IP address in `203.0.113.0/24` or a user agent that contains "suspicious". It gives 10 for any other request. The **High risk IP** switch of a preview uses `203.0.113.7`. See [Preview a draft](../console/preview.md).
+In the local stack, the target is a stub, a small test service: `deploy/ip-reputation.mjs`. The stub gives a score of 90 for an IP address in `203.0.113.0/24` or a user agent that contains "suspicious". It gives 10 for any other request. The **High risk** switch of a preview uses `203.0.113.7`. See [Preview a draft](../console/preview.md).
 
 ## Write and test a hook in the Admin UI
 
@@ -383,6 +374,6 @@ To find out why a hook failed:
 
 ## Next steps
 
-- [Preview a draft](../console/preview.md): try a hook in a real sign in, with the **High risk IP** switch.
+- [Preview a draft](../console/preview.md): try a hook in a real sign in, with the **High risk** switch.
 - [Edit and publish a flow](../console/flow-editor.md): attach hooks to blocks.
 - [Flow DSL reference](../reference/dsl.md): every key of a flow, hooks included.

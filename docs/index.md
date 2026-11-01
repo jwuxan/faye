@@ -21,7 +21,7 @@ A login app looks small. But it is hard to build correctly:
 - It needs safe rules. One wrong branch can let a person in without a password. A careless error message can tell an attacker which accounts exist.
 - It changes often. The security team asks for a second factor on risky sign ins. A partner app needs a consent screen. Each change means new code and a new deploy.
 
-Faye replaces that app. You change a flow as data. Faye refuses the change if any route through the flow could sign a person in without checking a credential. You try the flow before you publish it.
+Faye replaces that app. You change a flow as data. Faye refuses the change if any path through the flow could sign a person in without checking a credential. You try the flow before you publish it.
 
 ## How it works
 

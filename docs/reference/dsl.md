@@ -500,7 +500,7 @@ A block with `attempts` of 2 or more runs again after a failure, up to that many
 - The steps before the first top level step that holds a Consent block lower to the `authenticate` entry, `login`.
 - That step, and every step after it, lower to the `consent` entry, `consent`. They run on the consent challenge, after the authorization server accepts the sign in.
 
-A flow with no Consent block has no consent entry. For such a flow, the authorization server grants consent without a screen. A Consent step whose `if` is false also grants consent without a screen. For example, `partner-consent.yaml` asks only third party applications for consent.
+A flow with no Consent block has no consent entry. For such a flow, Faye accepts every consent request at once, without a screen. A Consent step whose `if` is false also accepts consent without a screen. For example, `partner-consent.yaml` asks only third party applications for consent.
 
 The consent entry may not verify a credential. If you put a credential after Consent, the checker refuses the flow, for example with this message: `password.verify verifies a credential; a consent entry only grants access to a subject its authenticate entry proved`.
 

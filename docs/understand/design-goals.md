@@ -47,7 +47,7 @@ Every goal has a cost. These are the costs that we chose to accept.
 
 | We chose | We gave up | Why |
 |---|---|---|
-| Typed screens | Free form pages per tenant | One renderer is reviewed once for accessibility and security, for every tenant. |
+| Typed screens | Free form pages per tenant | One renderer serves every tenant, so each accessibility or security fix is made once. |
 | A closed language | Arbitrary logic in a flow | The checker can list every path and prove the safety rules hold. |
 | Hooks with a closed result | Hooks that can do anything | The checks stay true without reading the hook's JavaScript. |
 | Blocks with fixed screens and handlers | Assembling any screen with any handler | A step reads as one idea, and a block cannot be connected the wrong way ([ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md)). |
