@@ -1143,7 +1143,7 @@ public final class Engine {
         FlowState s = ended.state();
         String failure = ended.failure();
         if (failure != null) {
-            failures.failed(s, failureSite(ended, failure));
+            report(s, failureSite(ended, failure));
             Completion rejected = reported(s, ended, () -> host.reject(req, "access_denied", failure));
             emit(s, List.of(TraceEvent.of("end", null, failure, ended.at())));
             // A failed sign in, not a denied consent: a consent the person refused goes back to the app
@@ -1204,9 +1204,18 @@ public final class Engine {
             return call.get();
         } catch (RuntimeException e) {
             FailureSite site = failureSite(ended, HOST_ERROR);
-            failures.failed(state, site);
+            report(state, site);
             emit(state, List.of(TraceEvent.of("end", null, HOST_ERROR, ended.at())));
             throw new HostFailure(site, e);
+        }
+    }
+
+    /** Tells {@link Failures}; one that throws must not keep the host from being told, so it is only logged. */
+    private void report(FlowState state, FailureSite site) {
+        try {
+            failures.failed(state, site);
+        } catch (RuntimeException e) {
+            LOG.log(System.Logger.Level.WARNING, "failure reporter threw for {0}", site.reference());
         }
     }
 

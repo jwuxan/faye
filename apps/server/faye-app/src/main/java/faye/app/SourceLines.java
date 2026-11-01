@@ -21,9 +21,11 @@ import faye.ir.Step;
 import faye.ir.Succeed;
 import faye.ir.When;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import org.springframework.core.io.Resource;
 
 /**
@@ -80,8 +82,21 @@ final class SourceLines {
         }
     }
 
-    /** Where {@code at} of version {@code versionHash} came from; empty when no map has a line for it. */
+    /**
+     * Where {@code at} of version {@code versionHash} came from, in the YAML stored for it; a draft's
+     * map only for a version nobody published. Logs use this, so a draft that lowers to a published
+     * version (reformatted, a comment added) never moves production lines.
+     */
     Optional<Located> locate(String versionHash, Site at) {
+        return locate(versionHash, at, false);
+    }
+
+    /** As {@link #locate(String, Site)}, but a recent draft's map first: preview traces show the editor's lines. */
+    Optional<Located> locateInDraft(String versionHash, Site at) {
+        return locate(versionHash, at, true);
+    }
+
+    private Optional<Located> locate(String versionHash, Site at, boolean draftFirst) {
         Optional<FlowVersion> version = versions.get(versionHash);
         if (version.isEmpty()) return Optional.empty();
         Entry entry = version.get().flow().entries().get(at.entry());
@@ -92,9 +107,9 @@ final class SourceLines {
         synchronized (drafts) {
             draft = drafts.get(versionHash);
         }
-        Optional<SourceRef> ref = draft != null
-                ? draft.find(at.entry(), at.path())
-                : store.sourceMap(versionHash).flatMap(m -> m.find(at.entry(), at.path()));
+        Optional<SourceMap> stored = draftFirst && draft != null ? Optional.empty() : store.sourceMap(versionHash);
+        Optional<SourceMap> map = stored.isPresent() ? stored : Optional.ofNullable(draft);
+        Optional<SourceRef> ref = map.flatMap(m -> m.find(at.entry(), at.path()));
         return ref.map(r -> new Located(r.origin(), r.line(), r.column(), kind(node.get())));
     }
 
@@ -104,27 +119,32 @@ final class SourceLines {
      * Runs once at startup; nothing stored is rewritten.
      *
      * @param configured each tenant's configured flow, whose directory holds its hook files
+     * @param options the compiler options to try for a tenant, in order (its block defaults may have
+     *     changed since a version was published)
      */
-    void backfill(Map<String, Resource> configured, FlowCompiler.Options dsl) {
+    void backfill(Map<String, Resource> configured, Function<String, List<FlowCompiler.Options>> options) {
         for (String hash : store.unmappedSources()) {
             Optional<String> yaml = store.source(hash);
             Optional<String> tenant = configured.keySet().stream()
                     .filter(t -> versions.history(t).contains(hash))
                     .findFirst();
             if (yaml.isEmpty() || tenant.isEmpty()) continue;
-            try {
-                FlowCompiler.Compiled compiled = EngineConfiguration.compileDraft(
-                        Objects.requireNonNull(configured.get(tenant.get())), tenant.get(), yaml.get(), dsl);
-                if (FlowVersion.of(compiled.flow()).hash().equals(hash)) {
-                    store.saveSourceMap(hash, SourceMap.of(compiled.flow()));
-                } else {
-                    LOG.log(
-                            System.Logger.Level.INFO,
-                            "version {0} no longer compiles from its YAML; it has no lines",
-                            hash);
+            Optional<SourceMap> map = Optional.empty();
+            for (FlowCompiler.Options dsl : options.apply(tenant.get())) {
+                try {
+                    FlowCompiler.Compiled compiled = EngineConfiguration.compileDraft(
+                            Objects.requireNonNull(configured.get(tenant.get())), tenant.get(), yaml.get(), dsl);
+                    if (FlowVersion.of(compiled.flow()).hash().equals(hash)) {
+                        map = Optional.of(SourceMap.of(compiled.flow()));
+                        break;
+                    }
+                } catch (RuntimeException e) {
+                    // A DslException, or a hook file that is gone: try the next options
                 }
-            } catch (RuntimeException e) {
-                // A DslException, or a hook file that is gone
+            }
+            if (map.isPresent()) {
+                store.saveSourceMap(hash, map.get());
+            } else {
                 LOG.log(
                         System.Logger.Level.INFO,
                         "version {0} no longer compiles from its YAML; it has no lines",

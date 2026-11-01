@@ -342,11 +342,22 @@ class EngineConfiguration {
     @Bean
     @DependsOn("publisher")
     SourceLines sourceLines(
-            TenantConfigStore store, FlowVersions versions, FayeProperties props, FlowCompiler.Options dsl) {
+            TenantConfigStore store,
+            FlowVersions versions,
+            FayeProperties props,
+            Tenants tenants,
+            FlowCompiler.Options dsl) {
         SourceLines lines = new SourceLines(store, versions);
         Map<String, Resource> configured = new HashMap<>();
         props.tenants().forEach((id, tenant) -> configured.put(id, tenant.flow()));
-        lines.backfill(configured, dsl);
+        // A version was compiled with whatever block defaults the tenant had then (ADR 0030): try
+        // the ones saved now, the configured ones, and none
+        lines.backfill(
+                configured,
+                tenant -> List.of(
+                        forTenant(dsl, tenants, tenant),
+                        dsl.withDefaults(tenants.configured(tenant).blocks()),
+                        dsl));
         return lines;
     }
 

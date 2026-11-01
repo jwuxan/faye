@@ -98,6 +98,6 @@ final class DraftPreviews implements Previews {
                 state.tenantId(),
                 state.flowId(),
                 event,
-                at == null ? null : lines.locate(state.versionHash(), at).orElse(null));
+                at == null ? null : lines.locateInDraft(state.versionHash(), at).orElse(null));
     }
 }

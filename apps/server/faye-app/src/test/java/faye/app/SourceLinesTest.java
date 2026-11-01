@@ -130,11 +130,28 @@ class SourceLinesTest {
         // credential (seq child 1), its block's retry, the retry's body, then its call: password.verify
         assertThat(lines.locate(current(), new Site("login", List.of(1, 0, 0, 1))))
                 .hasValueSatisfying(at -> {
-                    assertThat(at.toString()).isEqualTo("password-only.yaml:10:14");
+                    assertThat(at.toString()).endsWith(".yaml:10:14");
                     assertThat(at.kind()).isEqualTo("use");
                 });
         assertThat(lines.locate(current(), new Site("login", List.of(9)))).isEmpty();
         assertThat(lines.locate("sha256:unknown", new Site("login", List.of()))).isEmpty();
+    }
+
+    @Test
+    void aDraftOfAPublishedVersionMovesPreviewLinesOnly() {
+        Site use = new Site("login", List.of(1, 0, 0, 1));
+        // A reformatted draft that lowers to the published version, its call now on line 40
+        var draft = new faye.ir.SourceMap(
+                "default.yaml", Map.of("login", Map.of("1.0.0.1", new faye.ir.SourceMap.Position(40, 3))));
+        lines.remember(current(), draft);
+        assertThat(lines.locateInDraft(current(), use))
+                .hasValueSatisfying(at -> assertThat(at.toString()).isEqualTo("default.yaml:40:3"));
+        // The stored YAML's line (its origin label depends on how the map was built: config or backfill)
+        assertThat(lines.locate(current(), use)).hasValueSatisfying(at -> {
+            assertThat(at.line()).isEqualTo(10);
+            assertThat(at.column()).isEqualTo(14);
+        });
+        lines.remember(current(), store.sourceMap(current()).orElseThrow());
     }
 
     @Test
@@ -147,7 +164,7 @@ class SourceLinesTest {
         // Stored before ADR 0027: YAML, no map
         db.sql("DELETE FROM faye_version_source_map WHERE hash = ?").param(hash).update();
         assertThat(store.unmappedSources()).contains(hash);
-        lines.backfill(configured, dsl);
+        lines.backfill(configured, t -> List.of(dsl));
         assertThat(store.sourceMap(hash)).isPresent();
 
         // YAML that now lowers to another version: no map, rather than one with the wrong lines
@@ -156,14 +173,14 @@ class SourceLinesTest {
                 .params(yaml.replace("version: 1", "version: 2"), hash)
                 .update();
         try {
-            lines.backfill(configured, dsl);
+            lines.backfill(configured, t -> List.of(dsl));
             assertThat(store.sourceMap(hash)).isEmpty();
             assertThat(lines.locate(hash, new Site("login", List.of()))).isEmpty();
         } finally {
             db.sql("UPDATE faye_version_source SET yaml = ? WHERE hash = ?")
                     .params(yaml, hash)
                     .update();
-            lines.backfill(configured, dsl);
+            lines.backfill(configured, t -> List.of(dsl));
         }
         assertThat(store.sourceMap(hash)).isPresent();
     }
@@ -216,7 +233,7 @@ class SourceLinesTest {
         assertThat(line)
                 .contains("code=hook_error")
                 .contains("reference=ref_ABCDEFabcdef")
-                .contains("source=password-only.yaml:10:14 kind=use")
+                .containsPattern("source=[a-z-]+\\.yaml:10:14 kind=use")
                 .contains("tenant=default")
                 .contains("flow=" + identifier.flowId())
                 .contains("version=" + current())
