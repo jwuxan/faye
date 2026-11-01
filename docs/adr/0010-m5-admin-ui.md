@@ -8,11 +8,11 @@ decision-makers: Josh Wu
 
 ## Context and Problem Statement
 
-M5 ([milestones.md](../roadmap/milestones.md)) adds the Admin UI ([admin-ui.md](../roadmap/admin-ui.md)): the admin API; a tree editor with palette, inspector and condition builder; a YAML tab with inline diagnostics, Graph and Paths tabs; a hooks editor with test runs; versions with diff, publish and rollback; tenant settings and branding.
+M5 adds the Admin UI: the admin API; a tree editor with palette, inspector and condition builder; a YAML tab with inline diagnostics, Graph and Paths tabs; a hooks editor with test runs; versions with diff, publish and rollback; tenant settings and branding.
 
 Exit: the three M2 flows and the M4 risk flow are rebuilt entirely in the UI by someone who did not write them, with no YAML editing.
 
-M3 left a token protected admin API that takes YAML ([ADR 0008](0008-m3-checks-versions-and-tenant-policy.md)), stored versions without their YAML, and tenant settings fixed in `application.yaml`. The roadmap planned an editor over the IR, Monaco, React Flow and dnd-kit, and an Admin UI that signs in through Hydra with a fixed admin tenant flow.
+M3 left a token protected admin API that takes YAML ([ADR 0008](0008-m3-checks-versions-and-tenant-policy.md)), stored versions without their YAML, and tenant settings fixed in `application.yaml`. The plan had an editor over the IR, Monaco, React Flow and dnd-kit, and an Admin UI that signs in through Hydra with a fixed admin tenant flow.
 
 ## Decision Drivers
 
@@ -25,7 +25,7 @@ M3 left a token protected admin API that takes YAML ([ADR 0008](0008-m3-checks-v
 ## Considered Options
 
 1. What the editor edits
-   * A. The IR, as admin-ui.md planned; the server would need an IR to YAML decompiler for the YAML tab, hooks addressed by hash in a separate store, and source maps from editor node ids.
+   * A. The IR, as planned; the server would need an IR to YAML decompiler for the YAML tab, hooks addressed by hash in a separate store, and source maps from editor node ids.
    * B. The YAML surface as data: the tree editor edits the same document the YAML tab shows as text, and the server compiles it with the existing compiler.
 2. How the Admin UI authenticates
    * A. The server validates Hydra access tokens (introspection) on every admin call.
@@ -46,9 +46,9 @@ M3 left a token protected admin API that takes YAML ([ADR 0008](0008-m3-checks-v
 
 ## Decision Outcome
 
-1B, 2B, 3B, 4B, 5B, 6B. 2B was later superseded by [ADR 0018](0018-two-tenants-and-an-open-local-console.md), and the Redis storage of 3B and of versions by [ADR 0017](0017-one-sqlite-database.md); see "Changes since this decision" below. `acr` mapping (admin-ui.md, tenant settings) is not part of M5: renaming `faye:1fa`/`faye:2fa` per tenant touches `acr_values` enforcement in the engine and needs its own decision and conformance vectors.
+1B, 2B, 3B, 4B, 5B, 6B. 2B was later superseded by [ADR 0018](0018-two-tenants-and-an-open-local-console.md), and the Redis storage of 3B and of versions by [ADR 0017](0017-one-sqlite-database.md); see "Changes since this decision" below. `acr` mapping (tenant settings) is not part of M5: renaming `faye:1fa`/`faye:2fa` per tenant touches `acr_values` enforcement in the engine and needs its own decision and conformance vectors.
 
-**Document model (1B).** The flow is a YAML document. The block editor holds it as ordered data (sections, steps, options, bodies) and writes it back as YAML text; the YAML tab edits that text; both go to the server, which compiles it with `FlowCompiler`. Diagnostics carry the YAML line and column; the UI maps a position to the step or option whose range contains it. The IR stays the contract between compiler, checker and engine, and what versions are addressed by. admin-ui.md principle 1 changes to "the YAML document is the single source of truth for the editor".
+**Document model (1B).** The flow is a YAML document. The block editor holds it as ordered data (sections, steps, options, bodies) and writes it back as YAML text; the YAML tab edits that text; both go to the server, which compiles it with `FlowCompiler`. Diagnostics carry the YAML line and column; the UI maps a position to the step or option whose range contains it. The IR stays the contract between compiler, checker and engine, and what versions are addressed by. The plan's principle 1 changes to "the YAML document is the single source of truth for the editor".
 
 **Admin API** (`FAYE_ADMIN_TOKEN` as in M3; configured tenants only):
 

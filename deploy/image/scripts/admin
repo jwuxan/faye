@@ -1,4 +1,5 @@
 #!/bin/sh
 export PORT=3002 HOSTNAME=0.0.0.0
+export FAYE_DOCS_DIR=/opt/faye/docs
 cd /opt/faye/web/admin
 exec node --max-semi-space-size=1 apps/admin/server.js

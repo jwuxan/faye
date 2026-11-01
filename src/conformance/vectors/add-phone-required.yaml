@@ -1,0 +1,25 @@
+name: a required phone cannot be declined; the screen says so, and "Not now" is refused (ADR 0038)
+ir: flows/add-phone-required.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_phone: false } } }]
+  password.verify: [ok]
+  phone.enroll: [{ ok: { effects: [p1] } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: phone_enroll
+    expect_step: add-phone
+    expect_required: true
+  - submit: { skip: true }
+  - expect_refused: invalid_submission
+  - act: { action: send, input: { phone: "+15551234821" } }
+  - expect_screen: phone_enroll
+    expect_to: ••• ••• 4821
+    expect_required: true
+  - submit: { skip: true }
+  - expect_refused: invalid_submission
+  - submit: { code: "123456" }
+  - expect_commits: [phone.enroll:p1]
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

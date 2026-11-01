@@ -38,14 +38,15 @@ run faye env \
   FAYE_ADMIN_TOKEN="${FAYE_ADMIN_TOKEN:-dev-admin-token}" \
   FAYE_IP_REPUTATION_URL=http://localhost:8000/score \
   FAYE_PREVIEW_ENABLED=true \
-  "$root/server/gradlew" -p "$root/server" --console=plain :faye-app:bootRun
+  FAYE_DEMO_OUTBOX="$root/deploy/.data/outbox" \
+  "$root/apps/server/gradlew" -p "$root/apps/server" --console=plain :faye-app:bootRun
 # Writes each tenant's user pool once Faye has migrated the schema it polls for
 run seed env DATABASE="$FAYE_DATABASE" SECRETS="$secrets" node "$root/deploy/directory/seed.mjs"
-run login env DEMO_SIGN_IN_URL=http://localhost:3001/login pnpm -C "$root/web" --filter @faye/login dev
-run demo-client pnpm -C "$root/web" --filter @faye/demo-client dev
+run login env DEMO_SIGN_IN_URL=http://localhost:3001/login pnpm -C "$root/apps/web" --filter @faye/login dev
+run demo-client pnpm -C "$root/apps/web" --filter @faye/demo-client dev
 run admin env \
   FAYE_ADMIN_TOKEN="${FAYE_ADMIN_TOKEN:-dev-admin-token}" \
-  pnpm -C "$root/web" --filter @faye/admin dev
+  pnpm -C "$root/apps/web" --filter @faye/admin dev
 
 echo "[dev] Admin UI http://localhost:3002 (Try sign in on any application), demo client http://localhost:3001; accounts and passwords in $secrets/users.csv; Ctrl-C stops"
 wait

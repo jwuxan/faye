@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-01
 decision-makers: Josh Wu
 ---
@@ -170,17 +170,38 @@ The rest of the approve design:
 * Bad, because IR format 2 is the first format bump: every engine implementation must learn the `approve` kind to run QR flows.
 * Neutral: `email` is not an RFC 8176 value. A relying party that only knows RFC 8176 sees an unknown value; `acr` still says what it is worth.
 
+### Implementation status
+
+Built (2026-11-01): delivered codes and QR code sign in. The decision maker settled both open questions on 2026-11-01 (More Information) and added one rule (below). No gap remains; the decision maker accepted the record on 2026-11-02.
+
+**A rule added while building (decision maker, 2026-11-01).** An emailed or texted code is a credential and may stand in for the password (`email-code` and `sms-code` may be an option beside `password`). A code from an authenticator app may not: `totp.verify` now declares `requires_subject`, so the checker refuses a path where it runs before another credential verified the subject, and the handler fails `unauthenticated` without one. This changes the handler contract (`conformance/handlers.yaml`); no shipped or conformance flow used TOTP as the only credential, and `HookCheckTest` now picks between a password and an emailed code.
+
+Built as decided, with these choices made while building:
+
+* **Where the code lives.** The handlers and issuers are in the product: `faye.handlers.DeliveredCodes` against two new SPIs in `faye.engine.spi`, `CodeOutbox` (record a code for delivery; holds the limits that span flows) and `PhoneDirectory` (the one phone write), and `faye.handlers.QrSignIn` against `QrGrants`, as `BuiltinHandlers` is against its SPIs ([ADR 0034](0034-two-shippable-modules-under-src.md) moved screens and handlers into `src/` after this record was written, so there is no `faye-qr` module). `Account` gains `phone`: the number codes may be texted to, set only while it is verified and switched on. The prototype holds the stores and the hosting: `SqliteCodeOutbox`, `OutboxWorker`, `CodeDelivery`, `SqliteQrGrants` and `QrApprovalHost` in `faye-app`, so an embedder brings its own.
+* **The engine stays generic.** The engine and checker name no QR screen or handler (`BoundaryTest`). An approve entry's approval is "the one handler that belongs only in approve entries" (its `entries` in `handlers.yaml`), which must be the last call of every success path, once; the QR screen says it needs an approve entry through `ScreenSpec.needsEntry`. The entry gets the authenticate rules, including the tenant's MFA policy.
+* **The issuer sees its flow.** `CredentialIssuer` gains `issue(env, context, opts, previous)`, defaulting to the old `issue`, and `act(...)`, with `Context(flowId, tenant, preview, ref)`: a code's MAC is bound to the flow, the destination is looked up only among the accounts that flow may see, and the phone's issuer finds its grant by the host reference. Existing issuers are unchanged.
+* **Actions on the wire.** `SubmitRequest` already carried `action: "submit"`; an action is the same request with `action: "resend"`, `"send"` or `"poll"` and its input as `payload`, not a separate `input` field. A refused action is `400 unknown_action`.
+* **Limits.** The 30 s cooldown and 3 sends are kept in the screen's data by the issuer; the per destination (5 an hour, 10 a day) and per tenant and channel (`per-hour`, default 100) limits are counted over the outbox rows, in the same write transaction as the insert. An unknown account's rows are counted under what the person typed, so it reaches a limit like a real one.
+* **Delivery configuration.** `faye.tenants.<id>.delivery.email` / `.sms` is a webhook (`url`, `secret`, `per-hour`). Every channel without a webhook uses `faye.demo-outbox` (`FAYE_DEMO_OUTBOX`) when it is set, writing each code to a file; when it is empty such a channel is off, its handlers leave the tenant's policy (`Tenants`), a flow naming its blocks is refused at publish ("handler 'sms_code.verify' is not enabled for this tenant"), and the console offers the blocks disabled with what to configure (the admin settings view's `undeliverable`). Acme's shipped flow sends codes, so the shipped config always has an outbox: the image sets `/var/lib/faye/outbox` (not under `/var/lib/faye/demo`, which is deliberately out of Faye's reach), and `bootRun` defaults to `build/outbox`. An operator replaces it with webhooks.
+* **No locale yet.** The webhook body is `{channel, to, code, tenant}`: nothing hands the issuer the person's language.
+* **The MAC key.** `faye.code-key` (`FAYE_CODE_KEY`, base64, at least 32 bytes); unset, one is generated once and kept in the database (`faye_key`, Flyway `V5`), so every process and a restart resume the same flows. A key kept beside the flow state protects less if the database leaks.
+* **Adding a phone may be declined.** `phone_enroll` takes `{skip: true}` ("Not now"), as the passkey registration screen does, so a flow can offer it on every sign in without trapping anyone.
+* **QR code sign in.** The phone opens the Login UI's `/approve/{token}`, which calls the server's `POST /api/approve/{token}` for the binder cookie and the first screen's path; an unknown, used or expired code is answered as an unknown flow. `QrApprovalHost` wraps the app's host: an approve request is a grant, and its completion is a handoff (`{qr: approved}` or `{qr: refused, reason}`) the Login UI shows as "Approved, return to your other device". Grants live in `faye_qr_grant` (Flyway `V6`), stored by the token's SHA-256 only. The device summary is the browser family from the user agent; no IP location lookup is made.
+* **QR choices that differ from the text above.** `qr` takes 3 attempts by default, not 1, so an expired or refused code is shown afresh. The approver must be the account the waiting flow identified (`wrong_account` otherwise), so `user.*` never describes someone other than the subject. A wrong number refuses the grant inline, before the entry fails, so the waiting device stops at once although `qr.approve` is otherwise a `write` handler. Step ids are unique across a flow, so the approve section's ids differ from the login's (`who`, `prove`, `confirm` in Acme's flow, not `identify`, `credential`).
+* **Acme's shipped flow** (`apps/server/faye-app/src/main/resources/flows/acme.yaml`) uses every new block: a password, an emailed or texted code, or a QR code; the app or enrolling one as the high risk second factor; an offer to add a phone; and the approve section. The checker's 10,000 path limit ([ADR 0037](0037-hard-limits-on-flows-and-hooks.md)) bounds it: a texted code as the second factor and three attempts at adding a phone took it over, so neither is in it.
+
 ### Confirmation
 
-Planned; none of this exists yet.
+Run 2026-11-01:
 
-* `cd server && ./gradlew build`:
-  * conformance vectors `email-code`, `email-code-expired-then-resend`, `email-code-unknown-account` (same screen, never verifies), `sms-code-switch-off` (with the switch off only email is enabled, so it runs without a picker), `code-resend-limited`, `code-action-spends-no-attempt`, `add-phone-then-sms`, `qr-approved`, `qr-expired-then-retries`, `qr-wrong-number`, `qr-approver-pwd-is-1fa`, and `email-after-password-is-1fa`, with their generated paths;
-  * `CheckerTest`: an `approve` entry without `qr-approve` last, a `qr` block in a flow without an `approve` entry, `qr-approve` outside an approve entry, and a tenant without SMS delivery naming `sms-code` are each refused;
-  * `BlocksTest` and `HandlerContractTest` against the new rows of `conformance/blocks.yaml` and `conformance/handlers.yaml`; `DeliveredCodeIssuerTest` (the code never presented, MAC only, limits, unknown accounts); `EmbeddingTest` (an action reaches only the issuer); `BoundaryTest`; IR format compat fixtures;
-  * a fuzz harness for `SubmitRequest` actions and one for the QR grant store (ADR 0007).
-* `cd web && pnpm generate && pnpm typecheck && pnpm lint && pnpm test`: the kind switch keeps attempts and hooks, the **Code by** preset, the Approve section, and the palette held to `conformance/blocks.yaml`.
-* `deploy/smoke.sh` on a fresh stack: a sign in with an emailed code read from the demo outbox, and a QR sign in approved by a second browser context.
+* `cd src && ./gradlew build`: the conformance vectors `email-after-password-is-1fa`, `email-code-instead-of-password`, `sms-after-password-is-2fa`, `sms-code-switch-off`, `email-code-expired-then-resend`, `code-action-spends-no-attempt`, `code-resend-limited`, `code-unknown-action`, `add-phone`, `add-phone-declined`, `qr-approved`, `qr-approver-pwd-is-1fa`, `qr-expired-then-retries`, `qr-approve` and `qr-wrong-number`, with the generated paths of the flows `delivered-codes`, `add-phone`, `code-first` and `qr` (both of its entries); `CheckerTest` (delivered codes as a second factor and in place of the password, TOTP refused as the only credential, adding a phone before a credential, a tenant without SMS delivery, a code screen without delivery, QR code sign in with its approve entry, a QR code without one, an approve entry that does not end with its approval, the approval outside `approve`, a QR code inside it); `FlowCompilerTest` (the `approve` section and its placement errors); `IrCodecTest` and `CompatTest` (format 2, frozen as `conformance/compat/ir2-state1`); `DeliveredCodesTest`, `QrSignInTest` and `BuiltinHandlersTest` (the real issuers and handlers); `BuiltinContractTest`, `BuiltinScreenTest`; `EngineFuzzTest` (actions, the approve host kind) and `BuiltinHandlersFuzzTest` (the new handlers) extended.
+* `cd apps/server && ./gradlew build`: `DeliveredCodesApiTest`, `AcmeFlowTest` (Acme's shipped flow passes the checker at startup, and a QR code sign in runs end to end through the screen API and `/api/approve/{token}`), `QrGrantsFuzzTest` (the SQLite grant store against the in memory model; its first finding was the harness's clock, kept as `aSweepDeletesOnlyGrantsExpiredADayAgo`), `BlocksTest`, `FlywayMigrationTest` (V5, V6 pinned), `FlowSettingsTest`, `FlowApiFuzzTest` extended with the actions.
+* `deploy/fuzz.sh 1m` on `EngineFuzzTest`, `BuiltinHandlersFuzzTest`, `FlowApiFuzzTest`, `QrGrantsFuzzTest`: no findings after the harness fix.
+* `cd apps/web && pnpm generate && pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm e2e`: the kind switch, the **Code by** preset, the Approve section (placement, round trip of Acme's flow), the palette held to `blocks.yaml`, and the Login UI's code, phone, QR and approval screens in Chromium.
+* `deploy/smoke.sh` on a fresh `FAYE_DEMO=true` container: step 16, a sign in with an emailed code read from the demo outbox; step 17, a QR code sign in approved by a second browser with a password and the number shown.
+
+Two planned vectors were not written as vectors: `email-code-unknown-account` (vectors script the handlers, so a vector cannot show that an unknown account's code never verifies; `DeliveredCodesTest.anUnknownAccountLooksTheSameAndNeverVerifies` does) and `add-phone-then-sms` (the number `add-phone` proves is a staged write, applied only when the sign in succeeds, so a texted code later in the same flow finds no number; `add-phone` covers the action and the write).
 
 ## Pros and Cons of the Options
 
@@ -246,7 +267,9 @@ Planned; none of this exists yet.
 ### Open questions for the decision maker
 
 1. **Charter, success criterion 3** says no sign in succeeds "unless a built in handler verified or enrolled a credential for that subject, in this flow or in the session it reuses". In QR sign in the credential verifies in the phone's `approve` flow, and `qr.redeem` verifies a single use grant that only that flow can create. This record reads the grant as the credential `qr.redeem` verifies; if that reading is wrong, QR sign in needs a charter change first (charter, Changing this charter), and nothing here should be built until it is settled.
-2. Whether the `email` rule amends ADR 0006 or needs a record that supersedes it.
+2. Whether the `email` rule amends ADR 0006 or needs a record that supersedes it. Settled 2026-11-01: it amends ADR 0006.
+
+Question 1 was settled on 2026-11-01: the decision maker confirmed the reading, so the grant is the credential `qr.redeem` verifies and QR code sign in needs no charter change.
 
 ### Unverified claims, and how to verify them
 

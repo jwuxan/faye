@@ -4,10 +4,11 @@
 **/build
 **/.gradle
 **/dist
-server/dump.rdb
+apps/server/dump.rdb
 deploy/.bin
 deploy/.data
 *.db
 docs
 conformance
 *.md
+!docs

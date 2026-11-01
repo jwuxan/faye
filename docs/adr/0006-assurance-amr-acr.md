@@ -8,7 +8,7 @@ decision-makers: Josh Wu
 
 ## Context and Problem Statement
 
-[hydra-integration.md](../roadmap/hydra-integration.md) says `acr` is `faye:1fa` for one factor and `faye:2fa` for "two distinct factor classes, or a user verified passkey", and that unsatisfied `acr_values` are rejected. The charter adds that a session may be reused only when it satisfies the assurance the client asked for. Implementing this means making several precise choices.
+The Hydra integration plan says `acr` is `faye:1fa` for one factor and `faye:2fa` for "two distinct factor classes, or a user verified passkey", and that unsatisfied `acr_values` are rejected. The charter adds that a session may be reused only when it satisfies the assurance the client asked for. Implementing this means making several precise choices.
 
 ## Decision Drivers
 
@@ -23,7 +23,7 @@ decision-makers: Josh Wu
 
 ## Decision Outcome
 
-1. **Factor classes**: `pwd` is knowledge, `otp` and `hwk` are possession, `user` is inherence. Any other amr value is its own class. Two or more distinct classes give `faye:2fa`. A user verified passkey (`hwk`, `user`) is therefore 2fa, while `hwk` plus `otp` is 1fa. Handlers may prove only part of their declared amr (`Outcome.Ok.amr`), e.g. a passkey without user verification proves `hwk` but not `user`.
+1. **Factor classes**: `pwd` is knowledge, `otp` and `hwk` are possession, `user` is inherence. Any other amr value is its own class. Two or more distinct classes give `faye:2fa`. A user verified passkey (`hwk`, `user`) is therefore 2fa, while `hwk` plus `otp` is 1fa. Amended by [ADR 0032](0032-delivered-one-time-codes-and-qr-sign-in.md): `sms` is possession, and `email` counts as a factor alone but never as a second, so `pwd` plus `email` is 1fa. Handlers may prove only part of their declared amr (`Outcome.Ok.amr`), e.g. a passkey without user verification proves `hwk` but not `user`.
 2. **`acr_values`**: a login that reaches `succeed` must be at least as strong as the weakest requested value Faye knows. Unknown values are ignored. Otherwise the section fails with `acr_not_satisfied` and Hydra gets `access_denied`.
 3. **`skip`** (Hydra remembers a session): Hydra tells us who, not how strongly they signed in. So a reused session counts as `faye:1fa`. If that meets `acr_values`, the login is accepted at once with an empty `amr`. Otherwise the flow runs as a step up, with the subject pre-bound, so a credential for anyone else ends in `subject_mismatch`.
 

@@ -8,30 +8,32 @@
 # directory (git ignored); turn it into a named regression test before fixing, and do not attach it
 # to a public log or issue (ADR 0007, Triage). The corpus grows in each module's .cifuzz-corpus/.
 set -euo pipefail
-cd "$(dirname "$0")/../server"
+root=$(cd "$(dirname "$0")/.." && pwd)
 
 duration="${1:-2m}"
 filter="${2:-}"
 
-# module  test (class.method)
+# build          module       test (class.method)
 harnesses=(
-  "faye-ir       faye.ir.IrCodecFuzzTest.readFlow"
-  "faye-dsl      faye.dsl.FlowCompilerFuzzTest.compile"
-  "faye-engine   faye.engine.PredicatesFuzzTest.predicates"
-  "faye-engine   faye.engine.PredicatesFuzzTest.acr"
-  "faye-engine   faye.engine.StoredStateFuzzTest.storedState"
-  "faye-check    faye.check.EngineFuzzTest.loginStateMachine"
-  "faye-identity faye.identity.TotpFuzzTest.base32"
-  "faye-identity faye.identity.TotpFuzzTest.totp"
-  "faye-app      faye.app.FlowApiFuzzTest.screenApi"
+  "src           faye-core    faye.ir.IrCodecFuzzTest.readFlow"
+  "src           faye-core    faye.dsl.FlowCompilerFuzzTest.compile"
+  "src           faye-engine  faye.engine.PredicatesFuzzTest.predicates"
+  "src           faye-engine  faye.engine.PredicatesFuzzTest.acr"
+  "src           faye-engine  faye.engine.StoredStateFuzzTest.storedState"
+  "src           faye-engine  faye.check.EngineFuzzTest.loginStateMachine"
+  "src           faye-engine  faye.handlers.BuiltinHandlersFuzzTest.submissions"
+  "apps/server   faye-identity faye.identity.TotpFuzzTest.base32"
+  "apps/server   faye-identity faye.identity.TotpFuzzTest.totp"
+  "apps/server   faye-app     faye.app.FlowApiFuzzTest.screenApi"
+  "apps/server   faye-app     faye.app.QrGrantsFuzzTest.grantStore"
 )
 
 failed=()
 for h in "${harnesses[@]}"; do
-  read -r module test <<<"$h"
+  read -r dir module test <<<"$h"
   [[ -n "$filter" && "$test" != *"$filter"* ]] && continue
   echo "== $test ($duration)"
-  if ! JAZZER_FUZZ=1 JAZZER_MAX_DURATION="$duration" ./gradlew --console=plain -q ":$module:test" --tests "$test"; then
+  if ! (cd "$root/$dir" && JAZZER_FUZZ=1 JAZZER_MAX_DURATION="$duration" ./gradlew --console=plain -q ":$module:test" --tests "$test"); then
     failed+=("$test")
   fi
 done

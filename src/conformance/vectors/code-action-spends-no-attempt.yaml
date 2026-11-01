@@ -1,0 +1,29 @@
+name: resending runs no handler and spends no attempt; only answers count toward the retry (ADR 0032)
+ir: flows/delivered-codes.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: false, has_phone: false, email_verified: true } } }]
+  password.verify: [ok]
+  email_code.verify: [{ fail: invalid_code }, { fail: invalid_code }, { fail: invalid_code }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: code_sent
+  - act: resend
+  - expect_screen: code_sent
+    expect_resend: true
+  - act: resend
+  - expect_screen: code_sent
+    expect_resend: false
+  - submit: { code: "000001" }
+  - expect_screen: code_sent
+    expect_error: invalid_code
+    expect_attempts_left: 2
+    expect_resend: false
+  - submit: { code: "000002" }
+  - expect_screen: code_sent
+    expect_error: invalid_code
+    expect_attempts_left: 1
+  - submit: { code: "000003" }
+  - expect_result: { succeed: false, reason: invalid_code }

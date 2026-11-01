@@ -6,12 +6,13 @@
 #   docker run -d --name faye -v faye-data:/var/lib/faye -e FAYE_DEMO=true \
 #     -p 4444:4444 -p 8080:8080 -p 3000:3000 -p 3001:3001 -p 127.0.0.1:3002:3002 faye
 
-# Server build (same as server/Dockerfile): the Gradle build's repoRoot is /src's parent, so
-# the schema lives at /schema for processResources.
+# Server build (same as apps/server/Dockerfile): the product build at src/ and the application
+# build at apps/server/, at their repository-relative layout, so the app's composite build finds
+# the included build and the schema sits at /repo/src/schema for processResources.
 FROM eclipse-temurin:21.0.13_9-jdk@sha256:ebfbb18d11ff163ee83b21258acf12248af48d22a0fdfdc68fa1a1516c05976a AS server-build
-WORKDIR /src
-COPY server/ .
-COPY schema/ /schema/
+WORKDIR /repo/apps/server
+COPY src/ /repo/src/
+COPY apps/server/ /repo/apps/server/
 RUN ./gradlew --no-daemon :faye-app:bootJar
 
 # Minimal JRE for faye.jar. Modules are jdeps --print-module-deps --ignore-missing-deps
@@ -22,12 +23,12 @@ RUN /opt/java/openjdk/bin/jlink \
       --strip-debug --no-man-pages --no-header-files --compress=2 \
       --output /jre
 
-# Web build (same as web/Dockerfile): the three Next.js apps' standalone output.
+# Web build (same as apps/web/Dockerfile): the three Next.js apps' standalone output.
 FROM node:24.22.2-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS web-build
 RUN npm install -g pnpm@11.20.0
 WORKDIR /web
-COPY web/ .
-COPY schema/ /schema/
+COPY apps/web/ .
+COPY src/schema/ /src/schema/
 # Regenerate the contract types from the schema, so the image never ships stale committed ones
 RUN pnpm install --frozen-lockfile && pnpm generate \
     && pnpm --filter "./apps/*" --workspace-concurrency=1 build
@@ -66,9 +67,10 @@ RUN set -eux; \
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=hydra /usr/bin/hydra /usr/local/bin/hydra
 COPY --from=jre /jre /opt/faye/jre
-COPY --from=server-build /src/faye-app/build/libs/faye-app-0.1.0-SNAPSHOT.jar /opt/faye/faye.jar
+COPY --from=server-build /repo/apps/server/faye-app/build/libs/faye-app-0.1.0-SNAPSHOT.jar /opt/faye/faye.jar
 RUN --mount=type=bind,from=web-build,source=/out.tar,target=/tmp/web.tar \
     mkdir -p /opt/faye/web && tar -C /opt/faye/web -xf /tmp/web.tar
+COPY docs/ /opt/faye/docs/
 COPY deploy/bootstrap.mjs deploy/ip-reputation.mjs /opt/faye/deploy/
 COPY deploy/directory/seed.mjs /opt/faye/deploy/directory/seed.mjs
 COPY deploy/image/s6-rc.d /etc/s6-overlay/s6-rc.d

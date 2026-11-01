@@ -125,4 +125,4 @@ Planned; none of this exists yet.
 * Compile time positions: `server/faye-dsl/src/main/java/faye/dsl/FlowCompiler.java` (marks), `YamlReader.java`, `faye-ir/SourceRef.java`.
 * Where positions are lost today: `server/faye-app/src/main/java/faye/app/SqliteFlowVersions.java` (`IrCodec.readFlow(json)` without sources).
 * Continuation paths: `server/faye-engine/src/main/java/faye/engine/Frame.java`, ir-spec.md, Evaluation.
-* Docs to update with the implementation: ir-spec.md is unaffected (the IR does not change); engine.md (trace `at`, `FailureSite`), dsl-and-ir.md (source maps), `conformance/README.md` (`at`), the screen protocol section for `reference`.
+* Docs to update with the implementation: `docs/ir-spec.md` is unaffected (the IR does not change); `conformance/README.md` (`at`), the screen protocol section for `reference`.

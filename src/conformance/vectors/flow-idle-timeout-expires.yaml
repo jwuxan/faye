@@ -1,0 +1,13 @@
+name: an answer the engine refuses does not count as activity, so the idle timeout passes and the flow is refused as expired
+ir: flows/identifier-password.json
+tenant: { flows: { authenticate: { lifetime_s: 1800, idle_timeout_s: 300 } } }
+events:
+  - expect_screen: identifier
+    expect_password: true
+  - wait: 200
+  - submit: { identifier: alice@example.com }
+  - expect_refused: invalid_submission
+  - wait: 100
+  - submit: { identifier: alice@example.com, password: right }
+  - expect_refused: flow_expired
+  - expect_accepted: 0

@@ -1,0 +1,20 @@
+name: an expired QR code is retryable, and a poll spends no attempt (ADR 0032)
+ir: flows/qr.json
+handlers:
+  identity.resolve: [ok]
+  qr.redeem: [{ fail: qr_expired }, { ok: { amr: [pwd] } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: method_picker
+  - submit: { method: qr }
+  - expect_screen: qr
+  - submit: {}
+  - expect_screen: qr
+    expect_error: qr_expired
+    expect_attempts_left: 2
+  - act: poll
+  - expect_screen: qr
+    expect_attempts_left: 2
+  - submit: {}
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

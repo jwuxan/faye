@@ -42,7 +42,7 @@ The **Preview** panel next to the flow editor runs a draft flow without publishi
 
 ## What the two tenants show
 
-| Tenant | Applications | Flow (`server/faye-app/src/main/resources/flows/`) |
+| Tenant | Applications | Flow (`apps/server/faye-app/src/main/resources/flows/`) |
 |---|---|---|
 | `acme` | Acme Web, Acme Docs, Acme Shop; Acme Partner Portal and Acme Analytics (third party) | `acme.yaml`: password, plus TOTP when the `risk.js` hook scores the sign in high (a user agent containing `suspicious` does it), and a consent screen for third party applications |
 | `bank` | Bank Online, Bank Mobile, Bank Advisor Desk; Bank Business and Bank Investments (third party) | `passkey-totp.yaml`: passkey from autofill, or password plus TOTP; `acr_values=faye:2fa` forces a second factor; a consent screen for third party applications |
@@ -59,22 +59,22 @@ FAYE_DATABASE=deploy/.data/faye.db deploy/smoke.sh
 
 ## Developing
 
-Server needs JDK 21+; `java` on PATH may be older (`make setup` picks one). Plan and milestones: [docs/roadmap](docs/roadmap/README.md).
+Server needs JDK 21+; `java` on PATH may be older (`make setup` picks one). Decisions and open work: [docs/adr](docs/adr/README.md).
 
 ```sh
-cd server
+cd apps/server
 ./gradlew build                        # compile (-Xlint:all -Werror), unit + conformance tests
 ./gradlew :faye-app:bootRun            # http://localhost:8080, state in faye-app/faye.db
 ```
 
 ```sh
-cd web
+cd apps/web
 pnpm install
 pnpm typecheck && pnpm lint && pnpm test && pnpm build
 pnpm e2e:install && pnpm e2e         # Login UI browser tests (Chromium), after the build
 FAYE_SERVER_URL=http://localhost:8080 pnpm --filter @faye/login dev   # http://localhost:3000/login?flow={flowId}
 ```
 
-Repo map: `schema/` holds the IR grammar and screen protocol (JSON Schema), `conformance/` the engine test vectors, `web/` the pnpm workspace (`apps/login` renders the typed screens, `apps/demo-client` is the OIDC relying party, `apps/admin` the Admin UI), `server/faye-app/src/main/resources/flows/` the tenant flows.
+Repo map: `src/schema/` holds the IR grammar and screen protocol (JSON Schema), `src/conformance/` the engine test vectors, `apps/web/` the pnpm workspace (`apps/login` renders the typed screens, `apps/demo-client` is the OIDC relying party, `apps/admin` the Admin UI), `apps/server/faye-app/src/main/resources/flows/` the tenant flows.
 
 With `FAYE_HYDRA_ADMIN_URL` set (compose does), the server talks to Hydra through `faye-host-hydra`; without it, challenges come from the in-memory `faye-host-mock`, so any `login_challenge` works at http://localhost:8080/login?login_challenge=anything.

@@ -19,7 +19,7 @@ How should a tenant write consent, and how does the editor show it, without chan
 * Charter principle 5: common flows are short to write and easy to read.
 * Charter principle 1 and success criterion 3: a credential can never be verified on the consent challenge; the checker must keep proving that.
 * ADR 0024: the IR is a narrow waist. A surface change must not change what the IR means, or it would need an IR format bump.
-* Stable identity (dsl-and-ir.md principle 3): step ids come from YAML keys.
+* Stable identity: step ids come from YAML keys.
 * Errors point at what the author wrote.
 
 ## Considered Options

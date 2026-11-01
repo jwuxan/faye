@@ -8,7 +8,7 @@ decision-makers: Josh Wu
 
 ## Context and Problem Statement
 
-M2 adds the forms `choose`/`opt`, `when`, `retry` and `set`, structured predicates, and the screens `method_picker`, `passkey`, `otp`, `otp_enroll`, `consent` and `error` ([milestones.md](../roadmap/milestones.md)). [dsl-and-ir.md](../roadmap/dsl-and-ir.md) gives each a one line meaning. Running them needs exact semantics, and the conformance vectors pin those down. This record is the list of choices made, so that another engine implementation can follow them.
+M2 adds the forms `choose`/`opt`, `when`, `retry` and `set`, structured predicates, and the screens `method_picker`, `passkey`, `otp`, `otp_enroll`, `consent` and `error`. The DSL gives each a one line meaning. Running them needs exact semantics, and the conformance vectors pin those down. This record is the list of choices made, so that another engine implementation can follow them.
 
 ## Decision Drivers
 
@@ -42,4 +42,4 @@ The tradeoffs were within each form, listed below, rather than between whole alt
 
 ### Changes since this decision
 
-* [ADR 0024](0024-core-ir-as-a-narrow-waist.md) (IR format 1): an option is enabled by an explicit guard, `(opt id body {:guard predicate})`, not by its body being a `when`; a `choose`'s pick hook moved to its trailing options, `(choose (opt...) {:pick hook})`; the `hydra.*` namespace is `host.*`. The YAML surface is unchanged. Hosted answers are a property of the screen catalog (`ScreenSpec.hosted`), not of a `ScreenType` enum. The normative semantics are now [ir-spec.md](../roadmap/ir-spec.md).
+* [ADR 0024](0024-core-ir-as-a-narrow-waist.md) (IR format 1): an option is enabled by an explicit guard, `(opt id body {:guard predicate})`, not by its body being a `when`; a `choose`'s pick hook moved to its trailing options, `(choose (opt...) {:pick hook})`; the `hydra.*` namespace is `host.*`. The YAML surface is unchanged. Hosted answers are a property of the screen catalog (`ScreenSpec.hosted`), not of a `ScreenType` enum. The normative semantics are now [ir-spec.md](../ir-spec.md).

@@ -8,7 +8,7 @@ decision-makers: Josh Wu
 
 ## Context and Problem Statement
 
-The IR is an S expression tree stored as JSON arrays ([D2](../roadmap/decisions-and-risks.md)). No S expression text is parsed anywhere: Jackson (`ObjectMapper.readTree`) parses the JSON, and the `(seq …)` notation in [dsl-and-ir.md](../roadmap/dsl-and-ir.md) is for display only.
+The IR is an S expression tree stored as JSON arrays ([D2](0036-retire-the-roadmap.md)). No S expression text is parsed anywhere: Jackson (`ObjectMapper.readTree`) parses the JSON, and the `(seq …)` notation is for display only.
 
 What is hand written is the shape check. `IrCodec.readNode` (about 100 lines) checks form names, arity, id and name patterns and literal types, which restates `schema/ir.schema.json`. Each form still to come (`choose`, `when`, `retry`, `hook`, `set`, predicates) would be written twice, and the two copies can drift.
 

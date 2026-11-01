@@ -1,0 +1,25 @@
+name: a resend the issuer refuses (a limit) shows send_limited and changes nothing else; an issuer failure shows issuer_error (ADR 0032)
+ir: flows/delivered-codes.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: false, has_phone: false, email_verified: true } } }]
+  password.verify: [ok]
+  email_code.verify: [ok]
+actions:
+  code_sent: [{ refused: send_limited }, fail]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: code_sent
+    expect_resend: true
+  - act: resend
+  - expect_screen: code_sent
+    expect_error: send_limited
+    expect_resend: true
+  - act: resend
+  - expect_screen: code_sent
+    expect_error: issuer_error
+    expect_resend: true
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd, email], acr: "faye:1fa" }

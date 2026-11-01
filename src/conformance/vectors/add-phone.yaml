@@ -1,0 +1,28 @@
+name: adding a phone sends its first code by an action, proves nothing, and writes the number once the sign in succeeds (ADR 0032)
+ir: flows/add-phone.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_phone: false } } }]
+  password.verify: [ok]
+  phone.enroll: [{ fail: invalid_code }, { ok: { effects: [p1] } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: phone_enroll
+    expect_step: add-phone
+    expect_resend: false
+  - act: { action: send, input: { phone: "12345" } }
+  - expect_refused: unknown_action
+  - act: { action: send, input: { phone: "+15551234821" } }
+  - expect_screen: phone_enroll
+    expect_to: ••• ••• 4821
+    expect_resend: true
+  - submit: { code: "000000" }
+  - expect_screen: phone_enroll
+    expect_error: invalid_code
+    expect_attempts_left: 2
+    expect_to: ••• ••• 4821
+  - submit: { code: "123456" }
+  - expect_commits: [phone.enroll:p1]
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

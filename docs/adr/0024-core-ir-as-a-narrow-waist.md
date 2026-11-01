@@ -8,7 +8,7 @@ decision-makers: Josh Wu
 
 ## Context and Problem Statement
 
-Faye compiles YAML to an S expression IR that the checker proves safe and the engine runs ([D2, D3, D4](../roadmap/decisions-and-risks.md)). The charter says the IR exists "for interop and modularity: it lets the DSL, the checker, the editor and the engine evolve separately, and lets another engine implementation prove it behaves the same". On `main` at 711b3ab it does not yet do that job:
+Faye compiles YAML to an S expression IR that the checker proves safe and the engine runs ([D2, D3, D4](0036-retire-the-roadmap.md)). The charter says the IR exists "for interop and modularity: it lets the DSL, the checker, the editor and the engine evolve separately, and lets another engine implementation prove it behaves the same". On `main` at 711b3ab it does not yet do that job:
 
 | # | Gap | Where |
 |---|---|---|
@@ -19,21 +19,21 @@ Faye compiles YAML to an S expression IR that the checker proves safe and the en
 | G5 | Handler writes run before the revision compare and set, so a submit that loses the race keeps them ([ADR 0007](0007-fuzz-and-adversarial-testing.md) seed finding 7) | `Engine.submit`, `IdentityHandlers` |
 | G6 | Screens are a closed enum in the engine that the checker imports | `ScreenType`, `Checker.structure` |
 | G7 | The checker models `subject_mismatch` as retryable; the engine ends the flow ([ADR 0011](0011-m6-preview-loop.md) known limit) | `Checker`, `Engine` |
-| G8 | No normative semantics: they are spread over ADR 0005, `dsl-and-ir.md`, schema descriptions, Javadoc and the vectors, and `dsl-and-ir.md` still says the Admin UI edits the IR, against [ADR 0010](0010-m5-admin-ui.md) | `docs/` |
+| G8 | No normative semantics: they are spread over ADR 0005, the DSL document, schema descriptions, Javadoc and the vectors, and that document still says the Admin UI edits the IR, against [ADR 0010](0010-m5-admin-ui.md) | `docs/` |
 | G9 | The flow id is a bearer capability: `GET /api/flows/{id}` returns the nonce and an enrollment secret to anyone holding it | `FlowController` |
 | G10 | The version cache is unbounded, and every previewed draft is stored forever | `SqliteFlowVersions`, `DraftPreviews` |
 | G11 | `server/dump.rdb`, a Redis dump, is tracked though Redis is gone (AGENTS.md rule 7) | `server/` |
 | G12 | The IR names the authorization server: predicates read `hydra.*`, hooks get `ctx.hydra`, and `HostRequest.hydra()` is part of the engine contract, against charter principle 3 | `ir.schema.json`, `Env`, `HostRequest`, hooks |
 | G13 | `choose` takes an optional *leading* hook, and an option is enabled unless its body *happens to be* a `when` whose test is false: the shape of a body carries meaning | `ir.schema.json`, `Engine`, `Checker` |
 
-G12 and G13 were found while writing this record; the others come from the re-review in `docs/refine.md`.
+G12 and G13 were found while writing this record; the others come from an earlier re-review of the same commit.
 
 What must the IR, its versioning and the engine's contracts look like for the IR to be the one stable boundary between frontends and engines?
 
 ## Decision Drivers
 
 * Charter principles 1 (secure by design), 2 (closed extension), 3 (host neutral) and 7 (small and modular); charter section "The IR".
-* One source per fact: the schema is the grammar, `docs/roadmap/ir-spec.md` the semantics, the conformance vectors the executable pins, `conformance/handlers.yaml` the handler contract (AGENTS.md rules 1 and 2).
+* One source per fact: the schema is the grammar, `docs/ir-spec.md` the semantics, the conformance vectors the executable pins, `conformance/handlers.yaml` the handler contract (AGENTS.md rules 1 and 2).
 * Fail closed: anything a reader does not understand is refused, never reinterpreted.
 * A publish, a deploy or a crash never makes a flow in progress do something it was not checked to do (D5).
 * Few new concepts and no new dependency.
@@ -202,7 +202,7 @@ Hook output stays `set`, `fail` or `pick` among enabled options. Auth0's `record
 * `cd server && ./gradlew build` (format, Checkstyle, `-Werror` with NullAway, every test):
   * `faye-ir`: `IrCodecTest` (format refusal, entries, guards, picks, duplicate ids, pointers, display), `IrAgreementTest` (the schema's forms, `Node`'s permitted types and `ir-spec.md`'s form sections agree).
   * `faye-dsl`: `FlowCompilerTest` (each tenant flow lowers to its golden under `src/test/resources/golden/`; each case under `diagnostics/` reports exactly its `# expect:` lines at `line:column`; `hydra.` lowers to `host.`), `HookCompileTest`.
-  * `faye-engine`: `ConformanceTest` over every vector, including `subject-mismatch-on-first-attempt`, `effect-lost-race`, `effect-commit-fails`, `effect-dropped-on-failure`, `double-submit-sees-the-winners-screen`, `double-submit-after-the-flow-finished`, `binder-mismatch`, `catalog-unknown-handler` and the regenerated `conformance/generated/` (whose `mfa-policy` paths pin `subject_mismatch` on a non-final attempt); `CompatTest` (`conformance/compat/ir1-state1/` resumes); `ScreenRegistryTest` (built in screens equal `screen.schema.json`; since [ADR 0025](0025-host-neutral-boundaries-for-embedding.md) `BuiltinScreenTest` in `faye-screens`); `HookContractTest` (hooks.md quotes the limits `HookOutput` enforces); `EngineTest`.
+  * `faye-engine`: `ConformanceTest` over every vector, including `subject-mismatch-on-first-attempt`, `effect-lost-race`, `effect-commit-fails`, `effect-dropped-on-failure`, `double-submit-sees-the-winners-screen`, `double-submit-after-the-flow-finished`, `binder-mismatch`, `catalog-unknown-handler` and the regenerated `conformance/generated/` (whose `mfa-policy` paths pin `subject_mismatch` on a non-final attempt); `CompatTest` (`conformance/compat/ir1-state1/` resumes); `ScreenRegistryTest` (built in screens equal `screen.schema.json`; since [ADR 0025](0025-host-neutral-boundaries-for-embedding.md) `BuiltinScreenTest` in `faye-screens`); `HookContractTest` (the IR specification quotes the limits `HookOutput` enforces); `EngineTest`.
   * `faye-check`: `CheckerTest` (rules by entry kind: `aConsentEntryCannotVerifyACredential`, `aCredentialWriteNeedsAVerifiedSubjectFirst`, `entriesAreOnePerKindWithAnAuthenticateEntry`, `theVerifierRefusesUnknownScreenOptionsAndBadArgs`), `GeneratedVectorsTest`.
   * `faye-identity`: `EffectsTest` (a lost race enrolls nothing; one TOTP code is good for one flow; a double submit of one flow is a conflict, not a replay).
   * `faye-app`: `HandlerContractTest` (production handlers equal `handlers.yaml`), `FlowApiTest.aFlowNeedsTheBinderOfTheBrowserThatStartedIt`, `SqliteRestartTest.conditionalAccountWritesHoldInTheDatabase`, `FlywayMigrationTest` (V2 applies).

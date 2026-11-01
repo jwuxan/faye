@@ -8,7 +8,7 @@ decision-makers: Josh Wu
 
 ## Context and Problem Statement
 
-M2 brings real credentials ([milestones.md](../roadmap/milestones.md)): Argon2 passwords, TOTP, and passkeys (WebAuthn registration and assertion), plus a QR code on the TOTP enrollment screen. The roadmap names webauthn4j, Spring Security's Argon2 and "a TOTP library" ([architecture.md](../roadmap/architecture.md)). Each one is a new dependency, and AGENTS.md asks for a record.
+M2 brings real credentials: Argon2 passwords, TOTP, and passkeys (WebAuthn registration and assertion), plus a QR code on the TOTP enrollment screen. The plan named webauthn4j, Spring Security's Argon2 and "a TOTP library". Each one is a new dependency, and AGENTS.md asks for a record.
 
 ## Decision Drivers
 

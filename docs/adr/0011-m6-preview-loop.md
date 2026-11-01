@@ -8,11 +8,11 @@ decision-makers: Josh Wu
 
 ## Context and Problem Statement
 
-M6 ([milestones.md](../roadmap/milestones.md)) closes the loop between "what I configured" and "what token was issued" ([preview-and-demo-client.md](../roadmap/preview-and-demo-client.md)): a preview client that runs the tenant's draft without publishing it, scenario presets, a live trace of the run highlighted in the block tree, and a result view in the demo client that checks the issued `amr` / `acr` against what path enumeration predicted.
+M6 closes the loop between "what I configured" and "what token was issued": a preview client that runs the tenant's draft without publishing it, scenario presets, a live trace of the run highlighted in the block tree, and a result view in the demo client that checks the issued `amr` / `acr` against what path enumeration predicted.
 
 Exit: compose, preview and inspect the token in under a minute per iteration, without publishing.
 
-Until M5 a login always ran the tenant's current version, the engine reported nothing about a run but its outcome, and the demo client showed only the ID token. Open question 5 in [decisions-and-risks.md](../roadmap/decisions-and-risks.md) asked where draft previews are allowed in production.
+Until M5 a login always ran the tenant's current version, the engine reported nothing about a run but its outcome, and the demo client showed only the ID token. Open question 5 of the decision log ([ADR 0036](0036-retire-the-roadmap.md)) asked where draft previews are allowed in production.
 
 ## Decision Drivers
 
@@ -20,7 +20,7 @@ Until M5 a login always ran the tenant's current version, the engine reported no
 * Charter principle 5: "A flow can be tried against a real client before it is published."
 * Charter principle 3 and AGENTS.md rule 3: the engine depends on `FlowHost`, never on Hydra.
 * Charter, what Faye is not: no token service. Hydra issues tokens; Faye reports outcomes.
-* Production clients only ever see published versions (preview-and-demo-client.md).
+* Production clients only ever see published versions.
 * A trace must not become a log of every user's sign in.
 
 ## Considered Options

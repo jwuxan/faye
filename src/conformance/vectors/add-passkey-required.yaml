@@ -1,0 +1,19 @@
+name: a required passkey cannot be declined; the screen says so, and "Not now" is refused (ADR 0038)
+ir: flows/add-passkey-required.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_passkey: false } } }]
+  password.verify: [ok]
+  webauthn.register: [{ ok: { effects: [k1] } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - submit: { password: right }
+  - expect_screen: passkey
+    expect_step: add-passkey
+    expect_required: true
+  - submit: { skip: true }
+  - expect_refused: invalid_submission
+  - submit: { passkey: { id: k1, type: public-key } }
+  - expect_commits: [webauthn.register:k1]
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

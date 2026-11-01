@@ -5,8 +5,10 @@
 # by a risk hook and runs malicious hooks; then drafts, checks, publishes and brands through the
 # Admin UI, which has no sign in; then previews a draft without publishing it; then signs in through
 # every application the console lists, as its "Try sign in" does; then checks that one SQLite
-# database holds Hydra's tables and Faye's; then keeps a sign in the person asked to remember
-# (ADR 0033).
+# database holds Hydra's tables and Faye's; then keeps a sign in the person asked to remember, and
+# ends a remembered preview sign in at Sign out (ADR 0033); then saves flow time limits and signs in
+# under them (ADR 0035); then signs in with a code emailed through the demo outbox, and with a QR
+# code approved by a second browser (ADR 0032).
 #
 # Accounts are the seeded ones: their passwords are read from the secrets the demo wrote (the
 # container's /var/lib/faye/demo, or with FAYE_DATABASE set, as deploy/dev.sh runs, from
@@ -44,14 +46,27 @@ walk() {
 # Starts a sign in from the demo client with the given launch query; prints the first screen.
 start() { : > "$jar"; walk "http://localhost:3001/login?$1"; }
 
+# Acme's flow asks how to sign in, and offers to add a phone (ADR 0032): unless a step turns these
+# off, answer() picks the password from a method picker that offers it and declines the phone.
+pick_password=1
+skip_phone=1
+
 # Answers a screen (its JSON in $1) with a payload; prints the next screen or the result page.
 answer() {
   flow=$(printf '%s' "$1" | field flowId)
   nonce=$(printf '%s' "$1" | field nonce)
   res=$(curl -fsS -b "$jar" -X POST "http://localhost:3000/api/flows/$flow/submit" -H 'content-type: application/json' \
-    -d "{\"nonce\":\"$nonce\",\"action\":\"submit\",\"payload\":$2}")
+    -d "{\"nonce\":\"$nonce\",\"action\":\"${3:-submit}\",\"payload\":$2}")
   next=$(printf '%s' "$res" | field redirectTo)
-  if [ -n "$next" ]; then walk "$next"; else printf '%s' "$res"; fi
+  if [ -n "$next" ]; then walk "$next"; return; fi
+  if [ "$pick_password" = 1 ] && printf '%s' "$res" | grep -q '"type":"method_picker"' \
+    && printf '%s' "$res" | grep -q '"password"'; then
+    answer "$res" '{"method":"password"}'; return
+  fi
+  if [ "$skip_phone" = 1 ] && printf '%s' "$res" | grep -q '"type":"phone_enroll"'; then
+    answer "$res" '{"skip":true}'; return
+  fi
+  printf '%s' "$res"
 }
 
 expect_screen() {
@@ -251,9 +266,12 @@ echo "M4 hooks ok"
 
 echo "10. the Admin UI needs no sign in; drafts, checks, publishes and brands through its proxy"
 page=$(curl -fsS http://localhost:3002/)
-printf '%s' "$page" | grep -q '>Tenants<' && printf '%s' "$page" | grep -q '>acme<' && printf '%s' "$page" | grep -q '>bank<' \
-  || { echo "expected the Admin UI tenant list with acme and bank" >&2; exit 1; }
+printf '%s' "$page" | grep -q '>Choose a tenant<' && printf '%s' "$page" | grep -q '>acme<' && printf '%s' "$page" | grep -q '>bank<' \
+  || { echo "expected the Admin UI tenant picker with acme and bank" >&2; exit 1; }
 [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3002/signin)" = 404 ] || { echo "expected no sign in route" >&2; exit 1; }
+# The console renders the docs shipped in the image at /docs
+curl -fsS http://localhost:3002/docs/ir-spec | grep -q 'Core IR' || { echo "expected /docs/ir-spec to render the IR spec" >&2; exit 1; }
+[ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3002/docs/nope)" = 404 ] || { echo "expected 404 for a missing doc" >&2; exit 1; }
 # The admin API is only on Faye's Unix domain socket (ADR 0028), never on its port
 [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/admin/tenants)" = 404 ] \
   || { echo "expected no admin API on :8080" >&2; exit 1; }
@@ -395,7 +413,7 @@ fi
 
 echo "single database ok"
 
-echo "14. keep me signed in: ticked, the next sign in from this browser skips the screens; unticked, it does not (tenant acme)"
+echo "14. keep me signed in: ticked, the next sign in from this browser skips the screens; unticked, it does not; and a preview client's sign out ends Hydra's session (tenant acme)"
 ui -X PUT -H 'content-type: application/json' -d '{"mfaRequired":false,"rememberMe":true}' \
   http://localhost:3002/api/admin/tenants/acme/settings >/dev/null
 s=$(start "client=$acme_web")
@@ -415,6 +433,117 @@ page=$(answer "$s" "{\"password\":\"$acme_pw\"}")
 printf '%s' "$page" | grep -q "$acme_id" || { echo "expected the account's email in the token" >&2; exit 1; }
 s=$(walk "http://localhost:3001/login?client=$acme_web")
 expect_screen "$s" identifier
+# A preview client's Sign out also revokes the Hydra login session (the applications' does not, so
+# the remembered sign in above survives theirs): after it, the same browser is asked again
+s=$(start "client=preview-acme")
+s=$(answer "$s" "{\"identifier\":\"$acme_id\",\"remember\":true}")
+page=$(answer "$s" "{\"password\":\"$acme_pw\"}")
+printf '%s' "$page" | grep -q "$acme_id" || { echo "expected the account's email in the token" >&2; exit 1; }
+page=$(walk "http://localhost:3001/login?client=preview-acme")
+expect_claim "$page" "$sub"
+curl -fsS -b "$jar" -c "$jar" -o /dev/null -X POST http://localhost:3001/logout
+s=$(walk "http://localhost:3001/login?client=preview-acme")
+expect_screen "$s" identifier
 ui -X PUT -H 'content-type: application/json' -d '{"mfaRequired":false}' http://localhost:3002/api/admin/tenants/acme/settings >/dev/null
 
 echo "keep me signed in ok"
+
+echo "15. flow time limits (ADR 0035): saved per entry kind through the Admin UI, refused over the deployment's maximum, and a sign in under them completes (tenant acme)"
+saved=$(ui http://localhost:3002/api/admin/tenants/acme/settings)
+with_flows() { printf '%s' "$saved" | python3 -c 'import json,sys; s=json.load(sys.stdin)["settings"]; s["flows"]=json.loads(sys.argv[1]); print(json.dumps(s))' "$1"; }
+max=$(printf '%s' "$saved" | python3 -c 'import json,sys; v=json.load(sys.stdin)["flowLimits"]; assert "authenticate" in v["kinds"], v; print(v["maxSeconds"])')
+code=$(curl -sS -o /dev/null -w '%{http_code}' -H 'x-faye-admin: 1' -X PUT -H 'content-type: application/json' \
+  -d "$(with_flows "{\"authenticate\":{\"lifetimeSeconds\":$((max + 60))}}")" http://localhost:3002/api/admin/tenants/acme/settings)
+[ "$code" = 400 ] || { echo "expected a time limit over $max seconds to be refused, got HTTP $code" >&2; exit 1; }
+ui -X PUT -H 'content-type: application/json' -d "$(with_flows '{"authenticate":{"lifetimeSeconds":600,"idleTimeoutSeconds":300}}')" \
+  http://localhost:3002/api/admin/tenants/acme/settings >/dev/null
+ui http://localhost:3002/api/admin/tenants/acme/settings | grep -q '"idleTimeoutSeconds":300' || { echo "expected the saved flow limits" >&2; exit 1; }
+s=$(start "client=$acme_web")
+s=$(answer "$s" "{\"identifier\":\"$acme_id\"}")
+page=$(answer "$s" "{\"password\":\"$acme_pw\"}")
+printf '%s' "$page" | grep -q "$acme_id" || { echo "expected a sign in under the time limits to complete" >&2; exit 1; }
+ui -X PUT -H 'content-type: application/json' -d "$(printf '%s' "$saved" | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["settings"]))')" \
+  http://localhost:3002/api/admin/tenants/acme/settings >/dev/null
+
+echo "flow time limits ok"
+
+echo "16. delivered codes (ADR 0032): a password then a code emailed through the demo outbox, one factor; resending too soon is refused (tenant acme)"
+# Reads the code the demo outbox delivered to an address, once Faye's worker wrote it
+outbox_code() {
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    if [ -n "${FAYE_DATABASE:-}" ]; then
+      c=$(field code < "$(dirname "$FAYE_DATABASE")/outbox/email-$1.json" 2>/dev/null || true)
+    else
+      c=$(docker exec "$container" cat "/var/lib/faye/outbox/email-$1.json" 2>/dev/null | field code || true)
+    fi
+    [ -n "$c" ] && { printf '%s' "$c"; return; }
+    sleep 1
+  done
+  echo "no code delivered to the outbox for $1" >&2; exit 1
+}
+before=$(ui http://localhost:3002/api/admin/tenants/acme/versions | field current)
+ui -X POST -H 'content-type: application/yaml' --data-binary @- \
+  http://localhost:3002/api/admin/tenants/acme/publish >/dev/null <<'YAML'
+flow: email-code
+version: 1
+login:
+  steps:
+    identify: { block: identifier }
+    credential: { block: password }
+    second-factor:
+      alternative:
+        app: { if: user.has_totp, block: totp }
+        email: { if: user.email_verified, block: email-code }
+YAML
+s=$(start "client=$acme_web")
+s=$(answer "$s" "{\"identifier\":\"$acme_id\"}")
+s=$(answer "$s" "{\"password\":\"$acme_pw\"}")
+expect_screen "$s" code_sent
+printf '%s' "$s" | grep -q '"channel":"email"' || { echo "expected an emailed code: $s" >&2; exit 1; }
+code=$(outbox_code "$acme_id")
+printf '%s' "$s" | grep -q "$code" && { echo "the screen shows the code" >&2; exit 1; }
+flow=$(printf '%s' "$s" | field flowId)
+nonce=$(printf '%s' "$s" | field nonce)
+curl -fsS -b "$jar" -X POST "http://localhost:3000/api/flows/$flow/submit" -H 'content-type: application/json' \
+  -d "{\"nonce\":\"$nonce\",\"action\":\"resend\",\"payload\":{}}" | grep -q '"send_limited"' \
+  || { echo "expected a resend right after the first send to be refused" >&2; exit 1; }
+page=$(answer "$s" "{\"code\":\"$code\"}")
+expect_claim "$page" 'amr = ["pwd","email"]'
+expect_claim "$page" 'acr = "faye:1fa"'
+ui -X POST -H 'content-type: application/json' -d "{\"versionHash\":\"$before\"}" \
+  http://localhost:3002/api/admin/tenants/acme/current >/dev/null
+
+echo "delivered codes ok"
+
+echo "17. QR code sign in (ADR 0032): a device shows a QR code, a second browser approves it with a password and the number shown, and the first is signed in with what the second proved (tenant acme)"
+pick_password=0
+s=$(start "client=$acme_web")
+s=$(answer "$s" "{\"identifier\":\"$acme_id\"}")
+expect_screen "$s" method_picker
+s=$(answer "$s" '{"method":"qr"}')
+expect_screen "$s" qr
+qr_url=$(printf '%s' "$s" | field url)
+qr_number=$(printf '%s' "$s" | sed -n 's/.*"number":\([0-9]*\).*/\1/p')
+[ -n "$qr_url" ] && [ -n "$qr_number" ] || { echo "expected a QR code and its number: $s" >&2; exit 1; }
+# The phone: a second browser, with its own cookies
+waiting_jar=$jar
+jar=$(mktemp)
+p=$(walk "${qr_url}")
+expect_screen "$p" identifier
+p=$(answer "$p" "{\"identifier\":\"$acme_id\"}")
+expect_screen "$p" password
+p=$(answer "$p" "{\"password\":\"$acme_pw\"}")
+expect_screen "$p" qr_approve
+printf '%s' "$p" | grep -q "$qr_number" || { echo "expected the waiting device's number among the choices: $p" >&2; exit 1; }
+answer "$p" "{\"number\":$qr_number}" | grep -q '"qr":"approved"' || { echo "expected the phone to approve" >&2; exit 1; }
+rm -f "$jar"
+jar=$waiting_jar
+polled=$(answer "$s" '{}' poll)
+printf '%s' "$polled" | grep -q '"status":"approved"' || { echo "expected the waiting device to read the approval: $polled" >&2; exit 1; }
+page=$(answer "$polled" '{}')
+if printf '%s' "$page" | grep -q '"type":"consent"'; then page=$(answer "$page" '{"decision":"allow"}'); fi
+printf '%s' "$page" | grep -q "$acme_id" || { echo "expected the QR sign in to complete: $page" >&2; exit 1; }
+expect_claim "$page" 'amr = ["pwd"]'
+pick_password=1
+
+echo "QR code sign in ok"

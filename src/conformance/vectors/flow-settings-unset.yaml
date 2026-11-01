@@ -1,0 +1,13 @@
+name: without flow settings the engine sets no limit; only the store's retention ends a flow
+ir: flows/default-login.json
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+  - wait: 86400
+  - submit: { identifier: alice@example.com }
+  - expect_screen: password
+  - wait: 86400
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd] }

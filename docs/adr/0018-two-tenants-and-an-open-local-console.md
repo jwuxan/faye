@@ -21,7 +21,7 @@ Before this, `application.yaml` configured five tenants (`admin`, `default`, `mf
 * Charter principle 1 and [ADR 0014](0014-tenant-user-directory.md): no password in the source; tenant isolation of accounts.
 * Charter principle 5: a flow can be tried against a real client.
 * Keep the M2 to M6 checks: password, passkey and TOTP, step up, consent, a risk hook with egress, previews.
-* The risk "the admin token leaks through the Admin UI" in [decisions-and-risks.md](../roadmap/decisions-and-risks.md): the console's sign in was its mitigation.
+* The risk "the admin token leaks through the Admin UI" of the decision log ([ADR 0036](0036-retire-the-roadmap.md)): the console's sign in was its mitigation.
 
 ## Considered Options
 

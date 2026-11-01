@@ -1,0 +1,16 @@
+name: a phone that proved only a password gives the waiting device pwd and faye:1fa, never more (ADR 0032)
+ir: flows/qr.json
+host:
+  params: { acr_values: [faye:2fa] }
+handlers:
+  identity.resolve: [ok]
+  qr.redeem: [{ ok: { amr: [pwd] } }]
+events:
+  - expect_screen: identifier
+  - submit: { identifier: alice@example.com }
+  - expect_screen: method_picker
+  - submit: { method: qr }
+  - expect_screen: qr
+  - act: poll
+  - submit: {}
+  - expect_result: { succeed: false, reason: acr_not_satisfied }

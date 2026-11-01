@@ -1,0 +1,41 @@
+(flow 2 acme 1
+  (entry login authenticate
+    (seq
+      (step identify
+        (seq
+          (screen identifier)
+          (call identity.resolve)
+          (hook risk sha256:3281897b274bd5d56dd70e10e3052884f9754c1a3560cc2f24b20689117d878b)))
+      (step credential
+        (choose
+          ((opt password (retry 3 (seq (screen password) (call password.verify))))
+            (opt email
+              (retry 3 (seq (screen code_sent {:channel email}) (call email_code.verify)))
+              {:guard user.email_verified})
+            (opt phone
+              (retry 3 (seq (screen code_sent {:channel sms}) (call sms_code.verify)))
+              {:guard user.has_phone})
+            (opt qr (retry 3 (seq (screen qr) (call qr.redeem)))))))
+      (step second-factor
+        (when
+          {:eq (vars.risk high)}
+          (choose
+            ((opt totp (retry 3 (seq (screen otp) (call totp.verify))) {:guard user.has_totp})
+              (opt enroll
+                (retry 3 (seq (screen otp_enroll) (call totp.enroll)))
+                {:guard {:not user.has_totp}})))))
+      (step add-phone (when {:not user.has_phone} (seq (screen phone_enroll) (call phone.enroll))))
+      (succeed)))
+  (entry consent consent
+    (seq
+      (step grant (when {:not client.first_party} (seq (screen consent) (call consent.record))))
+      (succeed)))
+  (entry approve approve
+    (seq
+      (step who (seq (screen identifier) (call identity.resolve)))
+      (step prove
+        (choose
+          ((opt passkey (seq (screen passkey) (call webauthn.assert)) {:guard user.has_passkey})
+            (opt password (retry 3 (seq (screen password) (call password.verify)))))))
+      (step confirm (seq (screen qr_approve) (call qr.approve)))
+      (succeed))))
