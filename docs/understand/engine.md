@@ -22,7 +22,7 @@ An embedder builds an engine with `Engine.builder()` and hands it everything it 
 | `HandlerRegistry` | The handlers that flows may call. |
 | `ScreenRegistry` | The screen types that flows may show, with their credential issuers. |
 | `TenantPolicies` | Each tenant's settings: whether multi factor authentication (MFA) is required, allowlists, egress grants, flow settings. |
-| `HookRunner` | Runs hooks. The default runs none. |
+| `HookRunner` | Runs hooks. The default fails every hook. |
 | `Previews` | The draft that preview clients run, and where their traces go. |
 | `Clock` | The time that flow settings are measured on. |
 

@@ -45,7 +45,7 @@ Who does what:
 | **Faye server** | Runs flows with the engine, checks every answer, tells the authorization server the result. Serves the screen API and, on a Unix socket, the admin API. | Issue tokens or talk to applications. |
 | **Login UI** | Draws each typed screen and posts the person's answer to the server. | Make any security decision. It has no database access. |
 | **Admin UI** | Lets an operator edit, check, preview, publish and roll back flows, and read applications and users. | Run anywhere but on one machine: it has no sign in. |
-| **Database** | One SQLite file holds Faye's state and, in the demo stack, Hydra's too. | |
+| **Database** | One SQLite file holds Faye's state and, in the container image, Hydra's too. | |
 
 ## A sign in, end to end
 
@@ -143,10 +143,10 @@ All of Faye's state is in one SQLite file. In the container it is `/var/lib/faye
 |---|---|
 | `faye_flow` | Each sign in in progress: its continuation, as JSON, with a revision number. |
 | `faye_version`, `faye_version_source` | Every flow version by its hash, and the YAML it came from. Published versions are never deleted. |
-| `faye_history`, `faye_tenant` | Which version each tenant published when, and which one is live. |
+| `faye_history`, `faye_tenant` | Which version each tenant published when, which one is live, and each tenant's draft, settings and preview scenario. |
 | `faye_hook` | Hook code by its hash. |
 | `faye_user` | Each tenant's user pool: password hashes, authenticator app secrets, passkeys. |
-| `faye_outbox`, `faye_key` | Codes waiting to be emailed or texted, and the key that protects them. |
+| `faye_outbox`, `faye_key` | Codes waiting to be emailed or texted, and the server key for the MAC of each code. |
 | `faye_qr_grant` | QR codes waiting to be approved from a phone. |
 | `faye_trace` | Preview trace events. |
 

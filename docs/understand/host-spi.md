@@ -48,7 +48,7 @@ To put Faye in front of an authorization server, the server must offer the capab
 | 6 | Hand the consent page to an outside app, read it, accept and reject it | Needed only for flows with a consent step | For consent | `getOAuth2ConsentRequest`, `acceptOAuth2ConsentRequest`, `rejectOAuth2ConsentRequest` |
 | 7 | Carry data from the login accept to the consent request | Faye links a consent to the login it follows | For consent | The login accept's `context` |
 | 8 | Remember a session and say so on the next login | Lets a remembered person skip the screens when one factor is enough | No | `skip` and `subject` on the login request |
-| 9 | Hand the logout page to an outside app | Not used yet. Logout is planned ([ADR 0036](../adr/0036-retire-the-roadmap.md#open-gaps), R2) | No | `getOAuth2LogoutRequest` is read, but no flow runs |
+| 9 | Hand the logout page to an outside app | Not used yet. Logout is planned ([ADR 0036](../adr/0036-retire-the-roadmap.md#open-gaps), R2) | No | The adapter can load one with `getOAuth2LogoutRequest`, but no route uses it |
 
 An authorization server that offers capabilities 1 to 5 can run Faye's sign in flows. One that also offers 6 and 7 can run consent steps.
 
