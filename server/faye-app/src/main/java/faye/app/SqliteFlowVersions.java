@@ -6,6 +6,7 @@ import faye.ir.IrCodec;
 import faye.ir.IrException;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,10 +56,11 @@ final class SqliteFlowVersions implements FlowVersions {
 
     @Override
     public FlowVersion publish(String tenantId, FlowVersion version) {
+        long now = clock.millis();
         tx.executeWithoutResult(s -> {
             store(version);
-            db.sql("INSERT INTO faye_history (tenant, hash) VALUES (?, ?) ON CONFLICT DO NOTHING")
-                    .params(tenantId, version.hash())
+            db.sql("INSERT INTO faye_history (tenant, hash, published_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING")
+                    .params(tenantId, version.hash(), now)
                     .update();
             setCurrent(tenantId, version.hash());
         });
@@ -130,6 +132,17 @@ final class SqliteFlowVersions implements FlowVersions {
                 .param(tenantId)
                 .query(String.class)
                 .list();
+    }
+
+    @Override
+    public Map<String, Instant> publishedAt(String tenantId) {
+        Map<String, Instant> times = new LinkedHashMap<>();
+        db.sql("SELECT hash, published_at FROM faye_history WHERE tenant = ? AND published_at IS NOT NULL ORDER BY seq")
+                .param(tenantId)
+                .query((rs, n) -> Map.entry(rs.getString(1), Instant.ofEpochMilli(rs.getLong(2))))
+                .list()
+                .forEach(e -> times.put(e.getKey(), e.getValue()));
+        return times;
     }
 
     @Override

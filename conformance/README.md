@@ -3,6 +3,7 @@
 Language independent test vectors for the flow engine. Any engine implementation must pass all of them. What each rule means is in [ir-spec.md](../docs/roadmap/ir-spec.md), which names the vectors that pin it; this file only describes the format.
 
 - `flows/*.json`: IR documents in format 1 (`schema/ir.schema.json`).
+- `blocks.yaml`: the block contract (ADR 0030): the built in blocks a flow's steps may be, with their handler, screen, role and settings. faye-identity's `IdentityBlock` and the Admin UI's palette are each tested against it.
 - `handlers.yaml`: the handler catalog contract. Production handlers must declare exactly this metadata (`HandlerContractTest`); the fakes here are built from it, one per entry, and only the scripted ones may be called.
 - Hooks are scripted like handlers, so a flow's `hook` nodes may pin any hash; to the checker each stands for a stored hook with no capabilities. The JavaScript sandbox itself is tested in `server/faye-hooks`, not here.
 - `vectors/*.yaml`: one scenario each, written by hand.
@@ -15,7 +16,8 @@ Language independent test vectors for the flow engine. Any engine implementation
 name: free text
 ir: flows/default-login.json     # relative to this directory
 subject: alice                   # subject bound by fake handlers that bind one (default: alice)
-tenant: { mfa_required: true }   # optional tenant settings, read by flows as tenant.* (default: none required)
+tenant: { mfa_required: true }   # optional tenant settings, read by flows as tenant.* (default: none required);
+                                 # remember_me: true offers "keep me signed in" on the identifier screen
 host:                            # optional HostRequest fields
   kind: login                    # or consent (runs the consent entry; default login)
   client: { client_id: demo }    # what flows read as client.*; the engine decides nothing from it
@@ -43,8 +45,11 @@ preview:                         # what Previews gives a preview client; without
 events:
   - expect_screen: identifier    # screen type; optional checks below
     expect_step: identify
+    expect_path: /login          # where the Login UI shows it (ADR 0029)
     expect_identifier: bob@example.com
     expect_passkey: true         # passkey autofill offered
+    expect_password: true        # the identifier screen asks for the password too
+    expect_remember: true        # the identifier screen offers "keep me signed in" (ADR 0033)
     expect_options: [totp, passkey]   # method_picker options
     expect_error: invalid_credentials # absent means the screen shows no error
     expect_attempts_left: 2
@@ -57,9 +62,12 @@ events:
   - expect_accepted: 1           # how many accepts the host has received so far
   - publish: flows/other.json    # publish another version as the tenant's current one; the running flow stays on its own
   - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }
+  #   (add remember: true when the person asked to stay signed in; absent means false)
   # or, for consent: { succeed: true, subject: alice, grant_scope: [openid], user: { email: a@example.com } }
   #   (user, when given, is exactly what the consent hands the host about the person; claims are the host's)
   # or: { succeed: false, reason: invalid_credentials }
+  #   (a login that ran and failed has its redirect marked failed, so the Login UI shows /error; a refused
+  #   consent's is not, nor a request refused before any flow ran: flow_unavailable, preview_unavailable; ADR 0031)
 expect_trace:                    # the events a preview flow traced, in order; absent means none
   - start login
   - step identify

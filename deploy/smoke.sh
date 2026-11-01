@@ -5,24 +5,18 @@
 # by a risk hook and runs malicious hooks; then drafts, checks, publishes and brands through the
 # Admin UI, which has no sign in; then previews a draft without publishing it; then signs in through
 # every application the console lists, as its "Try sign in" does; then checks that one SQLite
-# database holds Hydra's tables and Faye's.
+# database holds Hydra's tables and Faye's; then keeps a sign in the person asked to remember
+# (ADR 0033).
 #
 # Accounts are the seeded ones: their passwords are read from the secrets the demo wrote (the
 # container's /var/lib/faye/demo, or with FAYE_DATABASE set, as deploy/dev.sh runs, from
 # $XDG_STATE_HOME/faye/secrets) into variables and never printed. Needs curl and python3 (for
-# TOTP codes and JSON), and FAYE_ADMIN_TOKEN as the server has it (default: the token the image
-# generated, read out of the container, or dev.sh's dev-admin-token). FAYE_CONTAINER names the
+# TOTP codes and JSON). The admin API is served only on a Unix domain socket the Admin UI
+# holds (ADR 0028), so every admin call goes through the Admin UI's proxy. FAYE_CONTAINER names the
 # container (default faye). Run it against a fresh stack: step 4 enrolls TOTP
 # for an account, so a second run finds it already enrolled.
 set -eu
 container=${FAYE_CONTAINER:-faye}
-if [ -n "${FAYE_ADMIN_TOKEN:-}" ]; then
-  token=$FAYE_ADMIN_TOKEN
-elif [ -n "${FAYE_DATABASE:-}" ]; then
-  token=dev-admin-token
-else
-  token=$(docker exec "$container" cat /var/lib/faye/secrets/admin-token)
-fi
 jar=$(mktemp)
 body=$(mktemp)
 events=$(mktemp)   # the preview trace feed, step 11
@@ -37,8 +31,9 @@ walk() {
   url=$1
   while :; do
     case "$url" in
-      # The flow is bound to this "browser": Faye's /login set its cookie in the jar (ADR 0024)
-      http://localhost:3000/flow/*) curl -fsS -b "$jar" "http://localhost:8080/api/flows/${url##*/}"; return ;;
+      # The flow is bound to this "browser": Faye's /login set its cookie in the jar (ADR 0024).
+      # The Login UI shows each screen at its path, with the flow in the query (ADR 0029).
+      http://localhost:3000/*\?flow=*) curl -fsS -b "$jar" "http://localhost:8080/api/flows/${url##*\?flow=}"; return ;;
       http://localhost:3001/ | "http://localhost:3001/?"*) curl -fsS -b "$jar" "$url"; return ;;
       "") echo "redirect chain ended without a screen or result" >&2; exit 1 ;;
     esac
@@ -103,9 +98,8 @@ account bank none 1; bank_enroll_id=$id; bank_enroll_pw=$pw          # enrolls T
 account bank none 2; bank_id=$id; bank_pw=$pw                       # password only
 unset users row id pw otp
 
-# Admin API call; prints the response body and fails on an HTTP error.
-admin() { curl -fsS -H "Authorization: Bearer $token" "$@"; }
 # The Admin UI's proxy to the admin API, as the browser calls it: no sign in, x-faye-admin on writes.
+# Prints the response body and fails on an HTTP error.
 ui() { curl -fsS -H 'x-faye-admin: 1' "$@"; }
 
 # The id of the application the console lists under this name.
@@ -173,16 +167,16 @@ echo "M2 sign in ok"
 echo "6. a version published mid sign in does not affect it (tenant acme)"
 s=$(start "client=$acme_web")
 s=$(answer "$s" "{\"identifier\":\"$acme_id\"}")
-before=$(admin http://localhost:8080/admin/tenants/acme/versions | field current)
-published=$(admin -X POST -H 'content-type: application/yaml' --data-binary @- \
-  http://localhost:8080/admin/tenants/acme/publish <<'YAML' | field versionHash
+before=$(ui http://localhost:3002/api/admin/tenants/acme/versions | field current)
+published=$(ui -X POST -H 'content-type: application/yaml' --data-binary @- \
+  http://localhost:3002/api/admin/tenants/acme/publish <<'YAML' | field versionHash
 flow: password-totp
 version: 2
 login:
   steps:
-    identify: { screen: identifier, use: identity.resolve }
-    credential: { retry: 3, screen: password, use: password.verify }
-    second-factor: { retry: 3, screen: otp, use: totp.verify }
+    identify: { block: identifier }
+    credential: { block: password }
+    second-factor: { block: totp }
 YAML
 )
 [ -n "$published" ] && [ "$published" != "$before" ] || { echo "publish did not make a new version" >&2; exit 1; }
@@ -192,26 +186,27 @@ s=$(start "client=$acme_web")                          # a new sign in runs the 
 s=$(answer "$s" "{\"identifier\":\"$acme_id\"}")
 s=$(answer "$s" "{\"password\":\"$acme_pw\"}")
 expect_screen "$s" otp
-admin -X POST -H 'content-type: application/json' -d "{\"versionHash\":\"$before\"}" \
-  http://localhost:8080/admin/tenants/acme/current >/dev/null
+ui -X POST -H 'content-type: application/json' -d "{\"versionHash\":\"$before\"}" \
+  http://localhost:3002/api/admin/tenants/acme/current >/dev/null
 
 echo "7. a flow with a branch that skips the credential is refused with its YAML line (tenant acme)"
-status=$(curl -sS -o "$body" -w '%{http_code}' -H "Authorization: Bearer $token" -X POST \
-  -H 'content-type: application/yaml' --data-binary @- http://localhost:8080/admin/tenants/acme/publish <<'YAML'
+status=$(curl -sS -o "$body" -w '%{http_code}' -H 'x-faye-admin: 1' -X POST \
+  -H 'content-type: application/yaml' --data-binary @- http://localhost:3002/api/admin/tenants/acme/publish <<'YAML'
 flow: lax
 version: 1
 login:
   steps:
-    identify: { screen: identifier, use: identity.resolve }
+    identify: { block: identifier }
     credential:
+      if: { ne: [request.ip, "10.0.0.1"] }
       alternative:
-        password: { screen: password, use: password.verify }
-        trusted: { if: { eq: [request.ip, "10.0.0.1"] }, set: { trusted: true } }
+        password: { block: password }
+        passkey: { block: passkey }
 YAML
 )
-[ "$status" = 422 ] && grep -q '"source":"acme.yaml:9:24"' "$body" \
-  || { echo "expected 422 at acme.yaml:9:24, got $status: $(cat "$body")" >&2; exit 1; }
-[ "$(admin http://localhost:8080/admin/tenants/acme/versions | field current)" = "$before" ] \
+[ "$status" = 422 ] && grep -q '"source":"acme.yaml:7:11"' "$body" \
+  || { echo "expected 422 at acme.yaml:7:11, got $status: $(cat "$body")" >&2; exit 1; }
+[ "$(ui http://localhost:3002/api/admin/tenants/acme/versions | field current)" = "$before" ] \
   || { echo "tenant acme is not back on its original version" >&2; exit 1; }
 
 echo "M3 versioning and checks ok"
@@ -234,24 +229,23 @@ ua=faye-smoke
 echo "9. malicious hooks fail safely (tenant acme)"
 for hook in 'export default function () { for (;;) {} }' \
             "export default () => ({ succeed: true, subject: 'someone', amr: ['pwd'] })"; do
-  admin -X POST -H 'content-type: application/yaml' --data-binary @- \
-    http://localhost:8080/admin/tenants/acme/publish >/dev/null <<YAML
+  ui -X POST -H 'content-type: application/yaml' --data-binary @- \
+    http://localhost:3002/api/admin/tenants/acme/publish >/dev/null <<YAML
 flow: hostile
 version: 1
 hooks:
   hostile: { source: "$hook" }
 login:
   steps:
-    identify: { screen: identifier, use: identity.resolve }
-    hostile: { hook: hostile }
-    credential: { screen: password, use: password.verify }
+    identify: { block: identifier, after: hostile }
+    credential: { block: password }
 YAML
   s=$(start "client=$acme_web")
   page=$(answer "$s" "{\"identifier\":\"$acme_id\"}")
   printf '%s' "$page" | grep -q 'hook_error' || { echo "expected hook_error for: $hook" >&2; exit 1; }
 done
-admin -X POST -H 'content-type: application/json' -d "{\"versionHash\":\"$before\"}" \
-  http://localhost:8080/admin/tenants/acme/current >/dev/null
+ui -X POST -H 'content-type: application/json' -d "{\"versionHash\":\"$before\"}" \
+  http://localhost:3002/api/admin/tenants/acme/current >/dev/null
 
 echo "M4 hooks ok"
 
@@ -260,13 +254,16 @@ page=$(curl -fsS http://localhost:3002/)
 printf '%s' "$page" | grep -q '>Tenants<' && printf '%s' "$page" | grep -q '>acme<' && printf '%s' "$page" | grep -q '>bank<' \
   || { echo "expected the Admin UI tenant list with acme and bank" >&2; exit 1; }
 [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3002/signin)" = 404 ] || { echo "expected no sign in route" >&2; exit 1; }
+# The admin API is only on Faye's Unix domain socket (ADR 0028), never on its port
+[ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/admin/tenants)" = 404 ] \
+  || { echo "expected no admin API on :8080" >&2; exit 1; }
 [ "$(ui http://localhost:3002/api/admin/tenants | grep -o '"id":"[a-z]*"' | sort | tr -d '\n')" = '"id":"acme""id":"bank"' ] \
   || { echo "expected exactly the tenants acme and bank" >&2; exit 1; }
 # A write without the header is refused
 [ "$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H 'content-type: application/json' -d '{"yaml":""}' \
   http://localhost:3002/api/admin/tenants/acme/draft)" = 403 ] || { echo "expected 403 without x-faye-admin" >&2; exit 1; }
 original=$(ui http://localhost:3002/api/admin/tenants/acme/draft)
-draft='flow: password-totp\nversion: 3\nlogin:\n  steps:\n    identify: { screen: identifier, use: identity.resolve }\n    credential: { retry: 3, screen: password, use: password.verify }\n    second-factor: { retry: 3, screen: otp, use: totp.verify }\n'
+draft='flow: password-totp\nversion: 3\nlogin:\n  steps:\n    identify: { block: identifier }\n    credential: { block: password }\n    second-factor: { block: totp }\n'
 ui -X PUT -H 'content-type: application/json' -d "{\"yaml\":\"$draft\"}" http://localhost:3002/api/admin/tenants/acme/draft >/dev/null
 ui http://localhost:3002/api/admin/tenants/acme/draft | grep -q '"origin":"draft"' || { echo "expected the saved draft" >&2; exit 1; }
 yaml=$(printf "$draft")
@@ -299,14 +296,13 @@ hooks:
   risk: { file: risk.js, capabilities: { http: [ip-reputation] }, timeout_ms: 500 }
 login:
   steps:
-    identify: { screen: identifier, use: identity.resolve }
-    risk: { hook: risk }
-    credential: { retry: 3, screen: password, use: password.verify }
+    identify: { block: identifier, after: risk }
+    credential: { block: password }
     second-factor:
       if: { eq: [vars.risk, high] }
       alternative:
-        totp: { if: user.has_totp, retry: 3, screen: otp, use: totp.verify }
-        enroll: { if: { not: user.has_totp }, retry: 3, screen: otp_enroll, use: totp.enroll }
+        totp: { if: user.has_totp, block: totp }
+        enroll: { if: { not: user.has_totp }, block: enroll-totp }
 YAML
 ui -X PUT -H 'content-type: application/json' -d '{"request":{"ip":"203.0.113.7"}}' \
   http://localhost:3002/api/admin/tenants/acme/preview/scenario >/dev/null
@@ -350,6 +346,7 @@ echo "M6 preview ok"
 
 echo "12. every application the console lists signs in its tenant's users, as its Try sign in does"
 apps=0
+consents=0
 for tenant in acme bank; do
   if [ "$tenant" = acme ]; then id=$acme_id; pw=$acme_pw; else id=$bank_id; pw=$bank_pw; fi
   listed=$(ui "http://localhost:3002/api/admin/tenants/$tenant/clients")
@@ -360,7 +357,10 @@ for c in json.load(sys.stdin):
     s=$(start "client=$client&prompt=login")
     s=$(answer "$s" "{\"identifier\":\"$id\"}")
     page=$(answer "$s" "{\"password\":\"$pw\"}")
-    if printf '%s' "$page" | grep -q '"type":"consent"'; then page=$(answer "$page" '{"decision":"allow"}'); fi
+    if printf '%s' "$page" | grep -q '"type":"consent"'; then
+      page=$(answer "$page" '{"decision":"allow"}')
+      consents=$((consents + 1))
+    fi
     printf '%s' "$page" | grep -q "$id" && printf '%s' "$page" | grep -q "$client" \
       || { echo "expected a $tenant account signed in to $client, got: $(printf '%s' "$page" | head -c 400)" >&2; exit 1; }
     expect_claim "$page" 'amr = ["pwd"]'
@@ -368,6 +368,8 @@ for c in json.load(sys.stdin):
   done
 done
 [ "$apps" = 10 ] || { echo "expected ten applications, signed in to $apps" >&2; exit 1; }
+# Two third party applications per tenant ask for consent; the first party ones do not
+[ "$consents" = 4 ] || { echo "expected four applications to ask for consent, $consents did" >&2; exit 1; }
 # A tenant's users are unknown to the other tenant's applications, so the right password fails
 s=$(start "client=$bank_online")
 s=$(answer "$s" "{\"identifier\":\"$acme_id\"}")
@@ -392,3 +394,27 @@ fi
 [ "$found" = faye_flow,faye_schema_history,faye_user,faye_version,hydra_client ] || { echo "expected Hydra's and Faye's tables in one database, found: $found" >&2; exit 1; }
 
 echo "single database ok"
+
+echo "14. keep me signed in: ticked, the next sign in from this browser skips the screens; unticked, it does not (tenant acme)"
+ui -X PUT -H 'content-type: application/json' -d '{"mfaRequired":false,"rememberMe":true}' \
+  http://localhost:3002/api/admin/tenants/acme/settings >/dev/null
+s=$(start "client=$acme_web")
+printf '%s' "$s" | grep -q '"remember":true' || { echo "expected the identifier screen to offer remember: $s" >&2; exit 1; }
+s=$(answer "$s" "{\"identifier\":\"$acme_id\",\"remember\":true}")
+page=$(answer "$s" "{\"password\":\"$acme_pw\"}")
+printf '%s' "$page" | grep -q "$acme_id" || { echo "expected the account's email in the token" >&2; exit 1; }
+sub=$(claims "$page" | grep '^sub = ')
+# Same browser (the jar keeps Hydra's session cookie), a new sign in from the demo client: no
+# screen, the same subject, one factor (the host remembers who, not how)
+page=$(walk "http://localhost:3001/login?client=$acme_web")
+expect_claim "$page" "$sub"
+expect_claim "$page" 'acr = "faye:1fa"'
+s=$(start "client=$acme_web")
+s=$(answer "$s" "{\"identifier\":\"$acme_id\",\"remember\":false}")
+page=$(answer "$s" "{\"password\":\"$acme_pw\"}")
+printf '%s' "$page" | grep -q "$acme_id" || { echo "expected the account's email in the token" >&2; exit 1; }
+s=$(walk "http://localhost:3001/login?client=$acme_web")
+expect_screen "$s" identifier
+ui -X PUT -H 'content-type: application/json' -d '{"mfaRequired":false}' http://localhost:3002/api/admin/tenants/acme/settings >/dev/null
+
+echo "keep me signed in ok"

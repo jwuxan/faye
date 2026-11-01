@@ -27,7 +27,10 @@ FROM node:24.22.2-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749
 RUN npm install -g pnpm@11.20.0
 WORKDIR /web
 COPY web/ .
-RUN pnpm install --frozen-lockfile && pnpm --filter "./apps/*" --workspace-concurrency=1 build
+COPY schema/ /schema/
+# Regenerate the contract types from the schema, so the image never ships stale committed ones
+RUN pnpm install --frozen-lockfile && pnpm generate \
+    && pnpm --filter "./apps/*" --workspace-concurrency=1 build
 RUN for app in login admin demo-client; do \
       mkdir -p /out/$app && cp -r apps/$app/.next/standalone/. /out/$app/ \
       && cp -r apps/$app/.next/static /out/$app/apps/$app/.next/static; \

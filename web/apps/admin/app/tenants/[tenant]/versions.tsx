@@ -14,10 +14,11 @@ import {
 import { Badge } from "@faye/ui/components/badge";
 import { Button } from "@faye/ui/components/button";
 import { cn } from "@faye/ui/lib/utils";
-import { GitCompareArrows, RotateCcw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { ArrowRight, Download, GitCompareArrows, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type Validation, type VersionView, type Versions as VersionList } from "../../../lib/api";
 import { diffLines } from "../../../lib/diff";
+import { highlightLines } from "../../../lib/highlight";
 import { PageHeader } from "../../shell";
 import { DraftActions, useDraft } from "./draft";
 
@@ -71,10 +72,14 @@ export function Versions({
 
   const open = useCallback(
     async (hash: string) => {
-      const { body } = await api<VersionView>(`tenants/${tenant}/versions/${hash}`);
-      setSelected(body);
+      try {
+        const { body } = await api<VersionView>(`tenants/${tenant}/versions/${hash}`);
+        setSelected(body);
+      } catch (e) {
+        notify("error", (e as Error).message);
+      }
     },
-    [tenant],
+    [tenant, notify],
   );
 
   useEffect(() => {
@@ -95,70 +100,130 @@ export function Versions({
   }, [tenant, refresh, notify]);
 
   const rollback = async (hash: string) => {
-    const { status, body } = await api<Validation>(`tenants/${tenant}/current`, { method: "POST", json: { versionHash: hash } });
-    if (status === 200) notify("ok", `Rolled back to ${short(hash)}`);
-    else notify("error", `Not rolled back: ${body.errors?.map((e) => e.message).join("; ")}`);
-    const { body: next } = await api<VersionList>(`tenants/${tenant}/versions`);
-    setList(next);
-    await open(hash);
-    onRollback();
+    try {
+      const { status, body } = await api<Validation>(`tenants/${tenant}/current`, { method: "POST", json: { versionHash: hash } });
+      if (status === 200) notify("ok", `Rolled back to ${short(hash)}`);
+      else notify("error", `Not rolled back: ${body.errors?.map((e) => e.message).join("; ")}`);
+      const { body: next } = await api<VersionList>(`tenants/${tenant}/versions`);
+      setList(next);
+      await open(hash);
+      onRollback();
+    } catch (e) {
+      notify("error", (e as Error).message);
+    }
   };
 
+  // The selected version against the draft, each side highlighted as a whole so multi line values color right
+  const diff = useMemo(() => {
+    if (!selected) return { rows: [], added: 0, removed: 0 };
+    const shown = selected.yaml || JSON.stringify(JSON.parse(selected.ir), null, 1);
+    const before = highlightLines(shown);
+    const after = highlightLines(draft);
+    let i = 0;
+    let j = 0;
+    const rows = diffLines(shown, draft).map((l) => {
+      const tokens = l.kind === "add" ? after[j++] : before[i++];
+      if (l.kind === "same") j++;
+      return { kind: l.kind, line: l.kind === "del" ? null : j, tokens: tokens ?? [{ text: l.text, cls: "" }] };
+    });
+    return { rows, added: rows.filter((r) => r.kind === "add").length, removed: rows.filter((r) => r.kind === "del").length };
+  }, [selected, draft]);
+
   if (!list) return <div className="p-6 text-muted-foreground">Loading…</div>;
-  const shown = selected?.yaml || (selected ? JSON.stringify(JSON.parse(selected.ir), null, 1) : "");
-  const lines = selected ? diffLines(shown, draft) : [];
-  const added = lines.filter((l) => l.kind === "add").length;
-  const removed = lines.filter((l) => l.kind === "del").length;
   const versions = [...list.versions].reverse();
+  const number = (hash: string) => list.versions.indexOf(hash) + 1;
 
   return (
-    <div className="grid h-full grid-cols-[260px_1fr]">
-      <ol className="min-h-0 overflow-auto border-r bg-surface-2 p-2" aria-label="Versions, newest first">
-        {versions.map((hash, i) => (
-          <li key={hash}>
-            <button
-              type="button"
-              onClick={() => open(hash)}
-              className={cn(
-                "flex h-8 w-full items-center gap-2 rounded-md px-2 text-left",
-                selected?.hash === hash ? "bg-background shadow-xs ring-1 ring-border" : "hover:bg-accent",
-              )}
-            >
-              <span className="font-mono text-xs">{short(hash)}</span>
-              <span className="text-xs text-muted-foreground">#{versions.length - i}</span>
-              {hash === list.current && (
-                <Badge variant="outline" className="ml-auto gap-1.5 font-normal text-muted-foreground">
-                  <span className="size-1.5 rounded-full bg-success" />
-                  live
-                </Badge>
-              )}
-            </button>
-          </li>
-        ))}
-      </ol>
+    <div className="grid h-full grid-rows-[auto_minmax(0,1fr)] md:grid-cols-[--spacing(72)_minmax(0,1fr)] md:grid-rows-1">
+      <nav className="max-h-[38svh] min-h-0 overflow-auto border-b bg-surface-2 md:max-h-none md:border-r md:border-b-0" aria-label="Version history">
+        <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">
+          {versions.length} {versions.length === 1 ? "version" : "versions"}, newest first
+        </p>
+        <ol className="px-2 pb-3">
+          {versions.map((hash, i) => {
+            const live = hash === list.current;
+            const active = selected?.hash === hash;
+            const at = list.published?.[hash];
+            return (
+              <li key={hash} className="relative">
+                {/* The rail joining each version to the one published before it, through the dots */}
+                {versions.length > 1 && (
+                  <span
+                    aria-hidden
+                    className={cn("absolute left-[--spacing(4.125)] z-[1] w-px bg-border", i === 0 ? "top-4.5 bottom-0" : i === versions.length - 1 ? "top-0 h-4.5" : "inset-y-0")}
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => open(hash)}
+                  aria-current={active ? "true" : undefined}
+                  className={cn(
+                    "relative flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors",
+                    active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-accent",
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "relative z-[2] mt-0.75 size-2.5 shrink-0 rounded-full border-2",
+                      live ? "border-success bg-success" : active ? "border-accent-ui bg-background" : "border-muted-foreground/40 bg-surface-2",
+                    )}
+                  />
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="flex items-center gap-2">
+                      <span className="font-medium">Version {versions.length - i}</span>
+                      {live && (
+                        <Badge variant="outline" className="h-5 gap-1.5 px-1.5 font-normal text-muted-foreground">
+                          <span className="size-1.5 rounded-full bg-success" />
+                          live
+                        </Badge>
+                      )}
+                    </span>
+                    <span className="truncate text-xs text-muted-foreground" title={at ? new Date(at).toLocaleString() : undefined}>
+                      {at ? when(at) : "Date not recorded"}
+                    </span>
+                  </span>
+                  <Badge variant="outline" className="mt-px shrink-0 font-mono text-xs font-normal text-muted-foreground">
+                    {short(hash)}
+                  </Badge>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
       {selected && (
-        <div className="flex min-h-0 flex-col">
-          <div className="flex h-11 shrink-0 items-center gap-3 border-b px-4">
-            <GitCompareArrows className="size-4 text-muted-foreground" />
-            <span className="font-mono text-xs">{short(selected.hash)}</span>
-            <span className="text-xs text-muted-foreground">→ draft</span>
-            <span className="font-mono text-xs text-success">+{added}</span>
-            <span className="font-mono text-xs text-danger">−{removed}</span>
-            <div className="ml-auto flex items-center gap-2">
-              <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" disabled={!selected.yaml} onClick={() => onLoad(selected.yaml)}>
+        <div className="flex min-h-0 min-w-0 flex-col">
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-2.5">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <GitCompareArrows className="size-4 shrink-0 text-muted-foreground" />
+              <span className="font-medium">Version {number(selected.hash)}</span>
+              <Badge variant="outline" className="font-mono text-xs font-normal text-muted-foreground">
+                {short(selected.hash)}
+              </Badge>
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <ArrowRight className="size-3" aria-hidden />
+                draft
+              </span>
+              <span className="font-mono text-xs text-success">+{diff.added}</span>
+              <span className="font-mono text-xs text-danger">−{diff.removed}</span>
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <Button variant="outline" size="sm" disabled={!selected.yaml} onClick={() => onLoad(selected.yaml)}>
+                <Download />
                 Load into draft
               </Button>
               {selected.hash !== list.current && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs">
+                    <Button variant="outline" size="sm">
                       <RotateCcw />
-                      Roll back to this
+                      Roll back
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Make {short(selected.hash)} live?</AlertDialogTitle>
+                      <AlertDialogTitle>Make version {number(selected.hash)} live?</AlertDialogTitle>
                       <AlertDialogDescription>
                         New sign ins run this version as soon as you confirm. Sign ins already in progress finish on the version they started with. The draft is not changed.
                       </AlertDialogDescription>
@@ -174,17 +239,31 @@ export function Versions({
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             {!selected.yaml && <p className="border-b bg-surface-2 px-4 py-1.5 text-xs text-muted-foreground">No YAML kept for this version; showing its IR</p>}
-            <table className="w-full border-collapse font-mono text-xs leading-5" aria-label="Diff">
+            <table className="w-full border-collapse font-mono text-xs leading-6" aria-label="Changes from this version to the draft">
               <tbody>
-                {lines.map((l, i) => (
-                  <tr key={i} className={cn(l.kind === "add" && "bg-success/10", l.kind === "del" && "bg-danger/10")}>
-                    <td className="w-8 border-r pr-2 text-right text-muted-foreground/60 select-none">{i + 1}</td>
-                    <td className={cn("w-6 text-center select-none", l.kind === "add" ? "text-success" : l.kind === "del" ? "text-danger" : "text-transparent")}>
-                      {l.kind === "add" ? "+" : l.kind === "del" ? "−" : " "}
+                <tr aria-hidden className="h-3">
+                  <td className="border-r bg-surface-2" />
+                  <td colSpan={2} />
+                </tr>
+                {diff.rows.map((r, i) => (
+                  <tr key={i} className={cn(r.kind === "add" && "bg-success/10", r.kind === "del" && "bg-danger/10")}>
+                    <td className="w-px border-r bg-surface-2 pr-3 pl-4 text-right whitespace-nowrap text-muted-foreground select-none">{r.line}</td>
+                    <td className={cn("w-px px-2.5 text-center select-none", r.kind === "add" ? "text-success" : r.kind === "del" ? "text-danger" : "text-transparent")}>
+                      {r.kind === "add" ? "+" : r.kind === "del" ? "−" : " "}
                     </td>
-                    <td className="pr-4 whitespace-pre">{l.text}</td>
+                    <td className="pr-6 whitespace-pre">
+                      {r.tokens.map((t, k) => (
+                        <span key={k} className={t.cls || undefined}>
+                          {t.text}
+                        </span>
+                      ))}
+                    </td>
                   </tr>
                 ))}
+                <tr aria-hidden className="h-4">
+                  <td className="border-r bg-surface-2" />
+                  <td colSpan={2} />
+                </tr>
               </tbody>
             </table>
           </div>
@@ -192,6 +271,17 @@ export function Versions({
       )}
     </div>
   );
+}
+
+/** "Today 15:53", "Yesterday 09:12", or "Oct 30, 2026 09:12" in the browser's locale. */
+function when(iso: string): string {
+  const at = new Date(iso);
+  const time = at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((day(new Date()) - day(at)) / 86_400_000);
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Yesterday ${time}`;
+  return `${at.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} ${time}`;
 }
 
 const short = (hash: string) => hash.replace("sha256:", "").slice(0, 8);

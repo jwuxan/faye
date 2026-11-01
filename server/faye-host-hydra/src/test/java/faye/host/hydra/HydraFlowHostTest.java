@@ -140,8 +140,20 @@ class HydraFlowHostTest {
         assertThat(sent.get("amr")).containsExactly(JSON.valueToTree("pwd"));
         assertThat(sent.get("acr").asText()).isEqualTo("faye:1fa");
         assertThat(sent.get("remember").asBoolean()).isFalse();
+        assertThat(sent.has("remember_for")).isFalse();
         assertThat(sent.at("/context/flowId").asText()).isEqualTo("f_1");
         assertThat(sent.at("/context/versionHash").asText()).isEqualTo("sha256:ab");
+    }
+
+    /** ADR 0033: a person who asked to stay signed in has Hydra remember the login for 30 days. */
+    @Test
+    void acceptsLoginThePersonAskedToRemember() throws Exception {
+        HostRequest req = host.load(HostKind.LOGIN, "c1");
+        host.accept(req, new Authenticated("user-alice", List.of("pwd"), "faye:1fa", Map.of(), true));
+
+        JsonNode sent = JSON.readTree(received.get("PUT /admin/oauth2/auth/requests/login/accept?login_challenge=c1"));
+        assertThat(sent.get("remember").asBoolean()).isTrue();
+        assertThat(sent.get("remember_for").asLong()).isEqualTo(30L * 24 * 60 * 60);
     }
 
     @Test

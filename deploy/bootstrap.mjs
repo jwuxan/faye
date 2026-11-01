@@ -72,8 +72,8 @@ const APPLICATIONS = [
   ["Bank Online", "bank", true],
   ["Bank Mobile", "bank", true],
   ["Bank Advisor Desk", "bank", true],
-  ["Bank Business", "bank", true],
-  ["Bank Investments", "bank", true],
+  ["Bank Business", "bank", false],
+  ["Bank Investments", "bank", false],
 ];
 for (const [name, tenant, firstParty] of APPLICATIONS) {
   const existing = await (await hydra(`/admin/clients?client_name=${encodeURIComponent(name)}`)).json();

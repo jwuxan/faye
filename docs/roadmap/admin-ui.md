@@ -11,7 +11,7 @@ The Admin UI lets someone who is not an engineer compose a login flow from block
 
 ## Layout
 
-A console with a collapsible sidebar (⌘B); each capability is a route under `/tenants/{t}/` ([ADR 0013](../adr/0013-admin-console-shell-and-flow-workspace.md)).
+A console with a collapsible sidebar (⌘B), a command palette (⌘K: pages, tenants, console commands) and a shortcut sheet shown while ⌘ is held; dense panels carry a (?) whose tooltip explains them. Each capability is a route under `/tenants/{t}/` ([ADR 0013](../adr/0013-admin-console-shell-and-flow-workspace.md)).
 
 ```
 ┌────────────┬──────────────────────────────────────────────────────────────────────┐
@@ -31,13 +31,13 @@ A console with a collapsible sidebar (⌘B); each capability is a route under `/
 └────────────┴──────────────────────────────────────────────────────────────────────┘
 ```
 
-The flow workspace keeps the blocks (or the YAML) and the graph of the same document side by side: every edit redraws the graph, flashes the blocks it changed, and is checked by the server. Selecting a block in either selects it in both. Hooks, Versions, General and Branding are their own sections, and share the tenant's draft with the flow workspace.
+The flow workspace keeps the blocks (or the YAML) and the graph of the same document side by side: every edit redraws the graph, flashes the blocks it changed, and is checked by the server. Selecting a block in either selects it in both. Hooks, Versions, General and Login page (branding and the login screens' options, [ADR 0033](../adr/0033-login-page-customization-and-keep-me-signed-in.md)) are their own sections, and share the tenant's draft with the flow workspace.
 
 ## Features
 
-1. **Block palette** (the "Add block" command list, `/`): high level blocks ("Password", "Passkey", "TOTP") expand to IR fragments (`screen` + `call` + `retry`) with sensible defaults. Logic blocks expose `choose`, `when`, `retry`, `hook`.
-2. **Tree editor** (native drag and drop, with keyboard moves): drag to reorder or nest, with drop targets only where the grammar allows. Each block shows its step id, a one line summary and validation badges.
-3. **Inspector**: forms per block type; a condition builder for predicates (namespace aware path picker, operator dropdown, typed value); hook picker with capability summary.
+1. **Block palette** (the "Add block" command list, `/`): the built in blocks ("Identifier", "Password", "Passkey", "TOTP", ...), each a step whose screen and handler are fixed ([ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md)), and the logic blocks Choose, Group, Set and Fail. A block that cannot go where it would be added is shown disabled with why ("Start with the Identifier", "An option is one credential block, or Fail").
+2. **Tree editor** (native drag and drop, with keyboard moves): drag to reorder or nest; a drop or move that would put a block where the compiler refuses it (the Identifier anywhere but first, Consent inside a group, a Group as an option) does nothing. Each block shows its step id, a one line summary and validation badges.
+3. **Inspector**: only the fields of the selected kind of block, never a screen or handler. The Identifier: its view (identifier first, or with the password on the same screen, which offers to remove a Password step that would ask again), passkey autofill, attempts and path. A credential block: attempts (its default unless changed) and path. A choice: who picks. Set: vars. Fail: the reason. General settings hold the tenant's block defaults (attempts per block, passkey autofill), which the inspector shows as "tenant default". Every block: a condition (not the Identifier, which always runs) and the hooks that run before and after it. Keys hand written YAML gave a block that it does not take are listed with why and a Remove. Removing one of a choice's two options makes the other the step. YAML from before blocks opens as blocks under a banner whose "Upgrade to blocks" rewrites it, as one undoable edit; until then the server checks it as written.
 4. **YAML view** (CodeMirror 6, system monospace; a switch in the editor panel): editable; parse errors and check errors shown inline via source maps. Round trips to the same IR.
 5. **Graph** (SVG drawn by the app, read only, beside the blocks): branching, the selected block, the highlighted path or preview run, and the blocks the last edit changed; zoom and fit.
 6. **Paths** (side panel): enumerated success and failure paths with the `amr` / `acr` each yields. Selecting a path highlights it in the tree and graph.
@@ -48,7 +48,7 @@ The flow workspace keeps the blocks (or the YAML) and the graph of the same docu
 
 ## Admin API (server)
 
-As built in M5 ([ADR 0010](../adr/0010-m5-admin-ui.md)); one flow per tenant, every call with `Authorization: Bearer <FAYE_ADMIN_TOKEN>`:
+As built in M5 ([ADR 0010](../adr/0010-m5-admin-ui.md)); one flow per tenant, every call with `Authorization: Bearer <FAYE_ADMIN_TOKEN>`, over HTTP on the Unix domain socket `FAYE_ADMIN_SOCKET` and never on the TCP port ([ADR 0028](../adr/0028-admin-api-on-a-unix-domain-socket.md)):
 
 ```
 GET  /admin/catalog                           handlers, screens and their options, egress targets
@@ -57,7 +57,7 @@ GET  /admin/tenants/{t}/draft                 { yaml, origin, files }
 PUT  /admin/tenants/{t}/draft                 { yaml }
 POST /admin/tenants/{t}/validate              YAML → errors, warnings, summary, paths
 POST /admin/tenants/{t}/publish               YAML → versionHash
-GET  /admin/tenants/{t}/versions              current, history
+GET  /admin/tenants/{t}/versions              current, history, published (time of each publish, by hash)
 GET  /admin/tenants/{t}/versions/{hash}       { yaml, ir, current }
 POST /admin/tenants/{t}/current               { versionHash }
 POST /admin/tenants/{t}/hooks/test            { source, http, timeoutMs, ctx, options } → result, accepted, effect, logs
@@ -67,4 +67,4 @@ GET  /admin/tenants/{t}/clients               the tenant's OAuth clients, read o
 GET  /admin/users                             accounts and which credentials they have, read only
 ```
 
-Admin authentication: none, for local use only ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)); the Admin UI listens on localhost and calls the API from its own server with the token, which never reaches the browser.
+Admin authentication: none, for local use only ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)); the Admin UI listens on localhost and calls the API from its own server, through the socket, with the token, which never reaches the browser.

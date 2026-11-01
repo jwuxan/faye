@@ -31,3 +31,9 @@ Format: [MADR 4](https://adr.github.io/madr/). One file per decision, `NNNN-titl
 | [0025](0025-host-neutral-boundaries-for-embedding.md) | Host neutral boundaries for embedding: host parameters, credential issuers and flow outcomes | In progress |
 | [0026](0026-consent-as-a-step.md) | Consent as a step of the sign in, not a section of its own | In progress |
 | [0027](0027-source-lines-at-run-time.md) | Source lines at run time: a source map per version, IR paths in traces and logs | Proposed |
+| [0028](0028-admin-api-on-a-unix-domain-socket.md) | The admin API on a Unix domain socket only | In progress |
+| [0029](0029-screen-paths.md) | A URL path for every screen, set in the flow | In progress |
+| [0030](0030-blocks-with-fixed-screens-and-handlers.md) | Blocks with fixed screens and handlers: a flow orchestrates, it does not assemble | In progress |
+| [0031](0031-failed-sign-in-stays-on-faye.md) | A failed sign in stays on Faye | In progress |
+| [0032](0032-delivered-one-time-codes-and-qr-sign-in.md) | Delivered one time codes (email, SMS) beside TOTP, and QR code sign in, as blocks | Proposed |
+| [0033](0033-login-page-customization-and-keep-me-signed-in.md) | Login page customization, and "keep me signed in" | In progress |

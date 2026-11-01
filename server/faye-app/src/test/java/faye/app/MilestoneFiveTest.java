@@ -51,6 +51,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
             "faye.tenants.policy.flow=classpath:flows/mfa-policy.yaml",
             "faye.tenants.hooked.flow=classpath:flows/risk-totp.yaml",
             "faye.tenants.hooked.egress=ip-reputation",
+            "faye.tenants.remember.flow=classpath:flows/password-only.yaml",
+            "faye.tenants.remember.name=Remember Co",
         })
 @AutoConfigureMockMvc
 class MilestoneFiveTest {
@@ -144,7 +146,7 @@ class MilestoneFiveTest {
         assertThat(find(catalog.get("screens"), "type", "identifier")
                         .get("options")
                         .toString())
-                .isEqualTo("[\"passkey\"]");
+                .isEqualTo("[\"passkey\",\"password\"]");
         assertThat(catalog.get("screens").toString()).doesNotContain("method_picker");
 
         JsonNode tenants = admin(get("/admin/tenants"), status().isOk());
@@ -269,6 +271,45 @@ class MilestoneFiveTest {
                 status().isBadRequest());
     }
 
+    /** ADR 0030: a tenant's block defaults are checked when saved and apply to the next compile. */
+    @Test
+    void blockDefaultsComeFromTheTenantAndTheFlowStillWins() throws Exception {
+        String flow = "flow: f\nversion: 1\nlogin:\n  steps:\n    identify: { block: identifier }\n"
+                + "    credential: { block: password }\n";
+        assertThat(admin(MilestoneThreeTest.validate("editor", flow), status().isOk())
+                        .get("summary")
+                        .asText())
+                .startsWith("login: 3 success paths");
+
+        JsonNode unknown = admin(
+                saveSettings("editor", Map.of("blocks", Map.of("sms", Map.of("attempts", 2)))),
+                status().isBadRequest());
+        assertThat(unknown.toString()).contains("unknown block 'sms'");
+        JsonNode typed = admin(
+                saveSettings("editor", Map.of("blocks", Map.of("password", Map.of("attempts", "five")))),
+                status().isBadRequest());
+        assertThat(typed.toString()).contains("'attempts' of the Password block is a whole number of 1 or more");
+        JsonNode view = admin(
+                saveSettings("editor", Map.of("blocks", Map.of("identifier", Map.of("password", true)))),
+                status().isBadRequest());
+        assertThat(view.toString()).contains("the Identifier block's 'password' is set in the flow, not as a default");
+
+        admin(saveSettings("editor", Map.of("blocks", Map.of("password", Map.of("attempts", 5)))), status().isOk());
+        try {
+            assertThat(admin(MilestoneThreeTest.validate("editor", flow), status().isOk())
+                            .get("summary")
+                            .asText())
+                    .startsWith("login: 5 success paths");
+            String once = flow.replace("{ block: password }", "{ block: password, with: { attempts: 1 } }");
+            assertThat(admin(MilestoneThreeTest.validate("editor", once), status().isOk())
+                            .get("summary")
+                            .asText())
+                    .startsWith("login: 1 success paths");
+        } finally {
+            admin(saveSettings("editor", Map.of()), status().isOk());
+        }
+    }
+
     @Test
     void settingsAreCheckedAgainstTheCurrentVersion() throws Exception {
         JsonNode view = admin(get("/admin/tenants/settings/settings"), status().isOk());
@@ -333,6 +374,52 @@ class MilestoneFiveTest {
                         .outcome()
                         .acr())
                 .isEqualTo("faye:1fa");
+    }
+
+    /**
+     * ADR 0033: the login customization. A configured name brands the screens until an admin saves
+     * branding; a saved "keep me signed in" offers it on the identifier screen of flows that start
+     * after, and the person's choice reaches the host; show password and sign up ride on branding.
+     */
+    @Test
+    void loginCustomizationReachesTheScreensAndTheHost() throws Exception {
+        JsonNode first = login("m5-remember-0", "remember");
+        assertThat(first.at("/branding/name").asText()).isEqualTo("Remember Co");
+        assertThat(first.at("/screen/remember").isMissingNode()).isTrue();
+        assertThat(first.at("/branding/showPassword").isMissingNode()).isTrue();
+
+        Map<String, Object> branding = Map.of("name", "Remember Co", "showPassword", true, "signUp", true);
+        JsonNode view =
+                admin(saveSettings("remember", Map.of("rememberMe", true, "branding", branding)), status().isOk());
+        assertThat(view.at("/settings/rememberMe").asBoolean()).isTrue();
+
+        JsonNode screen = login("m5-remember-1", "remember");
+        assertThat(screen.at("/screen/remember").asBoolean()).isTrue();
+        assertThat(screen.at("/branding/showPassword").asBoolean()).isTrue();
+        assertThat(screen.at("/branding/signUp").asBoolean()).isTrue();
+        assertThat(protocol.validate(screen)).isEmpty();
+
+        screen = submit(screen, Map.of("identifier", "alice@example.com", "remember", true));
+        submit(screen, Map.of("password", MilestoneThreeTest.PASSWORD));
+        assertThat(host.accepted().stream()
+                        .filter(a -> a.request().ref().equals("m5-remember-1"))
+                        .findFirst()
+                        .orElseThrow()
+                        .outcome()
+                        .remember())
+                .isTrue();
+
+        // Turned off, the screen no longer offers it, and an answer carrying it is malformed
+        admin(saveSettings("remember", Map.of("branding", branding)), status().isOk());
+        JsonNode off = login("m5-remember-2", "remember");
+        assertThat(off.at("/screen/remember").isMissingNode()).isTrue();
+        mvc.perform(post("/api/flows/" + off.get("flowId").asText() + "/submit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(JSON.writeValueAsString(Map.of(
+                                "nonce", off.get("nonce").asText(),
+                                "action", "submit",
+                                "payload", Map.of("identifier", "alice@example.com", "remember", true)))))
+                .andExpect(status().isBadRequest());
     }
 
     // ---- helpers ----

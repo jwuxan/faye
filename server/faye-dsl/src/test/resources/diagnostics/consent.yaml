@@ -2,12 +2,12 @@ flow: f
 version: 1
 login:
   steps:
-    identify: { screen: identifier, use: identity.resolve }
-    credential: { screen: password, use: password.verify }
-    consent: { screen: consent, use: consent.record }
+    identify: { block: identifier }
+    credential: { block: password }
+    consent: { block: consent }
 consent:
   steps:
-    grant: { screen: consent, use: consent.record }
+    grant: { block: consent }
 
 # Consent is a step of 'login' (ADR 0026); the section it used to have is refused with the fix.
 # expect: 8:1: consent is a step of 'login' now: move these steps to the end of 'login.steps'

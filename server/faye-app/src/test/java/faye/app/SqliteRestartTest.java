@@ -88,8 +88,20 @@ class SqliteRestartTest {
         ScreenView password;
         try (var before = boot(config)) {
             published = before.getBean(Publisher.class)
-                    .publish(tenant, FlowCompiler.compile("totp.yaml", MilestoneThreeTest.PASSWORD_TOTP))
+                    .publish(
+                            tenant,
+                            FlowCompiler.compile("totp.yaml", MilestoneThreeTest.PASSWORD_TOTP, MilestoneThreeTest.DSL))
                     .hash();
+            // Block defaults saved in the console apply to the next publish, never to a restart (ADR 0030)
+            before.getBean(TenantConfigStore.class)
+                    .saveSettings(
+                            tenant,
+                            new TenantSettings(
+                                    false,
+                                    null,
+                                    null,
+                                    TenantSettings.Branding.NONE,
+                                    Map.of("password", Map.of("attempts", 5))));
             before.getBean(MockFlowHost.class)
                     .register(
                             MockFlowHost.request(HostKind.LOGIN, "c-published", client, HostParams.fromMap(Map.of())));
@@ -112,6 +124,53 @@ class SqliteRestartTest {
                     password.nonce(),
                     new Submission(Map.of("password", "correct horse battery staple")));
             assertThat(otp.screen()).containsEntry("type", "otp");
+        }
+    }
+
+    /**
+     * ADR 0026 moved consent into {@code login.steps} without changing the IR, so a database from
+     * before it keeps the old YAML of the configured version, which the compiler now refuses and the
+     * Admin UI would open as a draft with an error. A restart puts the configured file's text in its
+     * place; a source that still compiles is kept.
+     */
+    @Test
+    void configuredSourceReplacesOneThatNoLongerCompiles() {
+        String tenant = "partner";
+        String old = """
+                flow: partner-consent
+                version: 1
+                login:
+                  steps:
+                    identify: { block: identifier }
+                    credential: { block: password }
+                consent:
+                  steps:
+                    grant: { if: { not: client.first_party }, block: consent }
+                """;
+        String update = "UPDATE faye_version_source SET yaml = ? WHERE hash = ?";
+        String hash;
+        String configured;
+        try (var before = boot()) {
+            hash = before.getBean(FlowVersions.class)
+                    .current(tenant)
+                    .orElseThrow()
+                    .hash();
+            configured = before.getBean(TenantConfigStore.class).source(hash).orElseThrow();
+            before.getBean(org.springframework.jdbc.core.simple.JdbcClient.class)
+                    .sql(update)
+                    .params(old, hash)
+                    .update();
+        }
+        String kept = "# Published through the admin API\n" + configured;
+        try (var after = boot()) {
+            assertThat(after.getBean(TenantConfigStore.class).source(hash)).hasValue(configured);
+            after.getBean(org.springframework.jdbc.core.simple.JdbcClient.class)
+                    .sql(update)
+                    .params(kept, hash)
+                    .update();
+        }
+        try (var again = boot()) {
+            assertThat(again.getBean(TenantConfigStore.class).source(hash)).hasValue(kept);
         }
     }
 
@@ -216,17 +275,17 @@ class SqliteRestartTest {
                     version: 1
                     login:
                       steps:
-                        identify: { screen: identifier, use: identity.resolve }
-                        credential: { screen: password, use: password.verify }
-                    """));
+                        identify: { block: identifier }
+                        credential: { block: password }
+                    """, MilestoneThreeTest.DSL));
             var other = faye.engine.FlowVersion.of(FlowCompiler.compile("o.yaml", """
                     flow: other
                     version: 1
                     login:
                       steps:
-                        identify: { screen: identifier, use: identity.resolve }
-                        credential: { screen: password, use: password.verify }
-                    """));
+                        identify: { block: identifier }
+                        credential: { block: password }
+                    """, MilestoneThreeTest.DSL));
             String count = "SELECT count(*) FROM faye_version WHERE hash = ?";
 
             at.apply(t0).store(draft);

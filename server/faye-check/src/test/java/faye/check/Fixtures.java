@@ -2,6 +2,7 @@ package faye.check;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
+import faye.dsl.BlockSpec;
 import faye.dsl.FlowCompiler;
 import faye.engine.Handler;
 import faye.engine.HandlerMeta;
@@ -88,9 +89,87 @@ final class Fixtures {
         return IrCodec.readFlow(read(CONFORMANCE.resolve("flows/" + name + ".json")));
     }
 
-    /** What the app tells the compiler about consent steps, as its catalogs say (ADR 0026). */
+    /** The blocks the app's identity module implements (ADR 0030), as faye-identity's IdentityBlock does. */
+    record TestBlock(
+            String id,
+            String title,
+            String handler,
+            String screen,
+            BlockSpec.Role role,
+            Map<String, Object> fixed,
+            Map<String, BlockSpec.Setting> settings)
+            implements BlockSpec {}
+
+    static final BlockSpec.Setting THREE = new BlockSpec.Setting(3, BlockSpec.Setting.Target.ATTEMPTS);
+
+    static final Map<String, BlockSpec> BLOCKS = Map.of(
+            "identifier",
+            new TestBlock(
+                    "identifier",
+                    "Identifier",
+                    "identity.resolve",
+                    "identifier",
+                    BlockSpec.Role.IDENTIFIER,
+                    Map.of(),
+                    Map.of(
+                            "passkey",
+                            new BlockSpec.Setting(false, BlockSpec.Setting.Target.OPTION),
+                            "password",
+                            new BlockSpec.Setting(false, BlockSpec.Setting.Target.PASSWORD),
+                            "attempts",
+                            THREE)),
+            "password",
+            new TestBlock(
+                    "password",
+                    "Password",
+                    "password.verify",
+                    "password",
+                    BlockSpec.Role.PASSWORD,
+                    Map.of(),
+                    Map.of("attempts", THREE)),
+            "passkey",
+            new TestBlock(
+                    "passkey",
+                    "Passkey",
+                    "webauthn.assert",
+                    "passkey",
+                    BlockSpec.Role.CREDENTIAL,
+                    Map.of(),
+                    Map.of("attempts", new BlockSpec.Setting(1, BlockSpec.Setting.Target.ATTEMPTS))),
+            "add-passkey",
+            new TestBlock(
+                    "add-passkey",
+                    "Add passkey",
+                    "webauthn.register",
+                    "passkey",
+                    BlockSpec.Role.ACTION,
+                    Map.of("register", true),
+                    Map.of()),
+            "totp",
+            new TestBlock(
+                    "totp",
+                    "TOTP",
+                    "totp.verify",
+                    "otp",
+                    BlockSpec.Role.CREDENTIAL,
+                    Map.of(),
+                    Map.of("attempts", THREE)),
+            "enroll-totp",
+            new TestBlock(
+                    "enroll-totp",
+                    "Enroll TOTP",
+                    "totp.enroll",
+                    "otp_enroll",
+                    BlockSpec.Role.CREDENTIAL,
+                    Map.of(),
+                    Map.of("attempts", THREE)),
+            "consent",
+            new TestBlock(
+                    "consent", "Consent", "consent.record", "consent", BlockSpec.Role.CONSENT, Map.of(), Map.of()));
+
+    /** What the app tells the compiler about consent steps (ADR 0026) and its blocks (ADR 0030). */
     static final FlowCompiler.Options DSL =
-            new FlowCompiler.Options(Map.of(), java.util.Set.of("consent"), java.util.Set.of("consent.record"));
+            new FlowCompiler.Options(Map.of(), java.util.Set.of("consent"), java.util.Set.of("consent.record"), BLOCKS);
 
     static Flow yaml(String origin, String yaml) {
         return FlowCompiler.compile(origin, yaml, DSL);

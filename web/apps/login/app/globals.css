@@ -1,1 +1,44 @@
 @import "@faye/ui/globals.css";
+@import "@faye/ui/login-theme.css";
+
+/* The palette is login-theme.css, on <html class="login-theme">. */
+
+/* The sign in screens' whole type scale: five sizes, nothing else compiles. Shared components from
+   @faye/ui use the same names, so here they land on this scale too. No arbitrary sizes
+   (text-[Npx], fontSize): lib/type-scale.test.ts fails on them.
+     xs    12/16  footer, fine print
+     sm    13/20  hints, errors, chips
+     base  15/24  body, fields, labels and actions (the default)
+     lg    18/28  dialog titles
+     xl    22/32  screen titles and the tenant's name */
+@theme {
+  --text-*: initial;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.125rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.375rem;
+  --text-xl--line-height: 2rem;
+}
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  body {
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: color-mix(in oklch, var(--primary) 20%, transparent);
+  }
+  input {
+    caret-color: var(--primary);
+  }
+}

@@ -22,6 +22,9 @@ import org.jspecify.annotations.Nullable;
  * @param proven for a consent, what the login that proved its subject learned about the person,
  *     taken when the consent started; the host receives exactly this. Empty otherwise, and in states
  *     saved before the field existed
+ * @param remember the person asked to stay signed in, on a screen that offered it (ADR 0033); the
+ *     host is told when the sign in succeeds. Absent in states saved before the field existed,
+ *     which read as false
  */
 public record FlowState(
         String flowId,
@@ -37,7 +40,8 @@ public record FlowState(
         List<Effect> pending,
         long revision,
         boolean preview,
-        Map<String, Object> proven) {
+        Map<String, Object> proven,
+        boolean remember) {
 
     /**
      * @param step innermost enclosing step id, or null
@@ -65,7 +69,8 @@ public record FlowState(
 
     /**
      * Every component but the nullable ones and those that default ({@code preview}, {@code proven},
-     * absent in older states) is required, so a state read with one missing fails to read.
+     * {@code remember}, absent in older states) is required, so a state read with one missing fails
+     * to read.
      */
     public FlowState {
         Objects.requireNonNull(flowId);
@@ -80,5 +85,25 @@ public record FlowState(
         pending = List.copyOf(pending);
         // Absent in states saved before the field existed
         proven = proven == null ? Map.of() : Map.copyOf(proven);
+    }
+
+    /** This state, with the person's answer to "keep me signed in". */
+    FlowState withRemember(boolean remember) {
+        return new FlowState(
+                flowId,
+                tenantId,
+                versionHash,
+                kind,
+                entry,
+                hostRef,
+                binder,
+                stack,
+                env,
+                awaiting,
+                pending,
+                revision,
+                preview,
+                proven,
+                remember);
     }
 }

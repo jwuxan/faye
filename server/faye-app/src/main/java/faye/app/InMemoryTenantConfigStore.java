@@ -33,6 +33,11 @@ final class InMemoryTenantConfigStore implements TenantConfigStore {
     }
 
     @Override
+    public void replaceSource(String versionHash, String yaml) {
+        sources.put(versionHash, yaml);
+    }
+
+    @Override
     public Optional<TenantSettings> settings(String tenantId) {
         return Optional.ofNullable(settings.get(tenantId));
     }

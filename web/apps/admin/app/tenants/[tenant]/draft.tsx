@@ -7,7 +7,7 @@ import { Play } from "lucide-react";
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "@faye/ui/components/sonner";
 import { api, type Catalog, type Draft, type Published, type SettingsView, type Validation } from "../../../lib/api";
-import { type FlowDoc, fromYaml, toYaml, visitKeys } from "../../../lib/flow";
+import { isLegacy, type FlowDoc, fromYaml, toYaml, visitKeys } from "../../../lib/flow";
 import { locate } from "../../../lib/locate";
 import { follow, type LiveRun, type Recorded } from "../../../lib/trace";
 import type { Mark } from "./code-editor";
@@ -136,7 +136,8 @@ export function DraftProvider({ tenant, demoClient, children }: { tenant: string
       }
     }, QUIET_MS);
     return () => clearTimeout(timer);
-  }, [yaml, tenant, fail]);
+    // Saved settings (block defaults, policy) change what the same YAML compiles to
+  }, [yaml, tenant, fail, settings?.settings]);
 
   const parsed = useMemo(() => {
     if (yaml === null) return null;
@@ -197,10 +198,12 @@ export function DraftProvider({ tenant, demoClient, children }: { tenant: string
     const problems: Finding[] = [];
     const marks: Mark[] = [];
     if (!validation || yaml === null) return { findings, problems, marks };
+    const legacy = isLegacy(yaml);
     for (const [severity, list] of [["error", validation.errors], ["warning", validation.warnings]] as const) {
       for (const p of list) {
         marks.push({ line: p.line, column: p.column, message: p.message, severity });
-        const key = p.line > 0 ? locate(yaml, p.line, p.column) : null;
+        // Old YAML shows as converted blocks, which its lines do not address: the banner speaks for it
+        const key = p.line > 0 && !legacy ? locate(yaml, p.line, p.column) : null;
         problems.push({ severity, message: p.message, line: p.line, key });
         if (key && !key.startsWith("hook:")) {
           const f = findings.get(key) ?? { errors: [], warnings: [] };
@@ -277,8 +280,11 @@ export function DraftActions({ preview = false }: { preview?: boolean }) {
   return (
     <>
       <span className="flex items-center gap-1.5 text-xs whitespace-nowrap text-muted-foreground" role="status">
-        <span className={cn("size-1.5 rounded-full", saved === "failed" ? "bg-danger" : saved === "saving" ? "bg-warning" : "bg-success")} />
-        {saved === "saving" ? "Saving…" : saved === "failed" ? "Not saved" : origin === "draft" ? "Draft saved" : "No changes"}
+        <span className={cn("size-1.5 rounded-full transition-colors", saved === "failed" ? "bg-danger" : saved === "saving" ? "bg-warning" : "bg-success")} />
+        {/* On a phone the dot alone says it; the words stay for screen readers */}
+        <span className={cn(saved !== "failed" && "sr-only sm:not-sr-only")}>
+          {saved === "saving" ? "Saving…" : saved === "failed" ? "Not saved" : origin === "draft" ? "Draft saved" : "No changes"}
+        </span>
       </span>
       {live && (
         <Tooltip>
@@ -300,7 +306,7 @@ export function DraftActions({ preview = false }: { preview?: boolean }) {
           className={cn(previewing && "border-accent-ui text-accent-ui hover:text-accent-ui")}
         >
           <Play />
-          Preview
+          <span className="sr-only sm:not-sr-only">Preview</span>
         </Button>
       )}
       <Tooltip>

@@ -26,6 +26,9 @@ run() {
 }
 
 export FAYE_DATABASE="${FAYE_DATABASE:-$root/deploy/.data/faye.db}"
+# Faye serves the admin API only on this Unix domain socket (ADR 0028), in a directory only you can enter
+mkdir -p "$root/deploy/.data/run" && chmod 700 "$root/deploy/.data/run"
+export FAYE_ADMIN_SOCKET="$root/deploy/.data/run/admin.sock"
 secrets=${XDG_STATE_HOME:-$HOME/.local/state}/faye/secrets
 run hydra "$root/deploy/hydra-local.sh"
 run bootstrap node "$root/deploy/bootstrap.mjs"
@@ -38,7 +41,7 @@ run faye env \
   "$root/server/gradlew" -p "$root/server" --console=plain :faye-app:bootRun
 # Writes each tenant's user pool once Faye has migrated the schema it polls for
 run seed env DATABASE="$FAYE_DATABASE" SECRETS="$secrets" node "$root/deploy/directory/seed.mjs"
-run login pnpm -C "$root/web" --filter @faye/login dev
+run login env DEMO_SIGN_IN_URL=http://localhost:3001/login pnpm -C "$root/web" --filter @faye/login dev
 run demo-client pnpm -C "$root/web" --filter @faye/demo-client dev
 run admin env \
   FAYE_ADMIN_TOKEN="${FAYE_ADMIN_TOKEN:-dev-admin-token}" \

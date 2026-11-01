@@ -1,0 +1,15 @@
+name: offered but not ticked, or not sent at all, the host is not asked to remember the sign in (ADR 0033)
+ir: flows/identifier-password.json
+tenant: { remember_me: true }
+handlers:
+  identity.resolve: [ok, ok]
+  password.verify: [{ fail: invalid_credentials }, ok]
+events:
+  - expect_screen: identifier
+    expect_remember: true
+  - submit: { identifier: alice@example.com, password: wrong, remember: false }
+  - expect_screen: identifier
+    expect_remember: true
+    expect_error: invalid_credentials
+  - submit: { identifier: alice@example.com, password: hunter2 }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

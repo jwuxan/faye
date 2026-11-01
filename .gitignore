@@ -22,3 +22,13 @@ crash-*
 timeout-*
 slow-unit-*
 oom-*
+
+# brand/generate.py: the downloaded font and the script's virtualenv
+brand/.cache/
+brand/.venv/
+__pycache__/
+
+# Browser tests of the Login UI: the browser Playwright downloads (pinned by its version), and its output
+web/apps/login/.playwright/
+web/apps/login/test-results/
+web/apps/login/playwright-report/

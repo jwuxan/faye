@@ -1,6 +1,8 @@
 package faye.engine;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -21,6 +23,14 @@ public interface FlowVersions {
 
     /** Hashes of the versions published for the tenant, first published first. */
     List<String> history(String tenantId);
+
+    /**
+     * When the tenant first published each version in its history, by hash. A store that keeps no
+     * times, or a version published before times were kept, is missing from it.
+     */
+    default Map<String, Instant> publishedAt(String tenantId) {
+        return Map.of();
+    }
 
     /** Points the tenant back at a version it published before; false if it never published it. */
     boolean rollback(String tenantId, String hash);

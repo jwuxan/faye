@@ -1,0 +1,17 @@
+name: a screen path may nest segments under its first one
+ir: flows/screen-paths.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: true } } }]
+  totp.verify: [ok]
+events:
+  - expect_screen: identifier
+    expect_path: /login
+  - submit: { identifier: alice@example.com }
+  - expect_screen: method_picker
+    expect_path: /challenge/credential
+  - submit: { method: totp }
+  - expect_screen: otp
+    expect_step: credential
+    expect_path: /challenge/mfa/totp
+  - submit: { code: "123456" }
+  - expect_result: { succeed: true, subject: alice, amr: [otp], acr: "faye:1fa" }

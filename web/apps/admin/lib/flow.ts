@@ -5,7 +5,7 @@
  */
 import { Document, isMap, isPair, isScalar, isSeq, parse, parseDocument } from "yaml";
 import { ID_PATTERN, KEY_PATTERN } from "@faye/contract";
-import { CONSENT, CONSENT_HANDLER, SECTIONS, type Section } from "./entries.ts";
+import { AUTHENTICATE, CONSENT_HANDLER, SECTIONS, type Section } from "./entries.ts";
 
 export type Literal = string | number | boolean;
 
@@ -22,20 +22,27 @@ export type Predicate =
   | { gt: [string, number] }
   | { lt: [string, number] };
 
-export type ScreenSpec = { type: string; opts: Record<string, Literal> };
-
-/** A step or an option: both take the same keys, run in this order. */
+/**
+ * A step or an option: both take the same keys, run in this order. A body is one kind of block
+ * (ADR 0030), which takes only some of them; `blockOf` says which, and the server checks it. A
+ * built in block brings its own screen and handler: a flow names it and changes only its settings.
+ */
 export type Body = {
   if?: Predicate;
-  retry?: number;
+  /** A hook that runs before the block, once, around its attempts. */
+  before?: string;
   set?: [string, Literal][];
-  hook?: string;
-  screen?: ScreenSpec;
-  use?: string;
+  /** A built in block's id (`password`), and the settings that differ from its defaults. */
+  block?: string;
+  with?: Record<string, Literal>;
+  /** Where the Login UI shows the block's screen (ADR 0029); the server checks it. */
+  path?: string;
   pick?: string;
   alternative?: Entry[];
   steps?: Entry[];
   fail?: string;
+  /** A hook that runs after the block. */
+  after?: string;
 };
 
 export type Entry = { id: string; body: Body };
@@ -123,8 +130,7 @@ export function fromYaml(text: string): FlowDoc {
 /** Whether a body asks for consent (shows its screen or calls its handler), itself or nested, as the compiler decides. */
 export function recordsConsent(b: Body): boolean {
   return (
-    b.use === CONSENT_HANDLER ||
-    b.screen?.type === CONSENT.kind ||
+    PALETTE.find((p) => p.id === b.block)?.use === CONSENT_HANDLER ||
     [...(b.alternative ?? []), ...(b.steps ?? [])].some((e) => recordsConsent(e.body))
   );
 }
@@ -141,27 +147,83 @@ export function consentStart(steps: Entry[]): number {
 function entries(raw: unknown, at: string): Entry[] {
   if (raw === undefined || raw === null) return [];
   if (!isObject(raw)) throw new FlowShapeError(`'${at}' must be a mapping of id to body`);
-  return Object.entries(raw).map(([id, b]) => ({ id, body: body(b, `${at}.${id}`) }));
+  const out: Entry[] = [];
+  // Before ADR 0030 a hook could be a step of its own: it now runs after the block before it, or
+  // when that already has one, before the block after it
+  let waiting: [string, string] | null = null;
+  const alone = (id: string, hook: string) =>
+    new FlowShapeError(`'${at}.${id}' runs hook '${hook}' on its own: make it the 'before' or 'after' hook of a block`);
+  // Moving a hook onto a neighbour must not change when it runs: never under the neighbour's
+  // condition, never after a fail, never out of a choice's options
+  const steps = at.endsWith("steps");
+  for (const [id, b] of Object.entries(raw)) {
+    if (isObject(b) && typeof b.hook === "string" && Object.keys(b).every((k) => k === "hook" || k === "if")) {
+      if (!steps || b.if !== undefined || waiting) throw alone(...(waiting ?? [id, b.hook]));
+      const previous = out.at(-1);
+      if (previous && previous.body.after === undefined && previous.body.if === undefined && previous.body.fail === undefined) {
+        previous.body.after = b.hook;
+      } else waiting = [id, b.hook];
+      continue;
+    }
+    const entry = { id, body: body(b, `${at}.${id}`) };
+    if (waiting) {
+      if (entry.body.before !== undefined || entry.body.if !== undefined) throw alone(...waiting);
+      entry.body.before = waiting[1];
+      waiting = null;
+    }
+    out.push(entry);
+  }
+  if (waiting) throw alone(...waiting);
+  return out;
 }
 
 function body(raw: unknown, at: string): Body {
   if (!isObject(raw)) throw new FlowShapeError(`'${at}' must be a mapping`);
   const out: Body = {};
   if (raw.if !== undefined) out.if = raw.if as Predicate;
-  if (typeof raw.retry === "number") out.retry = raw.retry;
-  if (isObject(raw.set)) out.set = Object.entries(raw.set).map(([k, v]) => [k, v as Literal]);
-  if (typeof raw.hook === "string") out.hook = raw.hook;
-  if (typeof raw.screen === "string") out.screen = { type: raw.screen, opts: {} };
-  else if (isObject(raw.screen)) {
-    const { type, ...opts } = raw.screen;
-    out.screen = { type: String(type ?? ""), opts: opts as Record<string, Literal> };
+  if (raw.use !== undefined && raw.set !== undefined) {
+    throw new FlowShapeError(`'${at}' sets vars and calls a handler: make it a Set step and a block, under the same condition`);
   }
-  if (typeof raw.use === "string") out.use = raw.use;
+  if (raw.use === undefined) {
+    if (raw.retry !== undefined) throw new FlowShapeError(`'${at}' retries a group or a choice; only a block has attempts`);
+    if (raw.screen !== undefined) throw new FlowShapeError(`'${at}' shows a screen without a handler; a block brings both`);
+  }
+  if (typeof raw.before === "string") out.before = raw.before;
+  // Before ADR 0030 a body's hook ran after its sets and before its screen
+  else if (typeof raw.hook === "string" && raw.use === undefined && raw.set !== undefined) out.after = raw.hook;
+  else if (typeof raw.hook === "string") out.before = raw.hook;
+  if (isObject(raw.set)) out.set = Object.entries(raw.set).map(([k, v]) => [k, v as Literal]);
+  if (typeof raw.block === "string") out.block = raw.block;
+  if (isObject(raw.with)) out.with = { ...(raw.with as Record<string, Literal>) };
+  // Before ADR 0030 a step named a handler and its screen; it names the handler's block now
+  if (typeof raw.use === "string") Object.assign(out, legacyBlock(raw, at));
+  if (typeof raw.path === "string") out.path = raw.path;
   if (typeof raw.pick === "string") out.pick = raw.pick;
   if (raw.alternative !== undefined) out.alternative = entries(raw.alternative, `${at}.alternative`);
   if (raw.steps !== undefined) out.steps = entries(raw.steps, `${at}.steps`);
   if (typeof raw.fail === "string") out.fail = raw.fail;
+  if (typeof raw.after === "string") out.after = raw.after;
   return out;
+}
+
+/** `use`, `screen` and `retry` as the block that has the handler, with the settings they meant. */
+function legacyBlock(raw: Record<string, unknown>, at: string): Body {
+  const b = PALETTE.find((p) => p.use === raw.use);
+  if (!b) throw new FlowShapeError(`'${at}' uses handler '${String(raw.use)}', which no block has`);
+  const settings: Record<string, Literal> = {};
+  const screen = raw.screen;
+  const type = isObject(screen) ? screen.type : screen;
+  if (type === undefined) throw new FlowShapeError(`'${at}' calls '${String(raw.use)}' with no screen; its block always shows one`);
+  if (type !== b.screen) throw new FlowShapeError(`'${at}' shows '${String(type)}', but the ${b.name} block shows '${b.screen}'`);
+  if (isObject(screen)) {
+    for (const [k, v] of Object.entries(screen)) if (k !== "type" && k in (b.settings ?? {}) && v !== false) settings[k] = v as Literal;
+    if (typeof screen.path === "string" && typeof raw.path !== "string") raw.path = screen.path;
+  }
+  const attempts = typeof raw.retry === "number" ? raw.retry : 1;
+  // An identifier that did not ask for the password never retried
+  const retries = b.settings?.attempts !== undefined && (b.role !== "identifier" || settings.password === true);
+  if (retries && attempts !== b.settings?.attempts) settings.attempts = attempts;
+  return { block: b.id, ...(Object.keys(settings).length > 0 ? { with: settings } : {}) };
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -196,17 +258,16 @@ function plainEntries(list: Entry[]): Record<string, unknown> {
 function plainBody(b: Body): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (b.if !== undefined) out.if = b.if;
-  if (b.retry !== undefined) out.retry = b.retry;
+  if (b.before !== undefined) out.before = b.before;
   if (b.set !== undefined) out.set = Object.fromEntries(b.set);
-  if (b.hook !== undefined) out.hook = b.hook;
-  if (b.screen !== undefined) {
-    out.screen = Object.keys(b.screen.opts).length === 0 ? b.screen.type : { type: b.screen.type, ...b.screen.opts };
-  }
-  if (b.use !== undefined) out.use = b.use;
+  if (b.block !== undefined) out.block = b.block;
+  if (b.with !== undefined && Object.keys(b.with).length > 0) out.with = b.with;
+  if (b.path !== undefined) out.path = b.path;
   if (b.pick !== undefined) out.pick = b.pick;
   if (b.alternative !== undefined) out.alternative = plainEntries(b.alternative);
   if (b.steps !== undefined) out.steps = plainEntries(b.steps);
   if (b.fail !== undefined) out.fail = b.fail;
+  if (b.after !== undefined) out.after = b.after;
   return out;
 }
 
@@ -224,7 +285,7 @@ function inline(node: unknown) {
   if (!isMap(node)) return;
   for (const pair of node.items) {
     const key = isScalar(pair.key) ? String(pair.key.value) : "";
-    if (key === "if" || key === "screen" || key === "set" || key === "capabilities") flowify(pair.value);
+    if (key === "if" || key === "with" || key === "set" || key === "capabilities") flowify(pair.value);
     else inline(pair.value);
   }
 }
@@ -406,6 +467,31 @@ function shift(ref: ListRef, removedFrom: ListRef, index: number): ListRef {
   return { ...ref, owner };
 }
 
+/**
+ * Removes an entry; an option that leaves its choice with one option makes that option the step
+ * (a choice needs two), under the choice's condition and hooks.
+ */
+export function removeEntry(doc: FlowDoc, a: Address): FlowDoc {
+  const { list, index } = parentOf(a);
+  const rest = (listOf(doc, list) ?? []).filter((_, i) => i !== index);
+  if (list.kind !== "alternative" || rest.length !== 1) return remove(doc, a);
+  const owner: Address = { section: a.section, path: list.owner };
+  const choice = entryAt(doc, owner)!.body;
+  const only = rest[0].body;
+  const test = [choice.if, only.if].filter((p): p is Predicate => p !== undefined);
+  const body: Body = {
+    ...only,
+    if: test.length === 0 ? undefined : test.length === 1 ? test[0] : { and: test },
+    before: choice.before,
+    after: choice.after,
+  };
+  for (const k of Object.keys(body) as (keyof Body)[]) if (body[k] === undefined) delete body[k];
+  const { list: outer, index: at } = parentOf(owner);
+  return editList(doc, outer, (l) => {
+    l[at] = { ...l[at], body };
+  });
+}
+
 export function updateBody(doc: FlowDoc, a: Address, patch: Partial<Body>): FlowDoc {
   const { list, index } = parentOf(a);
   return editList(doc, list, (l) => {
@@ -438,10 +524,26 @@ export function removeHook(doc: FlowDoc, id: string): FlowDoc {
 
 // ---- palette ----
 
+/**
+ * What a block is for, which decides where it may go and which keys it takes, as the server's
+ * blocks say (faye-app Blocks, ADR 0030): the identifier first and only there; options are one
+ * credential block or a fail; consent a step of its own.
+ */
+export type Role = "identifier" | "password" | "credential" | "action" | "consent" | "choose" | "group" | "set" | "fail";
+
 export type Block = {
   name: string;
   group: "Steps" | "Logic";
   description: string;
+  role: Role;
+  /** A built in block's id, as the server's blocks name it (faye-identity IdentityBlock). */
+  id?: string;
+  /** Its handler, for opening YAML from before ADR 0030 only; the console never shows it. */
+  use?: string;
+  /** What a flow may change under `with`, and the defaults. */
+  settings?: Record<string, Literal>;
+  /** The screen it shows, for opening YAML from before ADR 0030 only. */
+  screen?: string;
   /** Default id when added as a step, and as an option. */
   stepId: string;
   optionId: string;
@@ -453,63 +555,99 @@ export const PALETTE: Block[] = [
   {
     name: "Identifier",
     group: "Steps",
-    description: "Ask who is signing in, then resolve the account",
+    description: "Ask who is signing in, then find the account; always the first step",
+    role: "identifier",
+    use: "identity.resolve",
+    id: "identifier",
+    screen: "identifier",
+    settings: { passkey: false, password: false, attempts: 3 },
     stepId: "identify",
     optionId: "identify",
-    body: () => ({ screen: { type: "identifier", opts: {} }, use: "identity.resolve" }),
+    body: () => ({ block: "identifier" }),
   },
   {
     name: "Password",
     group: "Steps",
-    description: "Verify a password, three attempts",
+    description: "Verify a password",
+    role: "password",
+    use: "password.verify",
+    id: "password",
+    screen: "password",
+    settings: { attempts: 3 },
     stepId: "credential",
     optionId: "password",
-    body: () => ({ retry: 3, screen: { type: "password", opts: {} }, use: "password.verify" }),
+    body: () => ({ block: "password" }),
   },
   {
     name: "Passkey",
     group: "Steps",
     description: "Sign in with a passkey",
+    role: "credential",
+    use: "webauthn.assert",
+    id: "passkey",
+    screen: "passkey",
+    settings: { attempts: 1 },
     stepId: "passkey",
     optionId: "passkey",
-    body: () => ({ screen: { type: "passkey", opts: {} }, use: "webauthn.assert" }),
+    body: () => ({ block: "passkey" }),
   },
   {
     name: "Add passkey",
     group: "Steps",
-    description: "Offer to create a passkey",
+    description: "Offer to create a passkey, once signed in",
+    role: "action",
+    use: "webauthn.register",
+    id: "add-passkey",
+    screen: "passkey",
+    settings: {},
     stepId: "add-passkey",
     optionId: "add-passkey",
-    body: () => ({ screen: { type: "passkey", opts: { register: true } }, use: "webauthn.register" }),
+    body: () => ({ block: "add-passkey" }),
   },
   {
     name: "TOTP",
     group: "Steps",
-    description: "Verify a code from an authenticator app, three attempts",
+    description: "Verify a code from an authenticator app",
+    role: "credential",
+    use: "totp.verify",
+    id: "totp",
+    screen: "otp",
+    settings: { attempts: 3 },
     stepId: "second-factor",
     optionId: "totp",
-    body: () => ({ retry: 3, screen: { type: "otp", opts: {} }, use: "totp.verify" }),
+    body: () => ({ block: "totp" }),
   },
   {
     name: "Enroll TOTP",
     group: "Steps",
-    description: "Set up an authenticator app, three attempts",
+    description: "Set up an authenticator app",
+    role: "credential",
+    use: "totp.enroll",
+    id: "enroll-totp",
+    screen: "otp_enroll",
+    settings: { attempts: 3 },
     stepId: "enroll",
     optionId: "enroll",
-    body: () => ({ retry: 3, screen: { type: "otp_enroll", opts: {} }, use: "totp.enroll" }),
+    body: () => ({ block: "enroll-totp" }),
   },
   {
     name: "Consent",
     group: "Steps",
     description: "Ask to share data with the client; runs after sign in, on the consent challenge",
+    role: "consent",
+    use: "consent.record",
+    id: "consent",
+    screen: "consent",
+    settings: {},
     stepId: "consent",
     optionId: "consent",
-    body: () => ({ screen: { type: "consent", opts: {} }, use: "consent.record" }),
+    body: () => ({ block: "consent" }),
   },
   {
     name: "Choose",
     group: "Logic",
-    description: "Offer alternatives; the person (or a hook) picks one",
+    description: "Offer two or more credential blocks; the person (or a hook) picks one",
+    role: "choose",
     stepId: "choose",
     optionId: "choose",
     body: () => ({ alternative: [] }),
@@ -518,22 +656,16 @@ export const PALETTE: Block[] = [
     name: "Group",
     group: "Logic",
     description: "Nested steps, e.g. under one condition",
+    role: "group",
     stepId: "group",
     optionId: "group",
     body: () => ({ steps: [] }),
   },
   {
-    name: "Hook",
-    group: "Logic",
-    description: "Run a JavaScript hook: it may set vars or fail",
-    stepId: "hook",
-    optionId: "hook",
-    body: () => ({ hook: "" }),
-  },
-  {
     name: "Set",
     group: "Logic",
     description: "Write a value into vars",
+    role: "set",
     stepId: "set",
     optionId: "set",
     body: () => ({ set: [["name", "value"]] }),
@@ -541,7 +673,8 @@ export const PALETTE: Block[] = [
   {
     name: "Fail",
     group: "Logic",
-    description: "End the section with a reason",
+    description: "End the sign in with a reason",
+    role: "fail",
     stepId: "deny",
     optionId: "deny",
     body: () => ({ fail: "denied" }),
@@ -554,14 +687,131 @@ export function block(name: string): Block {
   return b;
 }
 
-/**
- * An entry for a palette block, named for the kind of list it goes to. A Hook block starts on the
- * flow's first declared hook, and takes its id.
- */
-export function fromBlock(b: Block, kind: ListKind, doc?: FlowDoc): Entry {
-  const hook = b.name === "Hook" ? doc?.hooks[0]?.id : undefined;
-  if (hook) return { id: hook, body: { hook } };
+/** An entry for a palette block, named for the kind of list it goes to. */
+export function fromBlock(b: Block, kind: ListKind): Entry {
   return { id: kind === "steps" ? b.stepId : b.optionId, body: b.body() };
+}
+
+/**
+ * The palette block a body is, as the compiler decides: by its handler, else by what it does.
+ * Undefined for a handler the console has no block for, and for a body that is no block yet.
+ */
+export function blockOf(b: Body): Block | undefined {
+  if (b.block !== undefined) return PALETTE.find((p) => p.id === b.block);
+  const role: Role | undefined =
+    b.alternative !== undefined ? "choose" : b.steps !== undefined ? "group" : b.set !== undefined ? "set" : b.fail !== undefined ? "fail" : undefined;
+  return PALETTE.find((p) => p.role === role);
+}
+
+/** The roles an option of a choice may have: one credential block, or a fail. */
+const OPTION_ROLES: Role[] = ["password", "credential", "action", "fail"];
+
+/** The identifier's setting with which it asks for the password on its own screen. */
+export const PASSWORD_VIEW = "password";
+
+/** Whether the flow's identifier asks for the password, so no Password block may. */
+export function asksPassword(doc: FlowDoc): boolean {
+  const first = doc.login[0]?.body;
+  return !!first && blockOf(first)?.role === "identifier" && first.with?.[PASSWORD_VIEW] === true;
+}
+
+/** Defaults a tenant sets for its blocks' settings, by block id (ADR 0030); they replace the blocks' own. */
+export type Defaults = Record<string, Record<string, Literal>>;
+
+/** A setting's default for this step: the tenant's, else the block's. */
+export function byDefault(b: Body, name: string, defaults: Defaults = {}): Literal | undefined {
+  const block = blockOf(b);
+  return (block?.id !== undefined ? defaults[block.id]?.[name] : undefined) ?? block?.settings?.[name];
+}
+
+/** A setting of a block step: what the flow says, else the default. */
+export function setting(b: Body, name: string, defaults: Defaults = {}): Literal | undefined {
+  return b.with?.[name] ?? byDefault(b, name, defaults);
+}
+
+/** The step's settings with `name` at `value`, leaving out what equals the default. */
+export function withSetting(b: Body, name: string, value: Literal | undefined, defaults: Defaults = {}): Record<string, Literal> | undefined {
+  const next = { ...(b.with ?? {}) };
+  if (value === undefined || value === byDefault(b, name, defaults)) delete next[name];
+  else next[name] = value;
+  return Object.keys(next).length > 0 ? next : undefined;
+}
+
+/**
+ * Why a block of this role cannot go at `index` of `ref`, or null if it can: the rules the
+ * compiler enforces, so the console offers only what will compile.
+ */
+export function misfit(doc: FlowDoc, ref: ListRef, index: number, role: Role | undefined): string | null {
+  const top = ref.owner.length === 0 && ref.kind === "steps";
+  const identified = doc.login[0] !== undefined && blockOf(doc.login[0].body)?.role === "identifier";
+  if (role === "identifier") {
+    if (identified) return "The flow already starts with the Identifier";
+    return top && index === 0 ? null : "The Identifier is always the first step";
+  }
+  if (top && index === 0) return identified ? "The Identifier stays the first step" : "Start with the Identifier";
+  if (ref.kind === "alternative" && role !== undefined && !OPTION_ROLES.includes(role)) {
+    return "An option is one credential block, or Fail";
+  }
+  if (role === "consent" && !top) return "Consent is a step of its own";
+  if (role === "password" && asksPassword(doc)) return "The Identifier already asks for the password";
+  // Steps from Consent on run after sign in, on the consent challenge (ADR 0026)
+  const split = consentStart(doc.login);
+  const at = top ? index : ref.owner[0][1];
+  if (role !== undefined && CREDENTIAL_ROLES.includes(role) && split < doc.login.length && (top ? at > split : at >= split)) {
+    return "Steps after Consent run once signed in; put credentials before it";
+  }
+  if (role === "consent" && doc.login.slice(index).some((e) => proves(e.body))) return "Consent comes after every credential step";
+  return null;
+}
+
+/** The roles that verify a credential, which a consent entry may not (ADR 0026). */
+const CREDENTIAL_ROLES: Role[] = ["password", "credential"];
+
+/** Whether a body, or one nested in it, verifies a credential. */
+function proves(b: Body): boolean {
+  const role = blockOf(b)?.role;
+  return (role !== undefined && CREDENTIAL_ROLES.includes(role)) || [...(b.alternative ?? []), ...(b.steps ?? [])].some((e) => proves(e.body));
+}
+
+/** How many blocks of the document sit where the compiler refuses them; a good edit adds none. */
+export function misplaced(doc: FlowDoc): number {
+  let count = 0;
+  const password = asksPassword(doc);
+  const split = consentStart(doc.login);
+  const walk = (list: Entry[] | undefined, ref: ListRef) =>
+    (list ?? []).forEach((e, i) => {
+      const role = blockOf(e.body)?.role;
+      const top = ref.owner.length === 0 && ref.kind === "steps";
+      if ((role === "identifier") !== (top && i === 0)) count++;
+      else if (ref.kind === "alternative" && role !== undefined && !OPTION_ROLES.includes(role)) count++;
+      else if (role === "consent" && !top) count++;
+      else if (role === "password" && password) count++;
+      else if (role !== undefined && CREDENTIAL_ROLES.includes(role) && (ref.owner[0]?.[1] ?? i) >= split) count++;
+      const owner: [ListKind, number][] = [...ref.owner, [ref.kind, i]];
+      walk(e.body.steps, { ...ref, owner, kind: "steps" });
+      walk(e.body.alternative, { ...ref, owner, kind: "alternative" });
+    });
+  walk(doc.login, { section: AUTHENTICATE, owner: [], kind: "steps" });
+  return count;
+}
+
+/** Whether YAML still uses the keys ADR 0030 replaced, which the server refuses until it is rewritten. */
+export function isLegacy(text: string): boolean {
+  const walk = (v: unknown, inBody: boolean): boolean => {
+    if (Array.isArray(v)) return false;
+    if (!isObject(v)) return false;
+    return Object.entries(v).some(([k, x]) =>
+      inBody && ["use", "screen", "retry", "hook"].includes(k) ? true : k === "steps" || k === "alternative" ? isObject(x) && Object.values(x).some((b) => walk(b, true)) : k === "login" || k === "consent" ? walk(x, false) : false,
+    );
+  };
+  try {
+    const raw = parse(text) as unknown;
+    // The consent section of before ADR 0026 opens moved into the steps, too
+    if (isObject(raw) && raw.consent !== undefined) return true;
+    return walk(raw, false);
+  } catch {
+    return false;
+  }
 }
 
 export function emptyFlow(id: string): FlowDoc {
@@ -573,14 +823,14 @@ export function emptyFlow(id: string): FlowDoc {
 /** One line for the tree: what a body does. */
 export function summary(b: Body): string {
   const parts: string[] = [];
-  if (b.hook !== undefined) parts.push(`hook ${b.hook || "?"}`);
+  if (b.before !== undefined) parts.push(`before ${b.before || "?"}`);
   if (b.set) parts.push(`set ${b.set.map(([k]) => k).join(", ")}`);
-  if (b.screen) parts.push(`${b.screen.type} screen`);
-  if (b.use) parts.push(b.use);
-  if (b.retry !== undefined) parts.push(`retry ${b.retry}`);
+  if (b.block) parts.push(b.block);
+  for (const [k, v] of Object.entries(b.with ?? {})) parts.push(`${k} ${String(v)}`);
   if (b.alternative) parts.push(`choose ${b.alternative.length}${b.pick ? `, ${b.pick} picks` : ""}`);
   if (b.steps) parts.push(`${b.steps.length} steps`);
   if (b.fail !== undefined) parts.push(`fail ${b.fail}`);
+  if (b.after !== undefined) parts.push(`after ${b.after || "?"}`);
   return parts.join(" · ");
 }
 

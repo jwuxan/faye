@@ -105,7 +105,7 @@ class FlowApiTest {
                 .andReturn()
                 .getResponse();
         String location = started.getRedirectedUrl();
-        assertThat(location).startsWith("http://localhost:3000/flow/f_");
+        assertThat(location).startsWith("http://localhost:3000/login?flow=f_");
         String flowId = flowId(location);
         String binder = java.net.HttpCookie.parse(java.util.Objects.requireNonNull(started.getHeader("Set-Cookie")))
                 .get(0)
@@ -114,10 +114,12 @@ class FlowApiTest {
         JsonNode identifier = call(get("/api/flows/" + flowId), status().isOk());
         assertThat(identifier.at("/screen/type").asText()).isEqualTo("identifier");
         assertThat(identifier.at("/step").asText()).isEqualTo("identify");
+        assertThat(identifier.at("/path").asText()).isEqualTo("/login");
 
         JsonNode password = submit(flowId, identifier, Map.of("identifier", "Alice@Example.com "), status().isOk());
         assertThat(password.at("/screen/type").asText()).isEqualTo("password");
         assertThat(password.at("/screen/identifier").asText()).isEqualTo("alice@example.com");
+        assertThat(password.at("/path").asText()).startsWith("/challenge/");
 
         JsonNode stale = submit(flowId, identifier, Map.of("identifier", "x"), status().isConflict());
         assertThat(stale.at("/error").asText()).isEqualTo("stale_nonce");
@@ -140,6 +142,8 @@ class FlowApiTest {
                 .contains("Max-Age=0");
         JsonNode done = JSON.readTree(finished.getContentAsString());
         assertThat(done.at("/redirectTo").asText()).contains("challenge=c-api", "result=accepted");
+        // Only a failed sign in carries failed
+        assertThat(done.has("failed")).isFalse();
         assertThat(host.accepted()).anySatisfy(a -> {
             assertThat(a.request().ref()).isEqualTo("c-api");
             assertThat(a.outcome().subject()).isEqualTo("user-alice");
@@ -181,6 +185,8 @@ class FlowApiTest {
         again = submit(flowId, again, Map.of("password", "guess"), status().isOk());
         JsonNode done = submit(flowId, again, Map.of("password", "guess"), status().isOk());
         assertThat(done.at("/redirectTo").asText()).contains("result=access_denied");
+        // The Login UI shows /error for it rather than following the redirect (ADR 0031)
+        assertThat(done.at("/failed").asBoolean()).isTrue();
         assertThat(host.rejected()).anySatisfy(r -> {
             assertThat(r.request().ref()).isEqualTo("c-unknown");
             assertThat(r.description()).isEqualTo("invalid_credentials");
@@ -266,10 +272,10 @@ class FlowApiTest {
                 .isEqualTo("identifier");
     }
 
-    /** The flow id at the end of the Login UI URL that {@code /login} redirects to. */
+    /** The flow id in the query of the Login UI URL that {@code /login} redirects to (ADR 0029). */
     static String flowId(@Nullable String location) {
         String url = java.util.Objects.requireNonNull(location, "no redirect");
-        return url.substring(url.lastIndexOf('/') + 1);
+        return url.substring(url.lastIndexOf("?flow=") + "?flow=".length());
     }
 
     JsonNode submit(String flowId, JsonNode screen, Map<String, Object> payload, ResultMatcher expected)

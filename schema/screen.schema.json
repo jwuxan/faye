@@ -12,12 +12,13 @@
   "$defs": {
     "ScreenResponse": {
       "type": "object",
-      "required": ["flowId", "nonce", "screen"],
+      "required": ["flowId", "nonce", "path", "screen"],
       "additionalProperties": false,
       "properties": {
         "flowId": { "type": "string", "pattern": "^f_[A-Za-z0-9_-]+$" },
         "nonce": { "type": "string", "pattern": "^n_[A-Za-z0-9_-]+$", "description": "Echo in the next SubmitRequest; single use." },
         "step": { "type": "string", "description": "Innermost enclosing step id, when there is one." },
+        "path": { "type": "string", "pattern": "^/(login|challenge|consent|error)(/[a-z0-9][a-z0-9_-]*){0,3}$", "description": "Where the Login UI shows this screen, with ?flow={flowId} (ADR 0029). A label only: the flow decides the screen, so a browser at another path is shown this screen and moved to this path." },
         "screen": { "$ref": "#/$defs/Screen" },
         "branding": { "$ref": "#/$defs/Branding" }
       }
@@ -25,12 +26,14 @@
     "Branding": {
       "type": "object",
       "additionalProperties": false,
-      "description": "The tenant's branding, when it has any. Appearance only: layout is not tenant configurable.",
+      "description": "How the tenant dresses its login screens, when it sets any of it: appearance and two optional controls (ADR 0033). The layout is not tenant configurable.",
       "properties": {
-        "name": { "type": "string", "minLength": 1, "maxLength": 64, "description": "Shown above every screen." },
+        "name": { "type": "string", "minLength": 1, "maxLength": 64, "description": "Shown above every screen, and in the footer of every screen." },
         "logoUrl": { "type": "string", "pattern": "^https://", "description": "Logo image." },
         "primaryColor": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "Primary button and focus ring." },
-        "radius": { "type": "integer", "minimum": 0, "maximum": 24, "description": "Corner radius in px." }
+        "radius": { "type": "integer", "minimum": 0, "maximum": 24, "description": "Corner radius in px." },
+        "showPassword": { "const": true, "description": "Password fields have a button that shows what was typed." },
+        "signUp": { "const": true, "description": "The identifier screen shows a sign up button. Sign up is not supported yet: the button says so." }
       }
     },
     "Screen": {
@@ -69,6 +72,8 @@
           "description": "Present when passkey autofill (WebAuthn conditional mediation) is offered. Offered to every account alike.",
           "properties": { "challenge": { "type": "string", "description": "base64url WebAuthn challenge." } }
         },
+        "password": { "const": true, "description": "Present when the screen asks for the password with the identifier: answer with IdentifierPasswordPayload. Never offered with passkey." },
+        "remember": { "const": true, "description": "Present when the tenant offers \"keep me signed in\": the answer may carry remember (ADR 0033)." },
         "errors": { "$ref": "#/$defs/errors" },
         "attemptsLeft": { "$ref": "#/$defs/attemptsLeft" }
       }
@@ -189,6 +194,7 @@
         "payload": {
           "oneOf": [
             { "$ref": "#/$defs/IdentifierPayload" },
+            { "$ref": "#/$defs/IdentifierPasswordPayload" },
             { "$ref": "#/$defs/PasswordPayload" },
             { "$ref": "#/$defs/PasskeyPayload" },
             { "$ref": "#/$defs/SkipPayload" },
@@ -204,7 +210,21 @@
       "type": "object",
       "required": ["identifier"],
       "additionalProperties": false,
-      "properties": { "identifier": { "type": "string", "minLength": 1, "maxLength": 256 } }
+      "properties": {
+        "identifier": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "remember": { "type": "boolean", "description": "Answers identifier when it offers remember: whether the person asked to stay signed in on this browser (ADR 0033)." }
+      }
+    },
+    "IdentifierPasswordPayload": {
+      "type": "object",
+      "required": ["identifier", "password"],
+      "additionalProperties": false,
+      "description": "Answers identifier when it asks for the password.",
+      "properties": {
+        "identifier": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "password": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "remember": { "type": "boolean", "description": "Answers identifier when it offers remember: whether the person asked to stay signed in on this browser (ADR 0033)." }
+      }
     },
     "PasswordPayload": {
       "type": "object",
@@ -217,7 +237,10 @@
       "required": ["passkey"],
       "additionalProperties": false,
       "description": "Answers passkey, or identifier when it offers autofill.",
-      "properties": { "passkey": { "type": "object", "description": "The browser's PublicKeyCredential as JSON (base64url fields)." } }
+      "properties": {
+        "passkey": { "type": "object", "description": "The browser's PublicKeyCredential as JSON (base64url fields)." },
+        "remember": { "type": "boolean", "description": "Answers identifier when it offers remember: whether the person asked to stay signed in on this browser (ADR 0033)." }
+      }
     },
     "SkipPayload": {
       "type": "object",
@@ -260,6 +283,10 @@
           "description": "Where the browser goes next: always an absolute http or https URL, so the Login UI can hand it to window.location (ADR 0007).",
           "type": "string",
           "pattern": "^[hH][tT][tT][pP][sS]?://[^\\s]+$"
+        },
+        "failed": {
+          "description": "Present, and true, only when the sign in failed: the host has been told, and the Login UI shows /error?reason=failed instead of following redirectTo (ADR 0031). Never set for a consent the person denied, which goes back to the app.",
+          "const": true
         }
       }
     },

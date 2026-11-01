@@ -1,0 +1,12 @@
+flow: f
+version: 1
+login:
+  steps:
+    identify: { block: identifier }
+    credential: { retry: 3, use: password.verify }
+    other: { block: [identifier] }
+
+# A key a block took apart says what to write instead: a retry that is the block's default goes.
+# expect: 6:19: a Password block makes 3 attempts by default: remove 'retry'
+# expect: 6:29: a step names its block, which brings its handler: write 'block: password'
+# expect: 7:21: a block is named by its id; the blocks are add-passkey, consent, enroll-totp, identifier, passkey, password, totp

@@ -63,7 +63,10 @@ final class DraftPreviews implements Previews {
         FlowCompiler.Compiled compiled;
         try {
             compiled = EngineConfiguration.compileDraft(
-                    Objects.requireNonNull(props.tenants().get(tenantId)).flow(), tenantId, draft.get(), dsl);
+                    Objects.requireNonNull(props.tenants().get(tenantId)).flow(),
+                    tenantId,
+                    draft.get(),
+                    EngineConfiguration.forTenant(dsl, tenants, tenantId));
         } catch (DslException e) {
             return Optional.empty();
         }

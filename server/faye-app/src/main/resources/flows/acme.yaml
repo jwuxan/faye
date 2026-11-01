@@ -17,29 +17,20 @@ hooks:
 login:
   steps:
     identify:
-      screen: identifier
-      use: identity.resolve
-    risk:
-      hook: risk
+      block: identifier
+      after: risk
     credential:
-      retry: 3
-      screen: password
-      use: password.verify
+      block: password
     second-factor:
       if: { eq: [vars.risk, high] }
       alternative:
         totp:
           if: user.has_totp
-          retry: 3
-          screen: otp
-          use: totp.verify
+          block: totp
         enroll:
           if: { not: user.has_totp }
-          retry: 3
-          screen: otp_enroll
-          use: totp.enroll
+          block: enroll-totp
     # Consent runs once the sign in is accepted, on the authorization server's consent challenge
     grant:
       if: { not: client.first_party }
-      screen: consent
-      use: consent.record
+      block: consent

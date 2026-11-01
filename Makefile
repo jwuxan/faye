@@ -58,7 +58,7 @@ dev: ## Run the stack locally without Docker (Redis, Hydra, Faye, Login UI, demo
 	deploy/dev.sh
 
 up: ## Run the stack in Docker (deploy/compose.yaml)
-	docker compose -f deploy/compose.yaml up -d --build
+	docker compose -f deploy/compose.yaml up -d --build --remove-orphans
 
 down: ## Stop the Docker stack
 	docker compose -f deploy/compose.yaml down

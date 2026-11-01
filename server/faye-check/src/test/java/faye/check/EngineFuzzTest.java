@@ -81,8 +81,9 @@ import org.junit.jupiter.api.Test;
  * handlers proved and declared, {@code acr} is computed from it and meets the client and the tenant
  * (O4); a bound subject never changes (O5); nothing a browser posts reaches {@code user}, {@code
  * vars} or {@code auth} (O8); stored states round trip (O9); a flow ends at most once (O7); every
- * screen matches the screen protocol (O14); and a flow the checker accepted never reaches {@code
- * succeed} without a credential (O12, the checker's soundness).
+ * screen matches the screen protocol (O14); a flow the checker accepted never reaches {@code
+ * succeed} without a credential (O12, the checker's soundness); and the host is asked to remember a
+ * sign in only when the browser asked for it on a screen that offered it (ADR 0033).
  */
 class EngineFuzzTest {
 
@@ -157,7 +158,8 @@ class EngineFuzzTest {
         if (flow == null) return;
         reached("flow");
         boolean mfaRequired = data.consumeBoolean();
-        TenantPolicy policy = new TenantPolicy(mfaRequired, null, null);
+        // Every identifier screen offers "keep me signed in" (ADR 0033), so answers may carry it
+        TenantPolicy policy = new TenantPolicy(mfaRequired, null, null, Set.of(), null, true);
         Report report = Checker.check(flow, Fixtures.handlers(), Fixtures.screens(), policy, hash -> Optional.of(HOOK));
         if (report.ok()) {
             reached("checked");
@@ -192,6 +194,8 @@ class EngineFuzzTest {
         final List<String> commits = new ArrayList<>();
         /** Subject to the amr values credentials proved for it, as declared by their handlers. */
         final Map<String, Set<String>> proved = new LinkedHashMap<>();
+        /** Some answer this browser posted asked to stay signed in. */
+        boolean askedToRemember;
 
         final TenantPolicy policy;
         final Map<String, Object> params = new LinkedHashMap<>();
@@ -400,8 +404,17 @@ class EngineFuzzTest {
                 assertThat(new LinkedHashSet<>(outcome.amr()))
                         .as("amr has no repeats")
                         .hasSameSizeAs(outcome.amr());
+                // ADR 0033: only the person asks the host to remember a sign in
+                if (outcome.remember()) {
+                    assertThat(askedToRemember)
+                            .as("remember only when the browser asked")
+                            .isTrue();
+                }
                 if (outcome.amr().isEmpty()) {
-                    // A remembered session, counted as one factor
+                    // A remembered session, counted as one factor; no screen ran to ask
+                    assertThat(outcome.remember())
+                            .as("a remembered session asks nothing")
+                            .isFalse();
                     assertThat(params.get("skip")).isEqualTo(true);
                     assertThat(outcome.subject()).isEqualTo(params.get("subject"));
                     assertThat(outcome.acr()).isEqualTo(Acr.ONE_FACTOR);
@@ -489,6 +502,20 @@ class EngineFuzzTest {
                         out.put("passkey", Map.of("id", "k"));
                     } else {
                         out.put("identifier", pick(List.of("alice@example.com", "bob@example.com", " x")));
+                        if (view.screen().containsKey("password")) {
+                            out.put("password", data.consumeBoolean() ? "right" : "wrong");
+                        }
+                    }
+                    // Offered on every identifier screen here: absent, ticked, unticked
+                    if (view.screen().containsKey("remember")) {
+                        switch (data.consumeInt(0, 2)) {
+                            case 1 -> {
+                                out.put(Engine.REMEMBER, true);
+                                askedToRemember = true;
+                            }
+                            case 2 -> out.put(Engine.REMEMBER, false);
+                            default -> {}
+                        }
                     }
                 }
                 case "password" -> out.put("password", data.consumeBoolean() ? "right" : "wrong");
@@ -729,6 +756,20 @@ class EngineFuzzTest {
                 "consent.record");
         static final List<String> SCREENS =
                 List.of("identifier", "password", "passkey", "otp", "otp_enroll", "consent", "method_picker", "error");
+        /** Screen paths (ADR 0029): the first six fit some screens, the last five fit none. */
+        static final List<String> SCREEN_PATHS = List.of(
+                "/login",
+                "/login/who",
+                "/challenge",
+                "/challenge/mfa/totp",
+                "/consent",
+                "/error/locked",
+                "/challenge/a/b/c/d",
+                "/Challenge/x",
+                "/challenge/../login",
+                "challenge/x",
+                "/flow");
+
         static final List<String> PATHS = List.of(
                 "user.has_totp",
                 "user.has_passkey",
@@ -803,8 +844,15 @@ class EngineFuzzTest {
         ArrayNode interaction() {
             String screen = pick(SCREENS);
             ObjectNode opts = NODES.objectNode();
-            if ("identifier".equals(screen) && data.consumeBoolean()) opts.put("passkey", true);
+            if ("identifier".equals(screen)) {
+                switch (data.consumeInt(0, 2)) {
+                    case 1 -> opts.put("passkey", true);
+                    case 2 -> opts.put("password", true);
+                    default -> {}
+                }
+            }
             if ("passkey".equals(screen) && data.consumeBoolean()) opts.put("register", true);
+            if (data.consumeInt(0, 3) == 0) opts.put("path", pick(SCREEN_PATHS));
             ArrayNode node = NODES.arrayNode().add("screen").add(screen);
             if (!opts.isEmpty()) node.add(opts);
             ArrayNode call = NODES.arrayNode().add("call").add(login ? pick(HANDLERS) : "consent.record");

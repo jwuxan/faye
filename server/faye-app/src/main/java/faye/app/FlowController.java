@@ -47,7 +47,9 @@ class FlowController {
 
     record SubmitRequest(String nonce, String action, Map<String, Object> payload) {}
 
-    record RedirectResponse(String redirectTo) {}
+    /** {@code failed} only when true: a failed sign in, which the Login UI shows at /error. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record RedirectResponse(String redirectTo, @Nullable Boolean failed) {}
 
     /** A finished flow whose host hands its result to the page that embeds the Login UI (ADR 0025). */
     record HandoffResponse(Map<String, Object> result) {}
@@ -60,6 +62,7 @@ class FlowController {
             String flowId,
             String nonce,
             @Nullable String step,
+            String path,
             Map<String, Object> screen,
             TenantSettings.@Nullable Branding branding) {}
 
@@ -104,8 +107,11 @@ class FlowController {
         String location = switch (engine.start(kind, challenge, request, binder)) {
             case ScreenView screen -> {
                 response.header(HttpHeaders.SET_COOKIE, binderCookie(screen.flowId(), binder, props.flowTtl()));
-                yield props.loginUiUrl() + "/flow/" + screen.flowId();
+                // The Login UI shows each screen at its path; the flow id rides in the query (ADR 0029)
+                yield props.loginUiUrl() + screen.path() + "?flow=" + screen.flowId();
             }
+            // A sign in that failed before its first screen: the Login UI's /error, like one that failed later
+            case Redirect redirect when redirect.failed() -> props.loginUiUrl() + "/error?reason=failed";
             case Redirect redirect -> checked(redirect.url());
             case Handoff handoff ->
                 throw new IllegalStateException("a host that hands off cannot complete a redirecting route");
@@ -157,7 +163,7 @@ class FlowController {
             case Redirect redirect ->
                 ResponseEntity.ok()
                         .header(HttpHeaders.SET_COOKIE, binderCookie(flowId, "", Duration.ZERO))
-                        .body(new RedirectResponse(checked(redirect.url())));
+                        .body(new RedirectResponse(checked(redirect.url()), redirect.failed() ? true : null));
             case Handoff handoff ->
                 ResponseEntity.ok()
                         .header(HttpHeaders.SET_COOKIE, binderCookie(flowId, "", Duration.ZERO))
@@ -170,7 +176,7 @@ class FlowController {
                 .map(state -> tenants.settings(state.tenantId()).branding())
                 .filter(b -> !b.isEmpty())
                 .orElse(null);
-        return new ScreenResponse(view.flowId(), view.nonce(), view.step(), view.screen(), branding);
+        return new ScreenResponse(view.flowId(), view.nonce(), view.step(), view.path(), view.screen(), branding);
     }
 
     /**

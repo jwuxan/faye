@@ -1,0 +1,22 @@
+name: each screen is shown at the path its options set, else its default; a retry keeps the path
+ir: flows/screen-paths.json
+handlers:
+  identity.resolve: [{ ok: { user: { has_totp: true } } }]
+  password.verify: [{ fail: invalid_credentials }, ok]
+events:
+  - expect_screen: identifier
+    expect_path: /login
+  - submit: { identifier: alice@example.com }
+  - expect_screen: method_picker
+    expect_step: credential
+    expect_path: /challenge/credential
+  - submit: { method: password }
+  - expect_screen: password
+    expect_path: /challenge/password
+  - submit: { password: wrong }
+  - expect_screen: password
+    expect_path: /challenge/password
+    expect_error: invalid_credentials
+    expect_attempts_left: 1
+  - submit: { password: right }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa" }

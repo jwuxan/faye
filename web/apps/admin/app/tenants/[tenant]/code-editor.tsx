@@ -15,8 +15,9 @@ import { HOOK_GLOBALS, type Member } from "../../../lib/hook-contract";
 export type Mark = { line: number; column: number; message: string; severity: "error" | "warning" };
 
 const theme = EditorView.theme({
-  "&": { fontSize: "13px", height: "100%", backgroundColor: "var(--background)", color: "var(--foreground)" },
+  "&": { fontSize: "var(--text-sm)", height: "100%", backgroundColor: "var(--background)", color: "var(--foreground)" },
   ".cm-content, .cm-gutters": { fontFamily: "var(--font-mono)" },
+  ".cm-content": { padding: "8px 0" },
   ".cm-gutters": { backgroundColor: "var(--surface-2)", color: "var(--muted-foreground)", borderRight: "1px solid var(--border)" },
   ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "color-mix(in oklch, var(--muted) 60%, transparent)" },
   "&.cm-focused": { outline: "none" },

@@ -1,5 +1,7 @@
-import { BrandingSettings } from "../../settings";
+import { redirect } from "next/navigation";
 
-export default function Page() {
-  return <BrandingSettings />;
+/** Branding moved into the Login page section (ADR 0033); old links still land there. */
+export default async function Page({ params }: { params: Promise<{ tenant: string }> }) {
+  const { tenant } = await params;
+  redirect(`/tenants/${encodeURIComponent(tenant)}/settings/login`);
 }

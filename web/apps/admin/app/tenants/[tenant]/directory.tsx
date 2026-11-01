@@ -10,11 +10,12 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Skeleton } from "@faye/ui/components/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@faye/ui/components/table";
 import { cn } from "@faye/ui/lib/utils";
-import { AppWindow, ChevronLeft, ChevronRight, CircleX, Copy, Fingerprint, KeyRound, Lock, LogIn, type LucideIcon, Search, TimerReset, Users } from "lucide-react";
+import { TILE, toneOf } from "../../../lib/kinds";
+import { AppWindow, ChevronLeft, ChevronRight, CircleX, Fingerprint, KeyRound, Lock, LogIn, type LucideIcon, Search, TimerReset, Users } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { api, type Client, type UserView } from "../../../lib/api";
 import { PageHeader } from "../../shell";
-import { Empty, IconButton } from "../../ui";
+import { CopyButton, Empty, Tile } from "../../ui";
 import { useDraft } from "./draft";
 
 /** Loads a read only list; null while loading, an error message if the server could not list it. */
@@ -67,22 +68,22 @@ function DirectoryFrame({
         </Badge>
       </PageHeader>
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto grid max-w-6xl gap-6 px-6 py-8">
+        <div className="mx-auto grid max-w-5xl gap-5 px-4 py-5 sm:px-6 sm:py-6">
           <div className="grid gap-1">
             <div className="flex items-baseline gap-2">
-              <h1 className="text-[20px] leading-7 font-semibold tracking-tight">{title}</h1>
+              <h1 className="text-lg leading-7 font-semibold tracking-tight">{title}</h1>
               {count !== null && <span className="font-mono text-xs text-muted-foreground">{count}</span>}
             </div>
-            <p className="text-muted-foreground">{description}</p>
+            <p className="max-w-lg text-muted-foreground">{description}</p>
           </div>
-          <Alert className="flex gap-3 bg-surface-2">
+          <Alert className="flex gap-3 rounded-xl bg-surface-2">
             <Lock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <div className="grid gap-0.5">
-              <AlertTitle className="text-[13px]">Managed outside Faye</AlertTitle>
-              <AlertDescription className="text-xs">{readOnly}</AlertDescription>
+              <AlertTitle className="text-sm">Managed outside Faye</AlertTitle>
+              <AlertDescription className="max-w-prose text-xs text-pretty">{readOnly}</AlertDescription>
             </div>
           </Alert>
-          <InputGroup className="max-w-sm">
+          <InputGroup className="h-8 max-w-sm rounded-full bg-surface-2 shadow-none">
             <InputGroupAddon>
               <Search />
             </InputGroupAddon>
@@ -110,7 +111,7 @@ function Failed({ message }: { message: string }) {
     <Alert variant="destructive" className="flex gap-3">
       <CircleX className="mt-0.5 size-4 shrink-0" />
       <div className="grid gap-0.5">
-        <AlertTitle className="text-[13px]">Could not list them</AlertTitle>
+        <AlertTitle className="text-sm">Could not list them</AlertTitle>
         <AlertDescription className="text-xs">{message}</AlertDescription>
       </div>
     </Alert>
@@ -165,7 +166,7 @@ export function ApplicationsPage() {
       ) : !shown ? (
         <Loading />
       ) : rows!.length === 0 ? (
-        <div className="rounded-lg border">
+        <div className="rounded-xl border">
           <Empty icon={AppWindow} title="No applications for this tenant">
             <p className="max-w-sm">
               Register a client in the authorization server with <code className="font-mono">metadata.tenant</code> set to{" "}
@@ -174,33 +175,35 @@ export function ApplicationsPage() {
           </Empty>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <Table className="text-[13px]">
+        <div className="overflow-hidden rounded-xl border">
+          <Table className="text-sm">
             <TableHeader className="bg-surface-2">
               <TableRow>
                 <TableHead className="pl-4 text-xs">Application</TableHead>
-                <TableHead className="text-xs">Type</TableHead>
-                <TableHead className="text-xs">Party</TableHead>
-                <TableHead className="text-xs">Grants</TableHead>
-                <TableHead className="text-xs">Callback URLs</TableHead>
+                <TableHead className="hidden text-xs md:table-cell">Type</TableHead>
+                <TableHead className="hidden text-xs md:table-cell">Party</TableHead>
+                <TableHead className="hidden text-xs lg:table-cell">Grants</TableHead>
+                <TableHead className="hidden text-xs lg:table-cell">Callback URLs</TableHead>
                 <TableHead className="w-32 pr-4" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {shown.map((c) => (
-                <TableRow key={c.id} className="h-14 cursor-pointer" onClick={() => setOpen(c)}>
+                <TableRow key={c.id} className="h-11 cursor-pointer" onClick={() => setOpen(c)}>
                   <TableCell className="pl-4">
-                    <button type="button" className="flex items-center gap-3 text-left outline-none focus-visible:underline" onClick={() => setOpen(c)}>
-                      <span className="grid size-8 shrink-0 place-items-center rounded-md border bg-surface-2 text-muted-foreground">
-                        <AppWindow className="size-4" strokeWidth={1.75} />
-                      </span>
-                      <span className="grid">
-                        <span className="font-medium">{c.name || c.id}</span>
-                        <span className="font-mono text-xs text-muted-foreground">{c.id}</span>
+                    <button type="button" className="flex min-w-0 items-center gap-3 text-left outline-none focus-visible:underline" onClick={() => setOpen(c)}>
+                      <Tile icon={AppWindow} tone={toneOf(c.id)} size="lg" />
+                      <span className="grid min-w-0">
+                        <span className="truncate font-medium" title={c.name || c.id}>
+                          {c.name || c.id}
+                        </span>
+                        <span className="truncate font-mono text-xs text-muted-foreground" title={c.id}>
+                          {c.id}
+                        </span>
                       </span>
                     </button>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <span className="flex items-center gap-1.5">
                       {kindOf(c)}
                       {c.preview && (
@@ -210,17 +213,21 @@ export function ApplicationsPage() {
                       )}
                     </span>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{c.firstParty ? "First party" : "Third party"}</TableCell>
-                  <TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">{c.firstParty ? "First party" : "Third party"}</TableCell>
+                  <TableCell className="hidden lg:table-cell">
                     <span className="flex flex-wrap gap-1">
                       {c.grantTypes.map((g) => (
-                        <Badge key={g} variant="secondary" className="font-mono text-[11px] font-normal">
+                        <Badge key={g} variant="secondary" className="font-mono text-xs font-normal">
                           {g}
                         </Badge>
                       ))}
                     </span>
                   </TableCell>
-                  <TableCell className="max-w-64 truncate font-mono text-xs text-muted-foreground">{c.redirectUris.join(", ") || "none"}</TableCell>
+                  <TableCell className="hidden lg:table-cell">
+                    <div className="max-w-64 truncate font-mono text-xs text-muted-foreground" title={c.redirectUris.join(", ") || undefined}>
+                      {c.redirectUris.join(", ") || "none"}
+                    </div>
+                  </TableCell>
                   <TableCell className="pr-4 text-right">
                     <TrySignIn client={c} demoClient={demoClient} />
                   </TableCell>
@@ -280,7 +287,7 @@ export function ApplicationsPage() {
                 <Detail label="Grant types">
                   <span className="flex flex-wrap gap-1">
                     {open.grantTypes.map((g) => (
-                      <Badge key={g} variant="secondary" className="font-mono text-[11px] font-normal">
+                      <Badge key={g} variant="secondary" className="font-mono text-xs font-normal">
                         {g}
                       </Badge>
                     ))}
@@ -345,48 +352,54 @@ export function UsersPage() {
       ) : !shown ? (
         <Loading />
       ) : rows!.length === 0 ? (
-        <div className="rounded-lg border">
+        <div className="rounded-xl border">
           <Empty icon={Users} title="No users">
             The directory is empty.
           </Empty>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <Table className="text-[13px]">
+        <div className="overflow-hidden rounded-xl border">
+          <Table className="text-sm">
             <TableHeader className="bg-surface-2">
               <TableRow>
                 <TableHead className="pl-4 text-xs">User</TableHead>
-                <TableHead className="text-xs">Subject</TableHead>
-                <TableHead className="text-xs">Pool</TableHead>
+                <TableHead className="hidden text-xs md:table-cell">Subject</TableHead>
+                <TableHead className="hidden text-xs sm:table-cell">Pool</TableHead>
                 <TableHead className="text-xs">Credentials</TableHead>
-                <TableHead className="pr-4 text-xs">Policy</TableHead>
+                <TableHead className="hidden pr-4 text-xs md:table-cell">Policy</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {shown.map((u) => (
-                <TableRow key={u.subject} className="h-14 cursor-pointer" onClick={() => setOpen(u)}>
+                <TableRow key={u.subject} className="h-10 cursor-pointer" onClick={() => setOpen(u)}>
                   <TableCell className="pl-4">
-                    <button type="button" className="flex items-center gap-3 text-left outline-none focus-visible:underline" onClick={() => setOpen(u)}>
-                      <Avatar className="size-8">
-                        <AvatarFallback className="text-xs">{initials(u)}</AvatarFallback>
+                    <button type="button" className="flex min-w-0 items-center gap-3 text-left outline-none focus-visible:underline" onClick={() => setOpen(u)}>
+                      <Avatar className="size-6">
+                        <AvatarFallback className={cn("text-xs font-medium text-on-fill", TILE[toneOf(u.subject)])}>{initials(u)}</AvatarFallback>
                       </Avatar>
-                      <span className="grid">
-                        <span className="font-medium">{u.name ?? u.identifier}</span>
-                        <span className="text-xs text-muted-foreground">
+                      <span className="flex min-w-0 items-baseline gap-2">
+                        <span className="shrink-0 truncate font-medium" title={u.name ?? u.identifier}>
+                          {u.name ?? u.identifier}
+                        </span>
+                        <span className="min-w-0 truncate text-xs text-muted-foreground" title={u.identifier}>
                           {u.identifier}
                           {!u.emailVerified && " · not verified"}
                         </span>
                       </span>
                     </button>
                   </TableCell>
-                  <TableCell className="max-w-48 truncate font-mono text-xs text-muted-foreground">{u.subject}</TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <div className="max-w-48 truncate font-mono text-xs text-muted-foreground" title={u.subject}>
+                      {u.subject}
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden sm:table-cell">
                     <Pool tenant={u.tenant} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="pr-4 md:pr-2">
                     <Credentials user={u} />
                   </TableCell>
-                  <TableCell className="pr-4 text-xs text-muted-foreground">{u.mfaRequired ? "MFA required" : "Tenant policy"}</TableCell>
+                  <TableCell className="hidden pr-4 text-xs text-muted-foreground md:table-cell">{u.mfaRequired ? "MFA required" : "Tenant policy"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -416,7 +429,7 @@ export function UsersPage() {
             <>
               <SheetHeader className="flex-row items-center gap-3 border-b">
                 <Avatar className="size-10">
-                  <AvatarFallback>{initials(open)}</AvatarFallback>
+                  <AvatarFallback className={cn("font-medium text-on-fill", TILE[toneOf(open.subject)])}>{initials(open)}</AvatarFallback>
                 </Avatar>
                 <div className="grid gap-0.5">
                   <SheetTitle>{open.name ?? open.identifier}</SheetTitle>
@@ -490,9 +503,9 @@ function Credentials({ user }: { user: UserView }) {
   const items = [user.password && "password", user.totp && "totp", user.passkeys > 0 && `passkey ×${user.passkeys}`].filter(Boolean) as string[];
   if (items.length === 0) return <span className="text-xs text-muted-foreground">none</span>;
   return (
-    <span className="flex flex-wrap gap-1">
+    <span className="flex gap-1">
       {items.map((c) => (
-        <Badge key={c} variant="secondary" className="font-mono text-[11px] font-normal">
+        <Badge key={c} variant="secondary" className="font-mono text-xs font-normal">
           {c}
         </Badge>
       ))}
@@ -516,7 +529,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid gap-1.5">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className="text-[13px]">{children}</dd>
+      <dd className="text-sm">{children}</dd>
     </div>
   );
 }
@@ -525,7 +538,7 @@ function Copyable({ value }: { value: string }) {
   return (
     <span className="flex items-center gap-1 rounded-md border bg-surface-2 py-0.5 pr-0.5 pl-2.5">
       <code className="min-w-0 flex-1 truncate font-mono text-xs">{value}</code>
-      <IconButton icon={Copy} label="Copy" onClick={() => navigator.clipboard?.writeText(value)} />
+      <CopyButton value={value} />
     </span>
   );
 }

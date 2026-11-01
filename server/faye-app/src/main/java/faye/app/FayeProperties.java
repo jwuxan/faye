@@ -9,7 +9,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.core.io.Resource;
 
 /**
- * @param loginUiUrl base URL of the Login UI; flows are rendered at {@code /flow/{flowId}}
+ * @param loginUiUrl base URL of the Login UI; each screen is rendered at its path, with
+ *     {@code ?flow={flowId}} (ADR 0029)
  * @param flowTtl lifetime of a suspended flow; matches Hydra's challenge lifetime
  * @param tenants settings and YAML flow per tenant id; each flow is checked and published at startup
  * @param demoUsers accounts written into the user store at startup; tests use them, the shipped
@@ -17,6 +18,8 @@ import org.springframework.core.io.Resource;
  * @param hydraAdminUrl Hydra admin API base URL; when empty, challenges come from the in memory mock host
  * @param webauthn passkey relying party
  * @param adminToken bearer token for the admin API; when empty, the admin API is off
+ * @param adminSocket path of the Unix domain socket the admin API is served on, and only there;
+ *     when empty, the admin API is off
  * @param egress base URL per named HTTP target that hooks may call; a target with an empty URL is
  *     left out, so hooks calling it fail
  * @param previewEnabled preview clients (client metadata {@code preview: true}) run the tenant's
@@ -31,6 +34,7 @@ public record FayeProperties(
         String hydraAdminUrl,
         Webauthn webauthn,
         String adminToken,
+        String adminSocket,
         Map<String, String> egress,
         boolean previewEnabled) {
 
@@ -41,13 +45,19 @@ public record FayeProperties(
      * @param handlers handlers the tenant's flows may call; all when unset
      * @param screens screen types the tenant's flows may show; all when unset
      * @param egress named HTTP targets the tenant's hooks may call; none when unset
+     * @param blocks defaults for its blocks' settings, by block id and setting ({@code password:
+     *     { attempts: 5 }}); the blocks' own when unset (ADR 0030)
+     * @param name the display name its login screens show (above every screen and in the footer)
+     *     until an admin saves branding; none when unset
      */
     public record Tenant(
             Resource flow,
             boolean mfaRequired,
             @Nullable Set<String> handlers,
             @Nullable Set<String> screens,
-            @Nullable Set<String> egress) {}
+            @Nullable Set<String> egress,
+            @Nullable Map<String, Map<String, Object>> blocks,
+            @Nullable String name) {}
 
     /**
      * @param totpSecret base32 TOTP secret already enrolled, or null

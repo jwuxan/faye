@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Layer L1 of the checks (docs/roadmap/ir-spec.md, Checks): every handler and screen a flow names
  * is in the catalogs, every screen's options are ones it takes (and none is the engine's own method
- * picker), and every call's args match its
+ * picker), every screen's path keeps its first segment, and every call's args match its
  * handler's schema. The schema (L0) has
  * already checked the shape; the checker (L2) adds paths and policy. The engine runs this whenever
  * it runs a version, so a catalog that lost a handler fails flows closed instead of mid run.
@@ -82,7 +82,11 @@ public final class Verifier {
                             s.source(),
                             "'" + s.type() + "' is shown by an 'alternative' for its options; a step cannot show it"));
                 } else {
+                    Object path = s.opts().get(ScreenPaths.OPTION);
+                    String bad = path == null ? null : ScreenPaths.problem(spec.get(), path);
+                    if (bad != null) out.add(new Problem(s.source(), bad));
                     s.opts().keySet().stream()
+                            .filter(k -> !k.equals(ScreenPaths.OPTION))
                             .filter(k -> !spec.get().options().contains(k))
                             .sorted()
                             .forEach(k -> out.add(new Problem(

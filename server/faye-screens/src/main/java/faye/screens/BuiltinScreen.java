@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The screens of {@code schema/screen.schema.json}, which the Login UI renders; {@code
@@ -48,7 +49,7 @@ public enum BuiltinScreen implements ScreenSpec {
     @Override
     public Set<String> options() {
         return switch (this) {
-            case IDENTIFIER -> Set.of("passkey");
+            case IDENTIFIER -> Set.of("passkey", "password");
             case PASSKEY -> Set.of("register");
             case ERROR -> Set.of("code");
             case PASSWORD, METHOD_PICKER, OTP, OTP_ENROLL, CONSENT -> Set.of();
@@ -76,19 +77,36 @@ public enum BuiltinScreen implements ScreenSpec {
         };
     }
 
+    /** {@code /login} for who, {@code /consent} and {@code /error}; every other screen is a challenge. */
+    @Override
+    public String path(@Nullable String step) {
+        return switch (this) {
+            case IDENTIFIER -> "/login";
+            case CONSENT -> "/consent";
+            case ERROR -> "/error";
+            case PASSWORD, METHOD_PICKER, PASSKEY, OTP, OTP_ENROLL -> ScreenSpec.super.path(step);
+        };
+    }
+
     /**
      * Options: {@code passkey} (identifier: offer passkey autofill, for which the issuer issues a
-     * challenge), {@code register} (passkey: create rather than use one), {@code code} (error).
+     * challenge), {@code password} (identifier: ask for the password on the same screen), {@code
+     * register} (passkey: create rather than use one), {@code code} (error).
      */
     @Override
     public Map<String, Object> prepare(Env env, Map<String, Object> opts, Map<String, Object> previous) {
         Map<String, Object> data = new LinkedHashMap<>();
         switch (this) {
+            case IDENTIFIER -> {
+                if (Boolean.TRUE.equals(opts.get("password"))) data.put("password", true);
+                // A tenant setting, not a flow option: it never changes what a flow can prove (ADR 0033)
+                if (Boolean.TRUE.equals(env.tenant().get("remember_me"))) data.put("remember", true);
+            }
             case PASSKEY -> {
                 if (Boolean.TRUE.equals(opts.get("register"))) data.put("register", true);
             }
             case ERROR -> data.put("code", opts.get("code") instanceof String c ? c : "error");
-            case IDENTIFIER, PASSWORD, METHOD_PICKER, OTP, OTP_ENROLL, CONSENT -> {}
+            case PASSWORD, METHOD_PICKER, OTP, OTP_ENROLL, CONSENT -> {}
         }
         return data;
     }
@@ -101,6 +119,10 @@ public enum BuiltinScreen implements ScreenSpec {
                 this == IDENTIFIER ? env.host().get("login_hint") : env.user().get("identifier");
         if (identifier instanceof String s) out.put("identifier", s);
         switch (this) {
+            case IDENTIFIER -> {
+                if (Boolean.TRUE.equals(data.get("password"))) out.put("password", true);
+                if (Boolean.TRUE.equals(data.get("remember"))) out.put("remember", true);
+            }
             case METHOD_PICKER -> out.put("options", data.get("options"));
             case CONSENT -> {
                 Map<String, Object> client = new LinkedHashMap<>();
@@ -110,7 +132,7 @@ public enum BuiltinScreen implements ScreenSpec {
                 out.put("scopes", env.host().get("requested_scope") instanceof List<?> l ? l : List.of());
             }
             case ERROR -> out.put("code", data.get("code"));
-            case IDENTIFIER, PASSKEY, OTP_ENROLL, PASSWORD, OTP -> {}
+            case PASSKEY, OTP_ENROLL, PASSWORD, OTP -> {}
         }
         return out;
     }
@@ -119,7 +141,10 @@ public enum BuiltinScreen implements ScreenSpec {
     public boolean accepts(Submission input, Map<String, Object> data) {
         Map<String, Object> p = input.payload();
         return switch (this) {
-            case IDENTIFIER -> text(p, "identifier", 256) || (data.containsKey("challenge") && credential(p));
+            case IDENTIFIER ->
+                Boolean.TRUE.equals(data.get("password"))
+                        ? p.size() == 2 && field(p, "identifier", 256) && field(p, "password", 1024)
+                        : text(p, "identifier", 256) || (data.containsKey("challenge") && credential(p));
             case PASSWORD -> text(p, "password", 1024);
             case METHOD_PICKER ->
                 p.size() == 1 && data.get("options") instanceof List<?> l && l.contains(p.get("method"));
@@ -132,6 +157,12 @@ public enum BuiltinScreen implements ScreenSpec {
             case CONSENT -> p.size() == 1 && ("allow".equals(p.get("decision")) || "deny".equals(p.get("decision")));
             case ERROR -> p.isEmpty();
         };
+    }
+
+    /** The identifier screen, when its tenant offers "keep me signed in". */
+    @Override
+    public boolean offersRemember(Map<String, Object> data) {
+        return this == IDENTIFIER && Boolean.TRUE.equals(data.get("remember"));
     }
 
     /** A passkey chosen from autofill on the identifier screen also answers the passkey screen. */
@@ -149,7 +180,11 @@ public enum BuiltinScreen implements ScreenSpec {
     }
 
     private static boolean text(Map<String, Object> p, String field, int maxLength) {
-        return p.size() == 1 && p.get(field) instanceof String s && !s.isBlank() && s.length() <= maxLength;
+        return p.size() == 1 && field(p, field, maxLength);
+    }
+
+    private static boolean field(Map<String, Object> p, String field, int maxLength) {
+        return p.get(field) instanceof String s && !s.isBlank() && s.length() <= maxLength;
     }
 
     private static boolean credential(Map<String, Object> p) {

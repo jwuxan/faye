@@ -1,6 +1,6 @@
 flow: f
 version: 1
-base: &b { use: identity.resolve }
+base: &b { block: identifier }
 login:
   steps:
     a: *b

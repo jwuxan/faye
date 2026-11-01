@@ -1,0 +1,11 @@
+flow: f
+version: 1
+login:
+  steps:
+    identify:
+      block: identifier
+      with: { attempts: 3 }
+    credential: { block: password }
+
+# The Identifier alone never fails, so it does not retry.
+# expect: 7:15: the Identifier retries only when it asks for the password: an identifier alone never fails

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Passes when every started long running service is up (s6-svstat) and, if started, Faye's
-# port and Hydra's admin health answer. Services FAYE_SERVICES / FAYE_DEMO left out still have
-# a directory under /run/service, so the started set comes from s6-rc.
+# port and admin socket and Hydra's admin health answer. Services FAYE_SERVICES / FAYE_DEMO
+# left out still have a directory under /run/service, so the started set comes from s6-rc.
 active=" $(s6-rc -a list | tr '\n' ' ') "
 started() { case "$active" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 fail=0
@@ -13,6 +13,11 @@ for s in hydra faye login admin ip-reputation demo-client; do
 done
 if started faye && ! nc -z 127.0.0.1 8080; then
   echo "faye is not answering on :8080"
+  fail=1
+fi
+sock=$(cat /run/s6/container_environment/FAYE_ADMIN_SOCKET 2>/dev/null)
+if started faye && [ ! -S "$sock" ]; then
+  echo "faye has no admin socket at $sock"
   fail=1
 fi
 if started hydra && ! wget -q -O /dev/null "http://127.0.0.1:4445/health/ready"; then

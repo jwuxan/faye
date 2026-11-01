@@ -1,0 +1,7 @@
+flow: f
+version: 1
+login:
+  steps: {}
+
+# A sign in starts with the identifier, so it has at least that step.
+# expect: 3:1: 'login' needs its first step, the Identifier ('block: identifier')

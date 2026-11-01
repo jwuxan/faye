@@ -7,12 +7,29 @@ import { Kbd } from "@faye/ui/components/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@faye/ui/components/popover";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@faye/ui/components/resizable";
 import { Tabs, TabsList, TabsTrigger } from "@faye/ui/components/tabs";
+import { useIsMobile } from "@faye/ui/hooks/use-mobile";
 import { cn } from "@faye/ui/lib/utils";
 import { CircleX, FileCode, ListTree, Redo2, TriangleAlert, Undo2, Workflow, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PathView } from "../../../lib/api";
-import { ENTRIES } from "../../../lib/entries";
-import { addressKey, block, consentStart, type FlowDoc, fromBlock, insert, listOf, parseAddress, parseListKey, stepIds } from "../../../lib/flow";
+import { AUTHENTICATE, ENTRIES } from "../../../lib/entries";
+import {
+  addressKey,
+  block,
+  consentStart,
+  type Defaults,
+  type FlowDoc,
+  fromBlock,
+  insert,
+  isLegacy,
+  type ListRef,
+  listOf,
+  misfit,
+  parseAddress,
+  parseListKey,
+  recordsConsent,
+  stepIds,
+} from "../../../lib/flow";
 import { PageHeader } from "../../shell";
 import { dense, denseMono, IconButton, Overline, Prop } from "../../ui";
 import { AddBlock } from "./add-block";
@@ -26,6 +43,8 @@ import { addTarget, LIST, Tree, useDragging } from "./tree";
 
 type View = "blocks" | "yaml";
 type Side = "block" | "paths" | "preview";
+/** The one pane a phone shows. */
+type Pane = "editor" | "graph" | "side";
 
 const LAYOUT_KEY = "faye.flow.layout";
 
@@ -51,6 +70,15 @@ export function FlowWorkspace() {
   const [path, setPath] = useState<PathView | null>(null);
   const [dragging, setDragging] = useDragging();
   const [layout] = useState(savedLayout);
+  const isMobile = useIsMobile();
+  const [pane, setPane] = useState<Pane>("editor");
+
+  // On a phone, starting a preview shows it
+  const [wasPreviewing, setWasPreviewing] = useState(previewing);
+  if (previewing !== wasPreviewing) {
+    setWasPreviewing(previewing);
+    if (previewing) setPane("side");
+  }
 
   // While the YAML does not parse, the graph keeps showing the last document that did
   const [lastGood, setLastGood] = useState<FlowDoc | null>(null);
@@ -63,12 +91,28 @@ export function FlowWorkspace() {
   const select = (key: string | null) => {
     setSelected(key);
     if (key && !key.startsWith(LIST) && !previewing) setSide("block");
+    // On a phone, picking a block in the graph opens it; in the editor the tree stays in view
+    if (key && !key.startsWith(LIST) && pane === "graph") setPane("side");
+  };
+
+  /** Where a block would go now, and why it cannot, if it cannot. */
+  const placeFor = (name: string) => {
+    const b = block(name);
+    // The Identifier has one place, whatever is selected
+    const target: { list: ListRef; index: number } =
+      b.role === "identifier" ? { list: { section: AUTHENTICATE, owner: [], kind: "steps" }, index: 0 } : addTarget(doc!, selected, recordsConsent(b.body()));
+    const policy = d.settings?.settings;
+    const banned =
+      (b.use !== undefined && policy?.handlers != null && !policy.handlers.includes(b.use)) ||
+      (b.screen !== undefined && policy?.screens != null && !policy.screens.includes(b.screen));
+    return { ...target, problem: banned ? "Not allowed in General settings" : misfit(doc!, target.list, target.index, b.role) };
   };
 
   const addBlock = (name: string) => {
     if (!doc) return;
-    const { list, index } = addTarget(doc, selected);
-    d.edit(insert(doc, list, index, fromBlock(block(name), list.kind, doc)));
+    const { list, index, problem } = placeFor(name);
+    if (problem) return;
+    d.edit(insert(doc, list, index, fromBlock(block(name), list.kind)));
     setSelected(addressKey({ section: list.section, path: [...list.owner, [list.kind, index]] }));
     setView("blocks");
   };
@@ -83,14 +127,184 @@ export function FlowWorkspace() {
   const sideValue: Side = previewing ? "preview" : side;
   const entrySelected = !!selected && !selected.startsWith(LIST) && !!doc && parseAddress(selected).path.length > 0;
 
+  const editorPane = (
+    <>
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-2">
+        <Tabs value={view} onValueChange={(v) => setView(v as View)}>
+          <TabsList className="p-0.5 group-data-[orientation=horizontal]/tabs:h-7">
+            <TabsTrigger value="blocks" className="h-6 px-2 text-xs">
+              <ListTree className="size-3.5" />
+              Blocks
+            </TabsTrigger>
+            <TabsTrigger value="yaml" className="h-6 px-2 text-xs">
+              <FileCode className="size-3.5" />
+              YAML
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {d.parseError && (
+          <Badge variant="outline" className="border-danger/40 font-normal text-danger">
+            YAML does not parse
+          </Badge>
+        )}
+        <span className="ml-auto flex items-center gap-1">
+          {view === "blocks" && (
+            <>
+              <IconButton icon={Undo2} label="Undo (⌘Z)" onClick={d.undo} />
+              <IconButton icon={Redo2} label="Redo (⇧⌘Z)" onClick={d.redo} />
+            </>
+          )}
+          {doc && <AddBlock onAdd={addBlock} where={whereAdded(doc, selected)} problem={(name) => placeFor(name).problem} />}
+        </span>
+      </div>
+      <div className="relative min-h-0 flex-1">
+        {view === "yaml" ? (
+          <CodeEditor value={yaml ?? ""} onChange={d.type} language="yaml" marks={d.marks} label="Flow YAML" className="h-full" />
+        ) : doc ? (
+          <Tree
+            doc={doc}
+            onEdit={d.edit}
+            selected={selected}
+            onSelect={select}
+            findings={d.findings}
+            visited={visited}
+            visitKeys={d.keys}
+            waiting={previewing && !path ? (run?.waiting ?? null) : null}
+            dragging={dragging}
+            setDragging={setDragging}
+          />
+        ) : (
+          <div className="grid gap-3 p-6">
+            <p className="flex items-start gap-2">
+              <CircleX className="mt-0.5 size-4 shrink-0 text-danger" />
+              <span className="font-mono text-xs">{d.parseError}</span>
+            </p>
+            <Button variant="outline" size="sm" className="justify-self-start" onClick={() => setView("yaml")}>
+              Fix in YAML
+            </Button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+  const graphPane = (
+    <>
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
+        <Workflow className="size-3.5 text-muted-foreground" />
+        <span className="text-xs font-medium">Graph</span>
+        <span className="text-xs text-muted-foreground">{doc ? "live" : "last valid"}</span>
+        {(path || (previewing && run)) && (
+          <Badge variant="outline" className="ml-auto min-w-0 animate-in fade-in-0 gap-1 border-accent-ui/40 font-normal text-accent-ui">
+            <span className="truncate">{path ? "path" : "preview run"}</span>
+            {path && (
+              <button type="button" aria-label="Clear path" onClick={() => setPath(null)} className="-mr-0.5 hover:text-foreground">
+                <X className="size-3" />
+              </button>
+            )}
+          </Badge>
+        )}
+      </div>
+      <div className="min-h-0 flex-1">
+        {shown ? (
+          <Graph doc={shown} visited={visited} visitKeys={d.keys} selected={selected} onSelect={select} findings={d.findings} />
+        ) : (
+          <div className="p-6 text-muted-foreground">Nothing to draw yet</div>
+        )}
+      </div>
+    </>
+  );
+  const sidePane = (
+    <Tabs
+      value={sideValue}
+      onValueChange={(v) => {
+        setPreviewing(v === "preview");
+        if (v !== "preview") setSide(v as Exclude<Side, "preview">);
+      }}
+      className="flex min-h-0 flex-1 flex-col gap-0"
+    >
+      <div className="flex h-10 shrink-0 items-center border-b px-2">
+        <TabsList className="p-0.5 group-data-[orientation=horizontal]/tabs:h-7">
+          <TabsTrigger value="block" className="h-6 px-2.5 text-xs">
+            {entrySelected ? "Block" : "Flow"}
+          </TabsTrigger>
+          <TabsTrigger value="paths" className="h-6 px-2.5 text-xs">
+            Paths
+            {validation && <span className="font-mono text-xs font-normal text-muted-foreground">{validation.paths.length}</span>}
+          </TabsTrigger>
+          <TabsTrigger value="preview" className="h-6 px-2.5 text-xs">
+            Preview
+          </TabsTrigger>
+        </TabsList>
+      </div>
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        {sideValue === "preview" ? (
+          <Preview
+            tenant={d.tenant}
+            demoClient={d.demoClient}
+            blocked={d.blocked ?? (d.saved === "saving" ? "Saving the draft…" : d.saved === "failed" ? "The draft is not saved" : null)}
+            run={run}
+            onEvent={d.onTrace}
+            fail={d.fail}
+          />
+        ) : sideValue === "paths" ? (
+          <Paths validation={validation} selected={path} onSelect={setPath} />
+        ) : entrySelected && doc ? (
+          <Inspector
+            defaults={(d.settings?.settings.blocks ?? {}) as Defaults}
+            doc={doc}
+            selected={selected!}
+            onEdit={d.edit}
+            onSelect={select}
+            onDeleted={(id) => d.notify("ok", `Deleted ${id}`, true)}
+            findings={d.findings.get(selected!)}
+          />
+        ) : doc ? (
+          <FlowProperties doc={doc} onEdit={d.edit} selectedList={selected?.startsWith(LIST) ? selected : null} />
+        ) : null}
+      </div>
+    </Tabs>
+  );
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader tenant={d.tenant} title="Login flow">
         <DraftActions preview />
       </PageHeader>
 
+      {/* Old YAML opens as blocks, but the server checks what is saved: rewrite it only when asked */}
+      {yaml !== null && doc && isLegacy(yaml) && (
+        <div className="flex animate-in fade-in-0 slide-in-from-top-2 items-center gap-3 border-b bg-warning/10 px-3 py-2 text-xs" role="status">
+          <TriangleAlert className="size-3.5 shrink-0 text-warning-text" />
+          <span className="flex-1">
+            This flow is written with screens and handlers, from before blocks. The server refuses it until it names blocks instead; comments other than the
+            first are not kept.
+          </span>
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => d.edit(doc)}>
+            Upgrade to blocks
+          </Button>
+        </div>
+      )}
+
       {yaml === null ? (
         <div className="p-6 text-muted-foreground">Loading…</div>
+      ) : isMobile ? (
+        // A phone has room for one pane: pick it here
+        <Tabs value={pane} onValueChange={(v) => setPane(v as Pane)} className="flex min-h-0 flex-1 flex-col gap-0">
+          <div className="flex h-10 shrink-0 items-center border-b bg-surface-2 px-2">
+            <TabsList className="w-full p-0.5 group-data-[orientation=horizontal]/tabs:h-8">
+              <TabsTrigger value="editor" className="h-7 text-xs">
+                Editor
+              </TabsTrigger>
+              <TabsTrigger value="graph" className="h-7 text-xs">
+                Graph
+              </TabsTrigger>
+              <TabsTrigger value="side" className="h-7 text-xs">
+                Details
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{pane === "editor" ? editorPane : pane === "graph" ? graphPane : sidePane}</div>
+        </Tabs>
       ) : (
         <ResizablePanelGroup
           orientation="horizontal"
@@ -105,143 +319,19 @@ export function FlowWorkspace() {
           }}
         >
           <ResizablePanel id="editor" defaultSize="40" minSize="24" className="flex min-w-0 flex-col">
-            <div className="flex h-10 shrink-0 items-center gap-2 border-b px-2">
-              <Tabs value={view} onValueChange={(v) => setView(v as View)}>
-                <TabsList className="h-7 p-0.5">
-                  <TabsTrigger value="blocks" className="h-6 px-2 text-xs">
-                    <ListTree className="size-3.5" />
-                    Blocks
-                  </TabsTrigger>
-                  <TabsTrigger value="yaml" className="h-6 px-2 text-xs">
-                    <FileCode className="size-3.5" />
-                    YAML
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-              {d.parseError && (
-                <Badge variant="outline" className="border-danger/40 font-normal text-danger">
-                  YAML does not parse
-                </Badge>
-              )}
-              <span className="ml-auto flex items-center gap-1">
-                {view === "blocks" && (
-                  <>
-                    <IconButton icon={Undo2} label="Undo (⌘Z)" onClick={d.undo} />
-                    <IconButton icon={Redo2} label="Redo (⇧⌘Z)" onClick={d.redo} />
-                  </>
-                )}
-                {doc && <AddBlock onAdd={addBlock} where={whereAdded(doc, selected)} />}
-              </span>
-            </div>
-            <div className="relative min-h-0 flex-1">
-              {view === "yaml" ? (
-                <CodeEditor value={yaml} onChange={d.type} language="yaml" marks={d.marks} label="Flow YAML" className="h-full" />
-              ) : doc ? (
-                <Tree
-                  doc={doc}
-                  onEdit={d.edit}
-                  selected={selected}
-                  onSelect={select}
-                  findings={d.findings}
-                  visited={visited}
-                  visitKeys={d.keys}
-                  waiting={previewing && !path ? (run?.waiting ?? null) : null}
-                  dragging={dragging}
-                  setDragging={setDragging}
-                />
-              ) : (
-                <div className="grid gap-3 p-6">
-                  <p className="flex items-start gap-2">
-                    <CircleX className="mt-0.5 size-4 shrink-0 text-danger" />
-                    <span className="font-mono text-xs">{d.parseError}</span>
-                  </p>
-                  <Button variant="outline" size="sm" className="justify-self-start" onClick={() => setView("yaml")}>
-                    Fix in YAML
-                  </Button>
-                </div>
-              )}
-            </div>
+            {editorPane}
           </ResizablePanel>
 
           <ResizableHandle />
 
           <ResizablePanel id="graph" defaultSize="32" minSize="16" collapsible className="flex min-w-0 flex-col">
-            <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
-              <Workflow className="size-3.5 text-muted-foreground" />
-              <span className="text-xs font-medium">Graph</span>
-              <span className="text-xs text-muted-foreground">{doc ? "live" : "last valid"}</span>
-              {(path || (previewing && run)) && (
-                <Badge variant="outline" className="ml-auto min-w-0 gap-1 border-accent-ui/40 font-normal text-accent-ui">
-                  <span className="truncate">{path ? "path" : "preview run"}</span>
-                  {path && (
-                    <button type="button" aria-label="Clear path" onClick={() => setPath(null)} className="-mr-0.5 hover:text-foreground">
-                      <X className="size-3" />
-                    </button>
-                  )}
-                </Badge>
-              )}
-            </div>
-            <div className="min-h-0 flex-1">
-              {shown ? (
-                <Graph doc={shown} visited={visited} visitKeys={d.keys} selected={selected} onSelect={select} findings={d.findings} />
-              ) : (
-                <div className="p-6 text-muted-foreground">Nothing to draw yet</div>
-              )}
-            </div>
+            {graphPane}
           </ResizablePanel>
 
           <ResizableHandle />
 
-          <ResizablePanel id="side" defaultSize="28" minSize={280} maxSize="45" className="flex min-w-0 flex-col">
-            <Tabs
-              value={sideValue}
-              onValueChange={(v) => {
-                setPreviewing(v === "preview");
-                if (v !== "preview") setSide(v as Exclude<Side, "preview">);
-              }}
-              className="flex min-h-0 flex-1 flex-col gap-0"
-            >
-              <div className="flex h-10 shrink-0 items-center border-b px-2">
-                <TabsList variant="line" className="h-10 gap-0 p-0">
-                  <TabsTrigger value="block" className="h-10 px-2.5 text-xs">
-                    {entrySelected ? "Block" : "Flow"}
-                  </TabsTrigger>
-                  <TabsTrigger value="paths" className="h-10 px-2.5 text-xs">
-                    Paths
-                    {validation && <span className="font-mono text-[11px] font-normal text-muted-foreground">{validation.paths.length}</span>}
-                  </TabsTrigger>
-                  <TabsTrigger value="preview" className="h-10 px-2.5 text-xs">
-                    Preview
-                  </TabsTrigger>
-                </TabsList>
-              </div>
-              <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-                {sideValue === "preview" ? (
-                  <Preview
-                    tenant={d.tenant}
-                    demoClient={d.demoClient}
-                    blocked={d.blocked ?? (d.saved === "saving" ? "Saving the draft…" : d.saved === "failed" ? "The draft is not saved" : null)}
-                    run={run}
-                    onEvent={d.onTrace}
-                    fail={d.fail}
-                  />
-                ) : sideValue === "paths" ? (
-                  <Paths validation={validation} selected={path} onSelect={setPath} />
-                ) : entrySelected && doc ? (
-                  <Inspector
-                    doc={doc}
-                    selected={selected!}
-                    onEdit={d.edit}
-                    onSelect={select}
-                    onDeleted={(id) => d.notify("ok", `Deleted ${id}`, true)}
-                    catalog={d.catalog}
-                    findings={d.findings.get(selected!)}
-                  />
-                ) : doc ? (
-                  <FlowProperties doc={doc} onEdit={d.edit} selectedList={selected?.startsWith(LIST) ? selected : null} />
-                ) : null}
-              </div>
-            </Tabs>
+          <ResizablePanel id="side" defaultSize="28" minSize={280} maxSize="45" collapsible className="flex min-w-0 flex-col">
+            {sidePane}
           </ResizablePanel>
         </ResizablePanelGroup>
       )}
@@ -266,7 +356,7 @@ function whereAdded(doc: FlowDoc, selected: string | null): string {
       if (before) return `Adds after ${before}`;
     }
   }
-  return "Adds to the end of Sign in. Select a block to add after it.";
+  return `Adds to the end of ${ENTRIES[AUTHENTICATE].title}, before Consent. Select a block to add after it.`;
 }
 
 /** With no block selected: the flow's own properties, and how to drive the editor. */
@@ -310,6 +400,7 @@ function FlowProperties({ doc, onEdit, selectedList }: { doc: FlowDoc; onEdit: (
           <Shortcut keys={["/"]}>add a block</Shortcut>
           <Shortcut keys={["⌘Z"]}>undo</Shortcut>
           <Shortcut keys={["⌘B"]}>toggle sidebar</Shortcut>
+          <Shortcut keys={["⌘K"]}>command palette</Shortcut>
         </dl>
       </section>
     </div>
@@ -344,18 +435,18 @@ export function StatusBar({ onJump, path, clearPath }: { onJump: (f: Finding) =>
         <>
           <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-              <button type="button" disabled={problems.length === 0} className="flex shrink-0 items-center gap-3 enabled:hover:text-foreground">
+              <button type="button" disabled={problems.length === 0} className="flex shrink-0 items-center gap-3 transition-colors enabled:hover:text-foreground">
                 <span className="flex items-center gap-1.5">
-                  <span className={cn("size-1.5 rounded-full", errors > 0 ? "bg-danger" : "bg-success")} />
-                  <span className={errors > 0 ? "text-danger" : ""}>{plural(errors, "error")}</span>
+                  <span className={cn("size-1.5 rounded-full transition-colors", errors > 0 ? "bg-danger" : "bg-success")} />
+                  <span key={errors} className={cn("count-tick", errors > 0 ? "text-danger" : "")}>{plural(errors, "error")}</span>
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className={cn("size-1.5 rounded-full", warnings > 0 ? "bg-warning" : "bg-border")} />
-                  {plural(warnings, "warning")}
+                  <span className={cn("size-1.5 rounded-full transition-colors", warnings > 0 ? "bg-warning" : "bg-border")} />
+                  <span key={warnings} className="count-tick">{plural(warnings, "warning")}</span>
                 </span>
               </button>
             </PopoverTrigger>
-            <PopoverContent side="top" align="start" className="w-[min(560px,90vw)] p-0">
+            <PopoverContent side="top" align="start" className="w-[min(--spacing(140),90vw)] p-0">
               <div className="border-b px-3 py-2 text-xs font-medium">Problems</div>
               <ul className="max-h-72 overflow-auto py-1">
                 {problems.map((f, i) => (
@@ -381,7 +472,7 @@ export function StatusBar({ onJump, path, clearPath }: { onJump: (f: Finding) =>
               </ul>
             </PopoverContent>
           </Popover>
-          <span className="shrink-0">
+          <span key={`${validation.paths.length}-${successes}`} className="count-tick shrink-0">
             {plural(validation.paths.length, "path")} · {successes} succeed · {validation.paths.length - successes} fail
           </span>
           <span className="hidden min-w-0 truncate xl:inline">{validation.summary}</span>
@@ -389,7 +480,7 @@ export function StatusBar({ onJump, path, clearPath }: { onJump: (f: Finding) =>
             <button
               type="button"
               onClick={clearPath}
-              className="ml-auto flex h-5 max-w-[40%] min-w-0 shrink items-center gap-1 rounded-[4px] bg-accent-ui/10 px-1.5 text-accent-ui hover:bg-accent-ui/15"
+              className="ml-auto flex h-5 max-w-2/5 min-w-0 shrink items-center gap-1 rounded-xs bg-accent-ui/10 px-1.5 text-accent-ui hover:bg-accent-ui/15"
             >
               <span className="truncate">{path.path}</span>
               <X className="size-3" />

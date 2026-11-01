@@ -8,7 +8,7 @@ import { CircleCheck, type LucideIcon, Maximize, Minus, Plus } from "lucide-reac
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CONSENT, ENTRIES, SECTIONS } from "../../../lib/entries";
 import { addressKey, consentStart, type Entry, type FlowDoc, type ListKind, type Section } from "../../../lib/flow";
-import { kindOf } from "../../../lib/kinds";
+import { kindOf, type Tone } from "../../../lib/kinds";
 import type { Findings } from "./tree";
 
 type GNode = {
@@ -16,6 +16,7 @@ type GNode = {
   label: string;
   detail: string;
   icon?: LucideIcon;
+  tone?: Tone;
   x: number;
   y: number;
   option: boolean;
@@ -25,7 +26,7 @@ type GNode = {
   sign: string;
 };
 
-const W = 184;
+const W = 200;
 const H = 40;
 const GAP_X = 32;
 const GAP_Y = 12;
@@ -47,8 +48,9 @@ function layout(doc: FlowDoc): { nodes: GNode[]; width: number; height: number }
       nodes.push({
         key,
         label: e.id,
-        detail: [e.body.screen?.type, e.body.use].filter(Boolean).join(" · ") || look.label,
+        detail: e.body.block ?? look.label,
         icon: look.icon,
+        tone: look.tone,
         x: depth * (W + GAP_X),
         y: row++ * (H + GAP_Y),
         option: kind === "alternative",
@@ -128,12 +130,13 @@ export function Graph({
     if (selected) els.current.get(selected)?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
   }, [selected]);
 
-  // Fit the width, and keep fitting as the panel resizes until the author zooms by hand
+  // Fit the width, never below 85% so labels stay readable (a wider flow scrolls instead), and keep
+  // fitting as the panel resizes until the author zooms by hand
   const [auto, setAuto] = useState(true);
   useEffect(() => {
     const box = scroller.current;
     if (!box || !auto) return;
-    const fit = () => setZoom(Math.max(ZOOMS[0], Math.min(1, Math.floor(((box.clientWidth - 8) / (width + PAD * 2)) * 100) / 100)));
+    const fit = () => setZoom(Math.max(0.85, Math.min(1, Math.floor(((box.clientWidth - 8) / (width + PAD * 2)) * 100) / 100)));
     fit();
     const observer = new ResizeObserver(fit);
     observer.observe(box);
@@ -153,7 +156,7 @@ export function Graph({
     <div className="relative h-full min-h-0">
       <div
         ref={scroller}
-        className="h-full overflow-auto bg-surface-2 bg-[radial-gradient(var(--border)_1px,transparent_1px)] [background-size:16px_16px]"
+        className="h-full overflow-auto bg-surface-2 bg-[radial-gradient(var(--border)_--spacing(0.25),transparent_--spacing(0.25))] bg-size-[--spacing(4)_--spacing(4)]"
       >
         <svg
           width={(width + PAD * 2) * zoom}
@@ -178,18 +181,18 @@ export function Graph({
                 fill="none"
                 stroke={active ? "var(--accent-ui)" : "var(--border)"}
                 strokeWidth={active ? 2 : 1.25}
-                className="transition-[stroke] duration-300"
+                className="transition-[stroke,stroke-width] duration-300"
               />
             );
           })}
           {nodes.map((n) => {
             if (n.kind === "section") {
               return (
-                <g key={n.key} transform={`translate(${n.x},${n.y})`}>
-                  <text x={0} y={24} fontSize={13} fontWeight={600} fill="var(--foreground)">
+                <g key={n.key} transform={`translate(${n.x},${n.y})`} className="transition-transform duration-300 ease-out motion-reduce:transition-none">
+                  <text x={0} y={24} className="text-sm" fontWeight={600} fill="var(--foreground)">
                     {n.label}
                   </text>
-                  <text x={n.label.length * 7.6 + 8} y={24} fontSize={11} fontFamily="var(--font-mono)" fill="var(--muted-foreground)">
+                  <text x={n.label.length * 7.6 + 8} y={24} className="text-xs" fontFamily="var(--font-mono)" fill="var(--muted-foreground)">
                     {n.detail}
                   </text>
                 </g>
@@ -197,10 +200,10 @@ export function Graph({
             }
             if (n.kind === "end") {
               return (
-                <g key={n.key} transform={`translate(${n.x},${n.y + 8})`} opacity={visited ? 0.5 : 1}>
+                <g key={n.key} transform={`translate(${n.x},${n.y + 8})`} opacity={visited ? 0.5 : 1} className="transition-[transform,opacity] duration-300 ease-out motion-reduce:transition-[opacity]">
                   <rect width={96} height={24} rx={12} fill="var(--card)" stroke="var(--border)" />
                   <CircleCheck x={8} y={5} width={14} height={14} strokeWidth={1.75} color="var(--success)" />
-                  <text x={27} y={16} fontSize={11} fontFamily="var(--font-mono)" fill="var(--muted-foreground)">
+                  <text x={27} y={16} className="text-xs" fontFamily="var(--font-mono)" fill="var(--muted-foreground)">
                     {n.label}
                   </text>
                 </g>
@@ -219,7 +222,7 @@ export function Graph({
                 }}
                 transform={`translate(${n.x},${n.y})`}
                 opacity={on(n) ? 1 : 0.35}
-                className="cursor-pointer outline-none [&:focus-visible>rect:first-of-type]:stroke-[var(--ring)]"
+                className="cursor-pointer outline-none transition-[transform,opacity] duration-300 ease-out motion-reduce:transition-[opacity] [&:focus-visible>rect:first-of-type]:stroke-[var(--ring)]"
                 role="button"
                 tabIndex={-1}
                 aria-label={`${n.label}: ${n.detail}`}
@@ -230,19 +233,19 @@ export function Graph({
                 <rect
                   width={W}
                   height={H}
-                  rx={6}
+                  rx={10}
                   fill={isSelected ? "color-mix(in oklch, var(--accent-ui) 8%, var(--card))" : "var(--card)"}
                   stroke={accent ? "var(--accent-ui)" : "var(--border)"}
                   strokeWidth={isSelected ? 2 : accent ? 1.5 : 1}
                   className="transition-[stroke,fill] duration-200"
                 />
-                {flash && <rect width={W} height={H} rx={6} fill="none" stroke="var(--accent-ui)" strokeWidth={2} className="graph-flash" />}
-                <rect x={8} y={8} width={24} height={24} rx={4} fill="var(--muted)" />
-                {n.icon && <n.icon x={12} y={12} width={16} height={16} strokeWidth={1.75} color={accent ? "var(--accent-ui)" : "var(--muted-foreground)"} />}
-                <text x={40} y={18} fontSize={12} fontWeight={500} fontFamily="var(--font-mono)" fill="var(--foreground)">
+                {flash && <rect width={W} height={H} rx={10} fill="none" stroke="var(--accent-ui)" strokeWidth={2} className="graph-flash" />}
+                <rect x={8} y={8} width={24} height={24} rx={7} fill={n.tone ? `var(--tone-${n.tone})` : "var(--muted)"} />
+                {n.icon && <n.icon x={13} y={13} width={14} height={14} strokeWidth={2.1} color={n.tone ? "var(--on-fill)" : "var(--muted-foreground)"} />}
+                <text x={40} y={18} className="text-xs" fontWeight={500} fontFamily="var(--font-mono)" fill="var(--foreground)">
                   {n.label.length > 19 ? `${n.label.slice(0, 18)}…` : n.label}
                 </text>
-                <text x={40} y={32} fontSize={11} fontFamily="var(--font-mono)" fill="var(--muted-foreground)">
+                <text x={40} y={32} className="text-xs" fontFamily="var(--font-mono)" fill="var(--muted-foreground)">
                   {n.detail.length > 21 ? `${n.detail.slice(0, 20)}…` : n.detail}
                 </text>
                 {found && (found.errors.length > 0 || found.warnings.length > 0) && (
@@ -258,7 +261,7 @@ export function Graph({
         <ZoomButton label="Zoom out" onClick={() => step(-1)} disabled={zoom <= ZOOMS[0]}>
           <Minus />
         </ZoomButton>
-        <Button variant="outline" size="sm" className="h-7 w-12 px-0 font-mono text-[11px] tabular-nums" onClick={() => {
+        <Button variant="outline" size="sm" className="h-7 w-12 px-0 font-mono text-xs tabular-nums" onClick={() => {
             setAuto(false);
             setZoom(1);
           }} aria-label="Reset zoom">

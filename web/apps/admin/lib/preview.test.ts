@@ -36,3 +36,36 @@ test("a live run collects visit keys and knows which block waits on a screen", (
   assert.deepEqual(run.visits, []);
   assert.equal(run.events.length, 1);
 });
+
+test("the consent run after a sign in continues it; another run starts over", () => {
+  const at = (seq: number, flowId: string, event: Recorded["event"]): Recorded => ({ seq, tenantId: "t", flowId, at: 0, event });
+  let run: LiveRun | null = null;
+  for (const r of [
+    at(1, "f_1", { event: "start", id: "sha256:x", outcome: "login" }),
+    at(2, "f_1", { event: "step", id: "credential" }),
+    at(3, "f_1", { event: "end", outcome: "succeed", amr: ["pwd"], acr: "faye:1fa" }),
+    at(4, "f_2", { event: "start", id: "sha256:x", outcome: "consent" }),
+    at(5, "f_2", { event: "step", id: "grant" }),
+    at(6, "f_2", { event: "screen", id: "consent" }),
+  ]) run = follow(run, r);
+  assert.deepEqual(run!.visits, ["credential", "grant"]);
+  assert.equal(run!.waiting, "grant");
+  assert.equal(run!.end, null);
+  assert.deepEqual(run!.signIn, { flowId: "f_1", end: { event: "end", outcome: "succeed", amr: ["pwd"], acr: "faye:1fa" } });
+  assert.equal(run!.events.length, 6);
+
+  run = follow(run, at(7, "f_2", { event: "end", outcome: "succeed" }));
+  assert.equal(run.end?.outcome, "succeed");
+  assert.equal(run.signIn?.flowId, "f_1");
+
+  // A consent run on another version, or after a sign in that failed, is a run of its own
+  run = follow(run, at(8, "f_3", { event: "start", id: "sha256:y", outcome: "consent" }));
+  assert.deepEqual(run.visits, []);
+  assert.equal(run.signIn, undefined);
+  let failed: LiveRun | null = null;
+  failed = follow(failed, at(9, "f_4", { event: "start", id: "sha256:x", outcome: "login" }));
+  failed = follow(failed, at(10, "f_4", { event: "end", outcome: "fail" }));
+  failed = follow(failed, at(11, "f_5", { event: "start", id: "sha256:x", outcome: "consent" }));
+  assert.equal(failed.signIn, undefined);
+  assert.equal(failed.events.length, 1);
+});

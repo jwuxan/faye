@@ -12,9 +12,18 @@ import { Tile } from "../../ui";
 
 /**
  * The block palette as a searchable list: Enter or a click adds the block where `where` says.
- * "/" opens it from anywhere in the workspace outside a text field.
+ * A block that cannot go there is shown disabled, with why (`problem`), so the palette never
+ * offers what will not compile. "/" opens it from anywhere in the workspace outside a text field.
  */
-export function AddBlock({ onAdd, where }: { onAdd: (name: string) => void; where: string }) {
+export function AddBlock({
+  onAdd,
+  where,
+  problem,
+}: {
+  onAdd: (name: string) => void;
+  where: string;
+  problem: (name: string) => string | null;
+}) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -30,35 +39,37 @@ export function AddBlock({ onAdd, where }: { onAdd: (name: string) => void; wher
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-7 gap-1.5 px-2 text-xs">
+        <Button variant="outline" size="sm" aria-label="Add block" title="Add block (/)" className="h-7 gap-1.5 px-2 text-xs">
           <Plus />
-          Add block
-          <Kbd className="ml-0.5 h-4 min-w-4 text-[10px]">/</Kbd>
+          <span className="hidden xl:inline">Add block</span>
+          <Kbd className="ml-0.5 hidden h-4 min-w-4 text-xs xl:inline-flex">/</Kbd>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-0">
         <Command>
-          <CommandInput placeholder="Search blocks" className="text-[13px]" />
+          <CommandInput placeholder="Search blocks" className="text-sm" />
           <CommandList className="max-h-80">
             <CommandEmpty className="py-4 text-xs">No block matches</CommandEmpty>
             {(["Steps", "Logic"] as const).map((group) => (
               <CommandGroup key={group} heading={group}>
                 {PALETTE.filter((b) => b.group === group).map((b) => {
                   const look = BLOCK_ICONS[b.name];
+                  const why = open ? problem(b.name) : null;
                   return (
                     <CommandItem
                       key={b.name}
                       value={`${b.name} ${b.description}`}
+                      disabled={why !== null}
                       onSelect={() => {
                         onAdd(b.name);
                         setOpen(false);
                       }}
                       className="items-start gap-2 py-1.5"
                     >
-                      <Tile icon={look.icon} category={look.category} size="sm" />
+                      <Tile icon={look.icon} tone={look.tone} size="sm" />
                       <span className="grid min-w-0 gap-0.5">
-                        <span className="text-[13px]">{b.name}</span>
-                        <span className="text-[11px] leading-4 text-muted-foreground">{b.description}</span>
+                        <span className="text-sm">{b.name}</span>
+                        <span className="text-xs leading-4 text-muted-foreground">{why ?? b.description}</span>
                       </span>
                     </CommandItem>
                   );
@@ -66,7 +77,7 @@ export function AddBlock({ onAdd, where }: { onAdd: (name: string) => void; wher
               </CommandGroup>
             ))}
           </CommandList>
-          <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">{where}</div>
+          <div className="border-t px-3 py-2 text-xs text-muted-foreground">{where}</div>
         </Command>
       </PopoverContent>
     </Popover>

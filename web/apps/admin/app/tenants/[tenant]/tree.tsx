@@ -18,11 +18,12 @@ import {
   type ListRef,
   listKey,
   listOf,
+  misplaced,
   move,
   parentOf,
   parseAddress,
   parseListKey,
-  remove,
+  removeEntry,
   type Section,
 } from "../../../lib/flow";
 import { AUTHENTICATE, CONSENT, ENTRIES } from "../../../lib/entries";
@@ -41,16 +42,22 @@ export const LIST = "list:";
 /**
  * Where the palette's Add puts a block: at the end of a selected list (click "one of" under a
  * choose, or a section title), after a selected block, else at the end of the sign in steps.
+ * The end of a section's steps is before its consent steps, unless the block asks for consent:
+ * appended after them, it would run after sign in, on the consent challenge.
  */
-export function addTarget(doc: FlowDoc, selected: string | null): { list: ListRef; index: number } {
+export function addTarget(doc: FlowDoc, selected: string | null, consent = false): { list: ListRef; index: number } {
+  const end = (list: ListRef) => {
+    const entries = listOf(doc, list) ?? [];
+    return list.owner.length === 0 && !consent ? consentStart(entries) : entries.length;
+  };
   if (selected?.startsWith(LIST)) {
     const list = parseListKey(selected.slice(LIST.length));
-    return { list, index: listOf(doc, list)?.length ?? 0 };
+    return { list, index: end(list) };
   }
   const a = selected ? parseAddress(selected) : null;
   if (!a || a.path.length === 0) {
-    const section = a?.section ?? AUTHENTICATE;
-    return { list: { section, owner: [], kind: "steps" }, index: doc[section]?.length ?? 0 };
+    const list: ListRef = { section: a?.section ?? AUTHENTICATE, owner: [], kind: "steps" };
+    return { list, index: end(list) };
   }
   const [kind, index] = a.path[a.path.length - 1];
   return { list: { section: a.section, owner: a.path.slice(0, -1), kind }, index: index + 1 };
@@ -86,18 +93,25 @@ export function Tree({
   dragging: Dragging;
   setDragging: (d: Dragging) => void;
 }) {
+  /** The document after dropping here, or null where the block cannot go (ADR 0030). */
+  const dropped = (list: ListRef, index: number): FlowDoc | null => {
+    if (!dragging || ("entry" in dragging && inside(list, parseAddress(dragging.entry)))) return null;
+    const next =
+      "palette" in dragging
+        ? insert(doc, list, index, fromBlock(block(dragging.palette), list.kind))
+        : move(doc, parseAddress(dragging.entry), list, index);
+    return misplaced(next) > misplaced(doc) ? null : next;
+  };
   const drop = (list: ListRef, index: number) => {
     if (!dragging) return;
-    if ("palette" in dragging) {
-      onEdit(insert(doc, list, index, fromBlock(block(dragging.palette), list.kind, doc)));
-      onSelect(addressKey({ section: list.section, path: [...list.owner, [list.kind, index]] }));
-    } else {
-      onEdit(move(doc, parseAddress(dragging.entry), list, index));
-      onSelect(null);
-    }
+    const next = dropped(list, index);
     setDragging(null);
+    if (!next) return;
+    onEdit(next);
+    onSelect("palette" in dragging ? addressKey({ section: list.section, path: [...list.owner, [list.kind, index]] }) : null);
   };
-  const canDrop = (list: ListRef) => !!dragging && !("entry" in dragging && inside(list, parseAddress(dragging.entry)));
+  // Only the positions a drop would keep compiling are drop targets, so a drop is never refused
+  const canDrop = (list: ListRef, index: number) => dropped(list, index) !== null;
 
   // Keyboard: arrows select in tree order, cmd+arrows reorder, backspace deletes
   const order = [...visitKeys.keys()];
@@ -114,7 +128,9 @@ export function Tree({
         const to = index + delta;
         const size = listOf(doc, list)?.length ?? 0;
         if (to < 0 || to >= size) return;
-        onEdit(move(doc, a, list, delta > 0 ? to + 1 : to));
+        const next = move(doc, a, list, delta > 0 ? to + 1 : to);
+        if (misplaced(next) > misplaced(doc)) return;
+        onEdit(next);
         onSelect(addressKey({ section: a.section, path: [...list.owner, [list.kind, to]] }));
       } else {
         const next = order[Math.min(order.length - 1, Math.max(0, at + delta))];
@@ -123,7 +139,9 @@ export function Tree({
     } else if ((e.key === "Backspace" || e.key === "Delete") && selected && !selected.startsWith(LIST)) {
       e.preventDefault();
       const a = parseAddress(selected);
-      const next = remove(doc, a);
+      const next = removeEntry(doc, a);
+      // The Identifier stays first: the Delete button says why
+      if (misplaced(next) > misplaced(doc)) return;
       onEdit(next);
       onSelect(neighbour(next, a));
     } else if (e.key === "Escape") onSelect(null);
@@ -132,7 +150,7 @@ export function Tree({
   const ctx = { doc, selected, onSelect, findings, visited, visitKeys, waiting, dragging, setDragging, drop, canDrop };
   return (
     <div
-      className="min-h-0 overflow-auto outline-none"
+      className="h-full min-h-0 overflow-auto outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
       role="tree"
       aria-label={`Flow ${doc.flow}`}
       tabIndex={0}
@@ -147,7 +165,7 @@ export function Tree({
           rows={1}
           value={(doc.comment ?? "").split("\n").map((l) => l.replace(/^ /, "")).join("\n")}
           onChange={(e) => onEdit({ ...doc, comment: e.target.value ? e.target.value.split("\n").map((l) => (l ? ` ${l}` : "")).join("\n") : undefined })}
-          className="field-sizing-content -mx-2 resize-none rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] leading-5 text-muted-foreground outline-none placeholder:text-muted-foreground/60 hover:border-input focus:border-ring focus:text-foreground"
+          className="field-sizing-content -mx-2 resize-none rounded-md border border-transparent bg-transparent px-2 py-1 text-sm leading-5 text-muted-foreground outline-none placeholder:text-muted-foreground hover:border-input focus:border-ring focus:text-foreground"
         />
         <SectionView section={AUTHENTICATE} title={ENTRIES[AUTHENTICATE].title} {...ctx} />
       </div>
@@ -166,7 +184,7 @@ type Ctx = {
   dragging: Dragging;
   setDragging: (d: Dragging) => void;
   drop: (list: ListRef, index: number) => void;
-  canDrop: (list: ListRef) => boolean;
+  canDrop: (list: ListRef, index: number) => boolean;
 };
 
 function SectionView({ section, title, ...ctx }: { section: Section; title: string } & Ctx) {
@@ -175,7 +193,7 @@ function SectionView({ section, title, ...ctx }: { section: Section; title: stri
     <section>
       <header className="sticky top-0 z-10 flex h-9 items-center gap-2 bg-background">
         <ListLabel list={{ section, owner: [], kind: "steps" }} {...ctx}>
-          <h2 className="text-[14px] font-medium text-foreground">{title}</h2>
+          <h2 className="text-base font-medium text-foreground">{title}</h2>
         </ListLabel>
         <span className="font-mono text-xs text-muted-foreground">{section}</span>
         <span className="text-xs text-muted-foreground">· {entries.length} {entries.length === 1 ? "step" : "steps"}</span>
@@ -191,7 +209,7 @@ function ListView({ list, entries, depth, ...ctx }: { list: ListRef; entries: En
       {entries.map((e, i) => (
         <li key={`${listKey(list)}-${i}-${e.id}`} className="relative">
           {depth === 0 && list.kind === "steps" && i === consentStart(entries) && <ConsentDivider />}
-          {depth > 0 && <span aria-hidden className="absolute top-[18px] -left-4 h-px w-3 bg-border" />}
+          {depth > 0 && <span aria-hidden className="absolute top-4.5 -left-4 h-px w-3 bg-border" />}
           <DropZone list={list} index={i} {...ctx} />
           <EntryView address={{ section: list.section, path: [...list.owner, [list.kind, i]] }} entry={e} kind={list.kind} depth={depth} {...ctx} />
         </li>
@@ -223,7 +241,7 @@ function ConsentDivider() {
 
 function useDrop(list: ListRef, index: number, ctx: Ctx) {
   const [over, setOver] = useState(false);
-  const allowed = ctx.canDrop(list);
+  const allowed = ctx.canDrop(list, index);
   return {
     over,
     allowed,
@@ -248,10 +266,10 @@ function useDrop(list: ListRef, index: number, ctx: Ctx) {
 function DropZone({ list, index, ...ctx }: { list: ListRef; index: number } & Ctx) {
   const { over, allowed, handlers } = useDrop(list, index, ctx);
   return (
-    <div {...handlers} className={cn("relative", ctx.dragging && allowed ? "-my-1 h-3" : "h-0.5")}>
+    <div {...handlers} className={cn("relative transition-[height,margin] duration-150 motion-reduce:transition-none", ctx.dragging && allowed ? "-my-1 h-3" : "h-0.5")}>
       {over && (
         <span aria-hidden className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 bg-accent-ui">
-          <span className="absolute -top-[3px] -left-1 size-2 rounded-full border-2 border-accent-ui bg-background" />
+          <span className="absolute -top-0.75 -left-1 size-2 rounded-full border-2 border-accent-ui bg-background" />
         </span>
       )}
     </div>
@@ -264,7 +282,7 @@ function EmptyDrop({ list, ...ctx }: { list: ListRef } & Ctx) {
     <div
       {...handlers}
       className={cn(
-        "my-1 flex h-7 items-center rounded-md border border-dashed px-2 text-xs text-muted-foreground",
+        "my-1 flex h-7 items-center rounded-md border border-dashed px-2 text-xs text-muted-foreground transition-colors",
         over && "border-accent-ui bg-accent-ui/8 text-accent-ui",
       )}
     >
@@ -282,6 +300,16 @@ function EntryView({ address, entry, kind, depth, ...ctx }: { address: Address; 
   const isDragged = ctx.dragging && "entry" in ctx.dragging && ctx.dragging.entry === key;
   const b = entry.body;
   const look = kindOf(b);
+  const chipsTitle = [
+    b.before !== undefined && `before ${b.before || "?"}`,
+    b.set && `set ${b.set.map(([k]) => k).join(", ")}`,
+    b.block,
+    ...Object.entries(b.with ?? {}).map(([k, v]) => `${k} ${String(v)}`),
+    b.fail !== undefined && `fail ${b.fail}`,
+    b.after !== undefined && `after ${b.after || "?"}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const row = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (isSelected) row.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -302,25 +330,30 @@ function EntryView({ address, entry, kind, depth, ...ctx }: { address: Address; 
         onDragEnd={() => ctx.setDragging(null)}
         onClick={() => ctx.onSelect(key)}
         className={cn(
-          "group relative grid cursor-default rounded-md px-2 py-1.5 transition-colors",
-          isSelected ? "bg-accent-ui/8 shadow-[inset_2px_0_0_var(--accent-ui)] dark:bg-accent-ui/14" : "hover:bg-accent",
+          "group relative grid cursor-default rounded-lg px-2 py-1.5 transition-[background-color,color,box-shadow]",
+          isSelected ? "bg-accent-ui/10 ring-1 ring-accent-ui/25 ring-inset dark:bg-accent-ui/16" : "hover:bg-accent",
         )}
       >
-        <GripVertical aria-hidden className="absolute top-2.5 -left-4 size-3.5 cursor-grab text-muted-foreground opacity-0 group-hover:opacity-100" />
+        <GripVertical aria-hidden className="absolute top-2.5 -left-4 size-3.5 cursor-grab text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
         <div className="flex h-6 min-w-0 items-center gap-2">
-          <span className={cn("rounded-[4px]", onPath && "ring-1 ring-accent-ui", isWaiting && "ring-2 ring-offset-1 ring-offset-background animate-pulse")}>
-            <Tile icon={look.icon} category={look.category} />
+          <span className={cn("rounded-md", onPath && "ring-2 ring-accent-ui/60 ring-offset-1 ring-offset-background", isWaiting && "ring-2 ring-offset-1 ring-offset-background animate-pulse")}>
+            <Tile icon={look.icon} tone={look.tone} />
           </span>
-          <span className="font-mono text-[13px] font-medium">{entry.id}</span>
+          <span className="truncate font-mono text-sm font-medium" title={entry.id}>
+            {entry.id}
+          </span>
           {isWaiting && <Chip className="bg-accent-ui/10 text-accent-ui">waiting on screen</Chip>}
-          {look.label.toLowerCase().replace(" ", "-") !== entry.id && <span className="truncate text-xs text-muted-foreground">{look.label}</span>}
-          <span className="ml-auto flex shrink-0 items-center gap-1">
-            {b.hook !== undefined && <Chip mono>hook {b.hook || "?"}</Chip>}
+          {look.label.toLowerCase().replace(" ", "-") !== entry.id && <span className="shrink-[4] truncate text-xs text-muted-foreground">{look.label}</span>}
+          <span title={chipsTitle || undefined} className="ml-auto flex min-w-0 items-center justify-end gap-1 overflow-hidden mask-[linear-gradient(90deg,transparent,black_--spacing(5))]">
+            {b.before !== undefined && <Chip mono>before {b.before || "?"}</Chip>}
             {b.set && <Chip mono>set {b.set.map(([k]) => k).join(", ")}</Chip>}
-            {b.screen && <Chip mono>{b.screen.type}</Chip>}
-            {b.use && <Chip mono>{b.use}</Chip>}
-            {b.retry !== undefined && <Chip mono>×{b.retry}</Chip>}
+            {Object.entries(b.with ?? {}).map(([k, v]) => (
+              <Chip key={k} mono>
+                {k === "attempts" ? `×${String(v)}` : v === true ? k : `${k} ${String(v)}`}
+              </Chip>
+            ))}
             {b.fail !== undefined && <Chip mono>fail {b.fail}</Chip>}
+            {b.after !== undefined && <Chip mono>after {b.after || "?"}</Chip>}
             {found && found.errors.length > 0 && (
               <span className="flex items-center gap-1 pl-1 text-xs text-danger" title={found.errors.join("\n")}>
                 <CircleX className="size-3.5" />
@@ -342,7 +375,7 @@ function EntryView({ address, entry, kind, depth, ...ctx }: { address: Address; 
         )}
       </div>
       {(b.alternative || b.steps) && (
-        <div className="relative ml-[19px] pl-4">
+        <div className="relative ml-4.75 pl-4">
           <span aria-hidden className={cn("absolute top-0 bottom-4 left-0 w-px", onPath ? "bg-accent-ui" : "bg-border")} />
           {b.alternative && (
             <>
@@ -386,7 +419,7 @@ function ListLabel({ list, children, ...ctx }: { list: ListRef; children: ReactN
       title="Select to add blocks here"
       aria-pressed={isSelected}
       className={cn(
-        "flex h-6 items-center gap-1 rounded-[4px] px-1 -mx-1 text-[11px] text-muted-foreground hover:text-foreground",
+        "flex h-6 items-center gap-1 rounded-xs px-1 -mx-1 text-xs text-muted-foreground transition-colors hover:text-foreground",
         isSelected && "bg-accent-ui/10 text-accent-ui hover:text-accent-ui",
       )}
     >
