@@ -18,7 +18,7 @@ It compares designs, not speed. No performance benchmark of Faye exists, and thi
 
 ## Four questions that separate the designs
 
-### 1. Where does the sign in logic live?
+### Where does the sign in logic live?
 
 | Product | Where the flow is defined |
 |---|---|
@@ -31,7 +31,7 @@ It compares designs, not speed. No performance benchmark of Faye exists, and thi
 | **Ory Kratos** | Fixed self service flows configured in YAML, with a JSON identity schema and webhooks ([hooks](https://github.com/ory/docs/blob/master/docs/kratos/hooks/01_configure-hooks.mdx)). |
 | **authentik** | Flows of stages bound to policies, exported as YAML blueprints ([flows](https://github.com/goauthentik/authentik/blob/main/website/docs/add-secure-apps/flows-stages/flow/index.mdx)). |
 
-### 2. Can custom code decide who signed in?
+### Can custom code decide who signed in?
 
 This is the most important difference. If custom code can end a sign in successfully, every review of the flow must also review the code.
 
@@ -48,7 +48,7 @@ This is the most important difference. If custom code can end a sign in successf
 
 Faye gives up flexibility to get this property. A hook cannot add a new kind of credential. That takes a new built in handler, reviewed once for every tenant.
 
-### 3. Is a flow checked before it runs?
+### Is a flow checked before it runs?
 
 | Product | Checks before a flow runs |
 |---|---|
@@ -60,7 +60,7 @@ Faye gives up flexibility to get this property. A hook cannot add a new kind of 
 
 Faye can list every path because its flow language is closed and every flow ends. A product whose flows can call any code cannot list every path the code might take. [How the IR is designed](ir-design.md#what-the-checker-can-prove) explains how Faye does it.
 
-### 4. Where do amr and acr come from?
+### Where do amr and acr come from?
 
 `amr` says which methods verified, and `acr` says how strong the sign in was. Applications use them to decide whether to trust a sign in.
 

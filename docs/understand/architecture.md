@@ -171,12 +171,15 @@ flowchart LR
     admin["admin :3002"]
     demo["demo client :3001 (demo only)"]
     ipr["ip-reputation :8000 on loopback (demo only)"]
-    sock[/"admin socket /run/faye/admin.sock"/]
+    sock["admin socket: /run/faye/admin.sock"]
     db[("faye.db")]
   end
+  login --> faye
+  admin --> sock --> faye
+  demo --> hydra
+  faye --> hydra
   faye --> db
   hydra --> db
-  admin --> sock --> faye
   faye --> ipr
 ```
 
