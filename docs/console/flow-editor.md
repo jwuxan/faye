@@ -163,7 +163,7 @@ The condition builder has a list of tests:
 | **is set** | The path has a value. |
 | **is not set** | The path has no value. |
 
-Select **Add condition** for another test, or **Add group** for a nested group with its own **all**, **any** or **none**. The line under the builder shows the whole condition as text. The builder writes the same condition that you write in YAML. For example, "**all** of `vars.risk` **=** `high`" is `if: { eq: [vars.risk, high] }`. The [Flow DSL reference](../reference/dsl.md) lists every path that a condition can read.
+Select **Add condition** for another test, or **Add group** for a nested group with its own **all**, **any** or **none**. The line under the builder shows the whole condition as text. The builder writes the same condition that you write in YAML. For example, "**all** of `vars.risk` **=** `high`" is `if: { eq: [vars.risk, high] }`. The [Flow DSL reference](../reference/dsl.md#path-namespaces) lists every path that a condition can read.
 
 ### Settings of each block
 
@@ -190,7 +190,7 @@ The **Hooks** group attaches the flow's hooks to the block:
 - **Before** runs the hook once before the block, before all of its attempts.
 - **After** runs the hook once after the block has run. A **Fail** block has no **After**, because nothing runs after it.
 
-A hook can set `vars` or fail the step. It cannot complete a sign in. To write a hook, go to the **Hooks** page. See [Hooks](../flows/hooks.md).
+A hook can set `vars`, fail the step, or pick an option of a **Choose**. It cannot complete a sign in. To write a hook, go to the **Hooks** page. See [Hooks](../flows/hooks.md).
 
 ## Edit the YAML
 
@@ -235,7 +235,7 @@ If the YAML does not parse, the toolbar shows **YAML does not parse**. The **Blo
 > [!WARNING]
 > An edit in the **Blocks** tab rewrites the YAML. Only the comment at the top of the YAML stays. The **Settings** tab shows that comment as the flow's description. All other comments are lost.
 
-For the full YAML syntax, see [Flow syntax](../flows/flow-syntax.md) and the [Flow DSL reference](../reference/dsl.md).
+For the full YAML syntax, see [Write flows in YAML](../flows/flow-syntax.md) and the [Flow DSL reference](../reference/dsl.md).
 
 ## Read the status bar and the Problems list
 
@@ -305,15 +305,7 @@ Select **Full screen (new tab)** to open the graph alone at `/view/{tenant}`. Th
 
 Select **Publish** in the header. The button is turned off while the check runs and while the draft has errors. Hold the pointer over the button to see the reason. Warnings do not stop a publish.
 
-The server compiles the draft and checks it again under the tenant's current settings. Among other things, the checker requires that:
-
-- The YAML follows the block rules: the **Identifier** first, one credential block or a **Fail** per option, **Consent** after every credential, and only the keys each block takes.
-- The tenant's **General** settings allow every handler and screen. The tenant has a grant for every hook's egress target.
-- Every succeeding path verifies a credential for the person who signs in.
-- If the tenant requires multi factor authentication (MFA), every succeeding path reaches `faye:2fa`.
-- Each entry has at most 10,000 paths, and at most 32 hook runs and 5,000 ms of hook time.
-
-The [Core IR specification](../ir-spec.md) lists every check. [Security](../understand/security.md) explains why they exist.
+The server compiles the draft and checks it again under the tenant's current settings. In short, the checker requires that the flow follows the block rules, uses only what the tenant's **General** settings allow, verifies a credential on every succeeding path, meets the tenant's multi factor authentication (MFA) policy, and stays within the limits. The [Flow DSL reference](../reference/dsl.md#how-a-flow-file-is-processed) describes each stage of the check, and lists every [error and its fix](../reference/dsl.md#checker-errors). [Security](../understand/security.md) explains why the checks exist.
 
 If the check passes, a message says **Published** with the new hash. The version is live immediately, and the header's **live** badge changes. If the check fails, a message says **Not published: the flow has errors**, and the status bar lists the problems.
 

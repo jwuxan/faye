@@ -4,7 +4,7 @@ description: Set a tenant's sign in policy on the General page, and look up the 
 
 # Tenant settings, applications and users
 
-This page covers three pages of the Admin UI that are about the tenant instead of its flow. **General** holds the tenant's sign in policy. The checker checks every flow against this policy. **Applications** and **Users** show the tenant's OAuth clients and accounts, read only. This page is for the people who own a tenant's security policy and for engineers who connect applications.
+This page covers three pages of the Admin UI that are about the tenant instead of its flow. **General** holds the tenant's sign in policy. The checker checks every flow against this policy. **Applications** and **Users** show the tenant's applications and accounts, read only. This page is for the people who own a tenant's security policy and for engineers who connect applications.
 
 ## General settings
 
@@ -67,28 +67,28 @@ Saved settings apply to sign ins that start after the save. You do not publish t
 
 ## Applications
 
-Select **Applications** under **Directory**. The page lists the OAuth clients that sign people in with this tenant's flow and users. A **Read only** badge in the header shows that you cannot change the clients here.
+Select **Applications** under **Directory**. The page lists the applications that sign people in with this tenant's flow and users. OAuth2 calls an application a client. A **Read only** badge in the header shows that you cannot change the applications here.
 
-The list shows every client that the authorization server holds with `metadata.tenant` set to this tenant. Type in **Search by name or client ID** to filter the list. Each row shows the application's name and its kind:
+The list shows every application that the authorization server holds with `metadata.tenant` set to this tenant. Type in **Search by name or client ID** to filter the list. Each row shows the application's name and its kind:
 
-- **Public**: a client with no secret, which uses Proof Key for Code Exchange (PKCE).
-- **Confidential**: a client with a secret.
-- **Machine**: a client that only uses the `client_credentials` grant and has no callback URLs.
+- **Public**: an application with no secret, which uses Proof Key for Code Exchange (PKCE).
+- **Confidential**: an application with a secret.
+- **Machine**: an application that only uses the `client_credentials` grant and has no callback URLs.
 
-Each row also says **First party** or **Third party**. A first party client is registered with `metadata.first_party: true`. The shipped flows skip consent for first party clients. A **Preview** badge marks the tenant's preview client.
+Each row also says **First party** or **Third party**. A first party application is registered with `metadata.first_party: true`. The shipped flows skip consent for first party applications. A **Preview** badge marks the tenant's preview client.
 
 Select an application to see its details:
 
 | Field | What it shows |
 |---|---|
-| **Client ID** | The id that the authorization server gave the client, with a copy button. |
-| **Client secret** | Never the secret. For a public client: "None. Public client; uses PKCE." Otherwise: "Stored by the authorization server; shown only once, at registration." |
-| **Token endpoint authentication** | How the client authenticates, for example `client_secret_basic`, or `none`. |
+| **Client ID** | The id that the authorization server gave the application, with a copy button. |
+| **Client secret** | Never the secret. For a public application: "None. Public client; uses PKCE." Otherwise: "Stored by the authorization server; shown only once, at registration." |
+| **Token endpoint authentication** | How the application authenticates, for example `client_secret_basic`, or `none`. |
 | **Callback URLs** | Where the authorization server may send the person back. |
-| **Grant types** | The OAuth grant types that the client may use. |
+| **Grant types** | The OAuth grant types that the application may use. |
 | **Tenant** | The tenant from `metadata.tenant`. |
 | **Preview** | Shown for a preview client. A preview client runs the draft instead of the live version when previews are on. |
-| **Registered** | When the client was registered, if the authorization server knows the date. |
+| **Registered** | When the application was registered, if the authorization server knows the date. |
 
 ### Try a sign in as an application
 
@@ -96,7 +96,7 @@ Select **Try sign in** next to the application's name. The demo client opens in 
 
 The demo client can sign in as the applications that `deploy/bootstrap.mjs` registers, because the demo client reads their secrets from the stack's secrets volume.
 
-If the list is empty, the page says **No applications**. Register a client in the authorization server with `metadata.tenant` set to the tenant's id. Without Hydra, the in memory host has no clients.
+If the list is empty, the page says **No applications**. Register an application in the authorization server with `metadata.tenant` set to the tenant's id. Without Hydra, the in memory host has no applications.
 
 ## Users
 
@@ -120,7 +120,7 @@ The page never shows a password or a secret, only whether one exists. An account
 
 The console shows applications and users, but never creates, changes or deletes them. Faye is designed this way.
 
-- **Applications belong to the authorization server.** Faye is not an OAuth2 or OpenID Connect provider and does not register clients ([charter](../../CHARTER.md), "What Faye is not" 1). Register clients with the authorization server's own tools, such as Hydra's admin API. Faye lists clients through a read only interface. Faye never sees a secret after the authorization server issues it ([ADR 0015](../adr/0015-oauth2-client-management.md)).
+- **Applications belong to the authorization server.** Faye is not an OAuth2 or OpenID Connect provider and does not register applications ([charter](../../CHARTER.md), "What Faye is not" 1). Register applications with the authorization server's own tools, such as Hydra's admin API. Faye lists applications through a read only interface. Faye never sees a secret after the authorization server issues it ([ADR 0015](../adr/0015-oauth2-client-management.md)).
 - **Accounts come from outside Faye.** A tenant's accounts are created outside Faye. In the local stack, `deploy/directory/seed.mjs` writes the accounts. Faye reads the accounts ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)). Only built in, reviewed handlers enroll credentials, and only inside a flow, for example with **Enroll TOTP** or **Add passkey** (charter principle 2). An account editor in the console would be a second way to change credentials, outside every check that a flow passes.
 
 ## Next steps

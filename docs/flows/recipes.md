@@ -242,7 +242,7 @@ login:
 
 ## Email or text message code instead of a password
 
-**Goal:** let a person sign in with a code sent to their verified email address or phone, instead of a password.
+**Goal:** let a person sign in with a code sent to their verified email address or phone, instead of a password. [Send codes by email and text message](codes.md) covers these codes in full.
 
 From the `credential` step of [`acme.yaml`](../../apps/server/faye-app/src/main/resources/flows/acme.yaml):
 
@@ -281,7 +281,7 @@ login:
           sms: { url: https://sms-relay.example/faye, secret: "${FAYE_BANK_SMS_SECRET}", per-hour: 100 }
   ```
 
-- If the demo outbox `FAYE_DEMO_OUTBOX` is set, a channel without a webhook uses it. Faye then writes each code to a file there instead of sending it. In the demo stack, read the codes with `docker exec faye ls /var/lib/faye/outbox`.
+- If the demo outbox `FAYE_DEMO_OUTBOX` is set, a channel without a webhook uses it. Faye then writes each code to a file there instead of sending it. In the demo stack, read the codes with `docker exec faye sh -c 'cat /var/lib/faye/outbox/*'`.
 - If a channel has neither, the channel is off. The console shows its block as disabled. The server refuses to publish a flow that uses the block, with `handler 'sms_code.verify' is not enabled for this tenant`.
 - `user.has_phone` is true only when the account has a verified phone and the person turned on texted codes.
 - An unknown email address gets the same screen and timing, but no code ever matches.
@@ -426,7 +426,7 @@ login:
 
 ## Next steps
 
-- [Write flows in YAML](flow-syntax.md): every key a recipe uses.
+- [Write flows in YAML](flow-syntax.md): how to write each part of a recipe.
 - [Hooks](hooks.md): write your own risk score or picker.
 - [Preview a draft](../console/preview.md): try a recipe before you publish it.
 - [Flow DSL reference](../reference/dsl.md): the full rules for every key and block.

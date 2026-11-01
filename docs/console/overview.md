@@ -11,25 +11,23 @@ The Admin UI is the console where you build and run each tenant's sign in. This 
 The Admin UI runs on port 3002, at http://localhost:3002 in the local stack. In the Admin UI, you can:
 
 - Edit a tenant's flow as blocks or as YAML, and see every path the checker finds.
-- Preview a draft against a real OAuth client before you publish it.
+- Preview a draft with a real application before you publish it.
 - Publish a draft, compare versions, and roll back to an earlier version.
 - Write and test hooks, the tenant's own JavaScript.
 - Brand the login page and turn sign in options on or off.
 - Set the tenant's policy: multi factor authentication (MFA), allowed handlers and screens, and block defaults.
 - Look up the tenant's applications and users.
 
-The console does not create users or OAuth clients. Both come from outside Faye, so the console shows them read only. The reasons are in [Tenant settings, applications and users](tenant-settings.md#why-applications-and-users-are-read-only).
+The console does not create users or applications. Both come from outside Faye, so the console shows them read only. The reasons are in [Tenant settings, applications and users](tenant-settings.md#why-applications-and-users-are-read-only).
 
 ## Keep the Admin UI on your own machine
 
-The Admin UI has no sign in. Anyone who can open the console can publish, roll back and change settings for every tenant ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)).
+> [!CAUTION]
+> The Admin UI has no sign in. Run it only where only you can reach it: on your own machine, bound to 127.0.0.1. Faye does not support exposing it to a network yet ([ADR 0036](../adr/0036-retire-the-roadmap.md#open-gaps), R11).
+
+Anyone who can open the console can publish, roll back and change settings for every tenant ([ADR 0018](../adr/0018-two-tenants-and-an-open-local-console.md)). The compose stack publishes the console on `127.0.0.1:3002` only, so other machines cannot reach it.
 
 The console talks to Faye's admin API through its own server. Faye serves the admin API only on a Unix domain socket (`FAYE_ADMIN_SOCKET`), never on a network port. Faye checks a bearer token (`FAYE_ADMIN_TOKEN`) on every call ([ADR 0028](../adr/0028-admin-api-on-a-unix-domain-socket.md)). The browser never sees the token. A request that changes something must also carry the header `x-faye-admin: 1`. A form on another site cannot send this header.
-
-The compose stack publishes the console on `127.0.0.1:3002` only, so other machines cannot reach it.
-
-> [!CAUTION]
-> Do not publish port 3002 on a shared network or the internet. The console has no sign in. Anyone who can reach the console controls every tenant's sign in. A shared deployment needs an authenticating proxy in front of the console.
 
 If the first page shows **Admin API request failed** with a status code, the console cannot use the admin API. Check that `FAYE_ADMIN_TOKEN` has the same value for the Faye server and for the Admin UI.
 
@@ -76,7 +74,7 @@ The sidebar groups the tenant's pages:
 | Sign in | **Hooks** | Write, test and configure the tenant's hooks. See [Hooks](../flows/hooks.md). |
 | Sign in | **Versions** | Compare published versions with the draft, load one into the draft, or make one live. See [Versions](flow-editor.md#compare-and-roll-back-on-the-versions-page). |
 | Sign in | **Customization** | Brand the login page and choose its sign in options. See [Customize the login page](login-page.md). |
-| Directory | **Applications** | See the OAuth clients that use this tenant, and try a sign in as one. |
+| Directory | **Applications** | See the applications that use this tenant, and try a sign in as one. |
 | Directory | **Users** | See the accounts in the tenant's user pool. |
 | Settings | **General** | Require MFA, set block defaults and allowlists, and see egress grants. |
 
@@ -124,7 +122,7 @@ On Windows and Linux, press `Ctrl` wherever this table shows `⌘`. `Ctrl+Space`
 | Add a step, such as a second factor | **Login flow**, **Blocks** tab, **Add block** |
 | Change a flow in text | **Login flow**, **YAML** tab |
 | See how many ways the flow can end, and the amr (authentication methods references) and acr (authentication context class reference) of each | **Login flow**, **Paths** tab |
-| Try the draft with a real client before publishing | **Login flow**, **Preview** tab ([Preview a draft](preview.md)) |
+| Try the draft with a real application before publishing | **Login flow**, **Preview** tab ([Preview a draft](preview.md)) |
 | Make the draft live | **Publish**, in the header of **Login flow**, **Hooks** or **Versions** |
 | Undo a bad publish | **Versions**, select an earlier version, **Make live** |
 | Shorten how long a person has to finish signing in | **Login flow**, **Settings** tab, **Time limits** |
@@ -173,11 +171,7 @@ flowchart LR
 
 ### Publish
 
-Select **Publish** in the header. The button is turned off while the check runs, and while the draft has errors. Hold the pointer over the button to see why. Warnings do not stop a publish.
-
-The server compiles and checks the draft again before it publishes. If the check passes, a message says **Published** with the new hash, and the new version is live immediately. If the check fails, a message says **Not published: the flow has errors**.
-
-Publishing does not clear the draft. Sign ins that started on the old version finish on that version.
+Select **Publish** in the header to check the draft again and, if it passes, make it the live version at once. Sign ins that started on the old version finish on that version. See [Publish](flow-editor.md#publish) for the details.
 
 ### What is not in the draft
 

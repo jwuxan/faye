@@ -227,5 +227,44 @@ test("the repo's docs: every nav.yaml page exists, has a description, and every 
       }
     }
     assert.deepEqual(dead, []);
+
+    // Every #anchor of a link between docs names a heading of the target page, as the site slugs it
+    const slug = (text: string) =>
+      text
+        .toLowerCase()
+        .replace(/`|\*\*|\*|_/g, "")
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+        .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
+        .replace(/ /g, "-");
+    const anchorsOf = (file: string) => {
+      const seen = new Map<string, number>();
+      const ids = new Set<string>();
+      let fence = false;
+      for (const line of readFileSync(join(REPO_DOCS, file), "utf8").split("\n")) {
+        if (/^(`{3,}|~{3,})/.test(line)) fence = !fence;
+        const heading = !fence && /^#{1,6}\s+(.*?)\s*#*\s*$/.exec(line);
+        if (!heading) continue;
+        // A numbered step heading ("### 1. Build it") loses its number on the site
+        const base = slug(heading[1].replace(/^\d+\.\s+/, ""));
+        const n = seen.get(base) ?? 0;
+        seen.set(base, n + 1);
+        ids.add(n === 0 ? base : `${base}-${n}`);
+      }
+      return ids;
+    };
+    const missing: string[] = [];
+    for (const file of files) {
+      const markdown = readFileSync(join(REPO_DOCS, file), "utf8")
+        .replace(/^(`{3,}|~{3,})[\s\S]*?^\1/gm, "")
+        .replace(/`[^`\n]*`/g, "");
+      for (const match of markdown.matchAll(/\[[^\]]*\]\(([^)\s#]*)#([^)\s]+)\)/g)) {
+        const [, path, hash] = match;
+        if (/^(https?:|mailto:)/i.test(path)) continue;
+        const target = path === "" ? file : posix.normalize(posix.join(posix.dirname(file), path));
+        if (target.startsWith("..") || !target.endsWith(".md")) continue;
+        if (!anchorsOf(target).has(decodeURIComponent(hash))) missing.push(`${file}: ${path}#${hash}`);
+      }
+    }
+    assert.deepEqual(missing, []);
   });
 });

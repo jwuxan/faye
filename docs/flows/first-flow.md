@@ -90,7 +90,7 @@ no path reaches faye:2fa; clients that request it in acr_values are refused
 A warning does not stop you from publishing. It tells you that no person can reach two factors with this flow. You fix this problem in [step 6](#6-add-a-second-factor).
 
 > [!NOTE]
-> This flow has no consent step. Until you add one, the authorization server grants consent without a screen. See [consent](flow-syntax.md#consent).
+> This flow has no consent step. Until you add one, the authorization server grants consent without a screen. See [consent](flow-syntax.md#add-consent).
 
 ### 4. Read the paths
 

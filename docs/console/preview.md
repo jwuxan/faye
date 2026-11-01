@@ -1,17 +1,17 @@
 ---
-description: Run a draft against a real OAuth client before you publish it, follow its trace, and check that the run matches a path the checker predicted.
+description: Run a draft with a real application before you publish it, follow its trace, and check that the run matches a path the checker predicted.
 ---
 
 # Preview a draft
 
-A preview runs the tenant's draft, not the live version, through a real OAuth client. You sign in as a person does, and you watch each step of the run as it happens. Then you see whether the run ended the way that the checker predicted. This page is for flow authors who want to try a change before they publish it. The design is in [ADR 0011](../adr/0011-m6-preview-loop.md).
+A preview runs the tenant's draft, not the live version, through a real application. You sign in as a person does, and you watch each step of the run as it happens. Then you see whether the run ended the way that the checker predicted. This page is for flow authors who want to try a change before they publish it. The design is in [ADR 0011](../adr/0011-m6-preview-loop.md).
 
 > [!NOTE]
 > This page writes keyboard shortcuts with `⌘`. On Windows and Linux, press `Ctrl` instead.
 
 ## How a preview works
 
-Each tenant has a preview client, `preview-{tenant}`. The client is registered in the authorization server with `metadata.preview` set to `true`. When a sign in comes from that client, Faye runs the tenant's saved draft instead of the live version. Every other client keeps running the live version.
+Each tenant has a preview client, `preview-{tenant}`. The preview client is registered in the authorization server with `metadata.preview` set to `true`. When a sign in comes from the preview client, Faye runs the tenant's saved draft instead of the live version. Every other application keeps running the live version.
 
 The sequence shows what happens when you select **Preview**.
 
@@ -47,13 +47,13 @@ If the flow asks for consent, the consent steps run on the same draft version as
 You need four things:
 
 - **Previews on.** The Faye server must run with `FAYE_PREVIEW_ENABLED=true`. Without this setting, the **Preview** tab says "Previews are disabled on this server", and Faye refuses every preview client. The image turns previews on when it runs the demo (`FAYE_DEMO=true`). `deploy/dev.sh` also turns previews on.
-- **A preview client.** The authorization server must have a client `preview-{tenant}` with `metadata.preview: true` and `metadata.tenant` set to the tenant. In the local stack, `deploy/bootstrap.mjs` registers `preview-acme` and `preview-bank`.
+- **A preview client.** The authorization server must have an application `preview-{tenant}` with `metadata.preview: true` and `metadata.tenant` set to the tenant. In the local stack, `deploy/bootstrap.mjs` registers `preview-acme` and `preview-bank`.
 - **The demo client.** The console opens the demo client at `DEMO_CLIENT_URL`, which is http://localhost:3001 by default.
 - **A saved draft with no errors.** The console saves the draft as you edit, and the server checks the draft. While the draft cannot run, the **Preview** button shows the reason instead of its name. The reason is **Checking…**, **Saving the draft…**, **Draft not saved**, or the number of errors to fix.
 
 ## Set up the scenario
 
-Open the **Login flow** page and select the **Preview** tab. The tab holds the scenario: who signs in, and what the client asks for.
+Open the **Login flow** page and select the **Preview** tab. The tab holds the scenario: who signs in, and what the application asks for.
 
 ### Account
 
@@ -64,13 +64,13 @@ Open the **Login flow** page and select the **Preview** tab. The tab holds the s
 | **Identifier** | The new account's email. Select the copy button to copy it. |
 | **Password** | The new account's password. The password is hidden until you hold the pointer over it or give it focus. Select the copy button to copy it. |
 
-A preview account signs in only through a preview client, and only for the tenant that it was made for. No production client can use a preview account.
+A preview account signs in only through a preview client, and only for the tenant that it was made for. No other application can use a preview account.
 
 ### Request
 
 | Control | What it does |
 |---|---|
-| **acr_values** | The sign in level that the client asks for: none, `faye:1fa` or `faye:2fa`. |
+| **acr_values** | The sign in level that the application asks for: none, `faye:1fa` or `faye:2fa`. |
 | **prompt** | **login** by default, so a remembered session never skips the draft. Also **consent**, or none. |
 | **IP address** | Replaces `request.ip` for the tenant's preview runs. Leave it empty to use the browser's address. |
 | **High risk** | Sets the IP address to `203.0.113.7`, which the local `ip-reputation` service scores as high risk. Use this control to try the risk hook of the `acme` tenant. |
@@ -106,7 +106,7 @@ Under **Account**, select **New user**. If the flow asks for a second factor, tu
 
 ### 4. Set the request
 
-Under **Request**, choose `faye:2fa` in **acr_values** if you want to test a client that asks for two factors. Turn on **High risk** to make the risk hook score the sign in as high.
+Under **Request**, choose `faye:2fa` in **acr_values** if you want to test an application that asks for two factors. Turn on **High risk** to make the risk hook score the sign in as high.
 
 ### 5. Select Preview
 
@@ -166,7 +166,7 @@ The last two messages, in red, mean that the checker's prediction and the engine
 
 ## The demo client's Preview run card
 
-After a preview sign in, the demo client shows the **Signed in** card and a **Preview run** card. The ID token of a preview client carries one extra claim, `faye_flow_id`. The demo client uses this claim to find the run. The tokens of production clients do not have this claim.
+After a preview sign in, the demo client shows the **Signed in** card and a **Preview run** card. The ID token of a preview client carries one extra claim, `faye_flow_id`. The demo client uses this claim to find the run. The tokens of other applications do not have this claim.
 
 The **Preview run** card shows:
 
