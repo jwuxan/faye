@@ -13,7 +13,7 @@ Faye runs each hook in a sandbox: QuickJS compiled to WebAssembly. Every run get
 A hook can change which path a flow takes, but only among the paths that the flow declares. A hook can never sign anyone in. Typical uses:
 
 - **Score risk.** Ask a reputation service about the request, and set `vars.risk`. A later step asks for a second factor when `vars.risk` is `high`.
-- **Route.** Pick one option of a choice, which the Admin UI calls **Choose**, instead of asking the person.
+- **Route.** Pick one option of a choice instead of asking the person. A choice is a step written with `alternative:`. The Admin UI calls it **Choose**.
 - **Enrich.** Set values in `vars` that later conditions read.
 
 A hook returns exactly one of these results:
@@ -23,7 +23,7 @@ A hook returns exactly one of these results:
 | `{}` | Nothing. The flow continues. |
 | `{ set: { name: value, ... } }` | Merges the values into `vars`. A later condition reads them as `vars.name`. |
 | `{ fail: "reason" }` | Fails the step with that reason. |
-| `{ pick: "option-id" }` | Runs that option of the **Choose**. Only the picker of a **Choose** may return this result. |
+| `{ pick: "option-id" }` | Runs that option of the choice. Only the picker of a choice may return this result. |
 
 Any other result is an error: `hook_error`. A hook cannot complete a sign in, skip a step, choose who the person is, write `auth`, `amr` or `acr`, or show a screen. No result exists for these actions, so no hook can do them ([charter](../../CHARTER.md), principle 2).
 
@@ -40,7 +40,7 @@ A flow attaches a hook to a step or an option in one of three ways:
 |---|---|---|
 | `before:` | Any step or option | Once, before the rest of the step. |
 | `after:` | Any step or option, except a **Fail** | Once, after the block has run. |
-| `pick:` | A **Choose** | When the **Choose** decides, with the ids of the enabled options in `ctx.options`. |
+| `pick:` | A choice | When the choice decides, with the ids of the enabled options in `ctx.options`. |
 
 The diagram shows the order in which a step runs its parts.
 
@@ -54,7 +54,7 @@ flowchart LR
 
 A step's condition, `if`, applies to its hooks too. When the condition is false, no hook of that step runs. A block's attempts repeat only its screen and its handler. So a hook runs once, however many times the person retries the password or the code. A `before` hook on the **Identifier** runs before Faye knows the account. So this hook sees no `user` values yet.
 
-In the Admin UI, you attach a hook in the block inspector. Use **Before** and **After** in the **Hooks** group. For a **Choose**, set **Picked by** to **Hook** and choose the hook in **Picker**. See [Edit and publish a flow](../console/flow-editor.md#hooks).
+In the Admin UI, you attach a hook in the block inspector. Use **Before** and **After** in the **Hooks** group. For a choice, set **Picked by** to **Hook** and choose the hook in **Picker**. See [Edit and publish a flow](../console/flow-editor.md#hooks).
 
 ## Declare a hook in YAML
 
@@ -135,7 +135,7 @@ login:
           block: email-code
 ```
 
-When the picker returns `{}`, the **Choose** continues as if it has no picker. It runs the only enabled option, or it asks the person.
+When the picker returns `{}`, the choice continues as if it has no picker. It runs the only enabled option, or it asks the person.
 
 > [!NOTE]
 > Write `export default` at the start of a line. Faye finds the hook's function by that line.
@@ -149,7 +149,7 @@ A hook is part of its flow. When you publish the flow, Faye stores the hook. The
 | Field | What it holds |
 |---|---|
 | `ctx.request` | The browser's request: `ip`, `user_agent`. |
-| `ctx.client` | The application, which OAuth calls the client: `client_id`, `client_name`, `first_party`, and `metadata`, the operator's own data about the client. |
+| `ctx.client` | The application: `client_id`, `client_name`, `first_party`, and `metadata`, the operator's own data about the application. |
 | `ctx.host` | The login request as the authorization server relays it: `acr_values`, `requested_scope`, `requested_access_token_audience`, `login_hint`, `ui_locales`, `skip`, `subject`, and `context`. |
 | `ctx.tenant` | Tenant settings: `mfa_required`, `name`, and `remember_me` when it is on. |
 | `ctx.user` | What the **Identifier** found out about the account: `exists`, `identified_by`, `identifier`, `has_password`, `has_passkey`, `has_totp`, `has_phone`, `mfa_required`, and for a known account `email`, `email_verified` and `name`. Empty before the **Identifier** runs. |
@@ -242,14 +242,14 @@ A hook loaded from a file, such as `risk.js`, is read only here. To change it, s
 
 ### 3. Attach it to a block
 
-On the **Login flow** page, select a block, then choose the hook under **Before** or **After**. For a **Choose**, set **Picked by** to **Hook** and choose the hook under **Picker**. In the list on the **Hooks** page, each hook shows the steps that use it, or **Unused**.
+On the **Login flow** page, select a block, then choose the hook under **Before** or **After**. For a choice, set **Picked by** to **Hook** and choose the hook under **Picker**. In the list on the **Hooks** page, each hook shows the steps that use it, or **Unused**.
 
 ### 4. Run a test
 
 Open the **Test run** tab:
 
 1. Edit the **ctx** field: the JSON that the hook receives as `ctx`. The field starts with a sample.
-2. To test a picker, turn on **Test as a Choose picker** and type the enabled option ids in **Picks from**, separated by commas. If a **Choose** already uses the hook, the console fills in both settings.
+2. To test a picker, turn on **Test as a Choose picker** and type the enabled option ids in **Picks from**, separated by commas. If a choice already uses the hook, the console fills in both settings.
 3. Select **Run**, or press `⌘↵` while the **ctx** field has focus.
 
 The test runs on the server, in the same sandbox and with the same limits as a published hook. It uses the egress targets that the hook declares and the tenant grants, so it makes real calls. It stores nothing.
@@ -340,6 +340,8 @@ Every limit is fixed. A flow cannot raise a limit. See [ADR 0037](../adr/0037-ha
 ### Limits of a flow, at check time
 
 The checker applies these limits when you validate, preview or publish. For each entry, the checker adds up the entry's hook attachments. An attachment inside retries counts once for each attempt that the retries allow. For hook time, each attachment adds its hook's deadline.
+
+In YAML, a hook is never inside a retry, so each attachment counts once. With the default deadline of 200 ms, 16 attachments use 3,200 ms. So only longer deadlines reach the 5,000 ms limit. For example, three attachments with `timeout_ms: 2000` take 6,000 ms, and the checker refuses the flow.
 
 | Limit | Value |
 |---|---|

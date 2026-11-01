@@ -15,7 +15,7 @@ A flow file passes two stages before it runs. First the compiler turns the YAML 
 | Stage | What it checks | When it runs |
 |---|---|---|
 | Compiler | YAML rules, keys, block placement, settings, and the IR schema | Every validate, preview and publish |
-| Checker: verify | Screens and handlers are in the catalogs, screen options and paths, the hard limits | Every check, and the engine whenever it runs a version |
+| Checker: verify | Screens and handlers are in the catalogs, screen options and paths, the hard limits | Whenever the checker runs, and whenever the engine runs a version |
 | Checker: paths | Every path through the flow, against the safety rules and the tenant's policy | Validate, publish, rollback, preview and startup |
 
 The [Core IR specification](../ir-spec.md#checks) calls these layers L0 (the schema), L1 (the verifier) and L2 (the path checks). An error at any stage stops a publish and a preview. A warning does not. The Admin UI shows both on the YAML tab and on the block that they point to.
