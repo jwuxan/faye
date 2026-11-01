@@ -13,9 +13,9 @@ Each goal comes from a principle of the charter. The table says what each goal m
 | Goal | In practice | Enforced by |
 |---|---|---|
 | **Secure by design** | The checker checks every flow before it runs, also before a preview. The checker refuses a flow with a path to success that verifies no credential. Safe behavior, such as not revealing which accounts exist, is the default. | The checker, the engine's final check at success, and the conformance and fuzz tests |
-| **Closed extension** | Only built in handlers verify credentials, create accounts and name the person. Hooks can only set values, fail a step or pick an option. | The hook result contract and the block catalog |
+| **Closed extension** | Only built in handlers verify credentials, create accounts and name the person. Hooks can only set values, fail a step or pick an option. | The fixed list of hook results, and the fixed list of built in blocks |
 | **Assurance from facts** | The authentication methods references (`amr`) and the authentication context class reference (`acr`) come from the credentials that verified. They cannot be configured. | The engine computes them. Nothing else can write them |
-| **Host neutral** | The engine talks to the authorization server only through the `FlowHost` interface. A new authorization server needs a new adapter, not engine changes. | `BoundaryTest` keeps Hydra out of the engine |
+| **Host neutral** | The engine talks to the authorization server only through the `FlowHost` interface. A new authorization server needs a new adapter, not engine changes. | A build test, `BoundaryTest`, fails if the engine names Hydra |
 | **Out of the box** | A new tenant gets a safe working flow. Trying Faye locally takes minutes. Defaults are the recommended setup. | The demo stack and the built in blocks |
 | **Easy to use** | Common flows are a few lines. Errors point at the line the author wrote. You can try a draft with a real application before you publish it. | The compiler for the flow domain specific language (DSL), which keeps the YAML line of every node, and the preview |
 | **Configurable within bounds** | Tenants decide what happens and in what order. Appearance is limited to branding the typed screens. Deep custom logic goes in hooks. | The typed screen protocol |
@@ -35,7 +35,7 @@ Faye does not issue or sign tokens and does not own the authorization server's s
 
 ### Not a general UI platform
 
-Faye shows end users only the screens that sign them in, sign them up and ask for consent. The charter also allows a logout confirmation that the authorization server hands off. That screen is planned and not built yet ([ADR 0036](../adr/0036-retire-the-roadmap.md#open-gaps), R2). Profile pages and account settings belong in your product. The Admin UI exists only to build, check and try flows.
+Faye shows end users only the screens that sign them in and ask for consent, and later the screens that sign them up. The charter also allows a logout confirmation that the authorization server hands off. That screen is planned and not built yet. [ADR 0036](../adr/0036-retire-the-roadmap.md#open-gaps) lists it as gap R2. That record numbers the open gaps R1 to R12. Profile pages and account settings belong in your product. The Admin UI exists only to build, check and try flows.
 
 ### Not a general purpose language
 
@@ -63,14 +63,14 @@ The first thirteen decisions shaped everything after them. They are recorded as 
 | D1 | Let Ory Hydra handle the protocol | Building an authorization server, or Keycloak |
 | D2 | YAML for people, a small IR in JSON for machines | Flows as code, BPMN, or expressions in strings |
 | D3 | A closed language in which every flow ends | An embedded general purpose language |
-| D4 | A step by step interpreter whose state is plain data | A recursive interpreter with server sessions |
+| D4 | A step by step interpreter whose state is plain data | An interpreter that keeps each sign in in server memory |
 | D5 | Each sign in keeps the flow version it started with | Always running the newest version |
 | D6 | Typed screens | Any form the server describes |
 | D7 | Ask who you are first, by default | One combined form only |
 | D8 | Hooks with a closed result | Hooks with full control |
 | D9 | Java 21 on the server, TypeScript on the web | TypeScript everywhere |
 | D10 | Safety checks only in Java; the web apps call the server | A second checker in TypeScript |
-| D11 | A tree editor for blocks; the graph is read only | A free canvas, which allows shapes the language does not |
+| D11 | A tree editor for blocks; the graph is read only | A free drawing canvas, where you could draw flows that the language cannot express |
 | D12 | Owned shadcn/ui components | A component library dependency |
 | D13 | `amr` and `acr` computed by the engine only | Configured per flow |
 
@@ -82,3 +82,4 @@ Faye records each decision that changes a boundary as an architecture decision r
 
 - See how the goals shape the system: [Architecture](architecture.md).
 - See the guarantees one by one: [Security model](security.md).
+- Try Faye on your own machine: [Quickstart](../start/quickstart.md).

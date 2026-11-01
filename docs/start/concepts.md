@@ -25,7 +25,7 @@ flowchart TD
 
 ## Tenant
 
-A **tenant** is one customer or one product line that shares a sign in. Each tenant has its own flow, applications, user pool, branding and policy. An example of a policy is "every sign in needs two factors".
+A **tenant** is one customer or one product line, with its own sign in setup. Each tenant has its own flow, applications, user pool, branding and policy. An example of a policy is "every sign in needs two factors".
 
 The demo stack has two tenants: `acme` and `bank`. Faye finds the tenant of a sign in from the application's registration in the authorization server. The registration names the tenant in `metadata.tenant`.
 
@@ -47,10 +47,10 @@ login:
 
 A flow file can have up to two sections that a person goes through:
 
-- `login` is the sign in itself. If `login` contains a consent step, the steps from that step on run later. They run when the authorization server asks for consent.
+- `login` is the sign in itself. It can end with a consent step. The consent step, and any step after it, run in a second phase: when the authorization server asks for consent, after the sign in.
 - `approve` is the phone's side of a QR code sign in.
 
-Faye compiles each section to an **entry** of the flow. Learn the syntax in [Write flows in YAML](../flows/flow-syntax.md).
+Faye compiles each phase to an **entry**: a part of the flow that the authorization server can start on its own. A flow has a sign in entry, and can have a consent entry and an approve entry. Learn the syntax in [Write flows in YAML](../flows/flow-syntax.md).
 
 ## Step and block
 
@@ -71,13 +71,13 @@ Any step can have a **condition** (`if:`). A step whose condition is false is sk
 
 A **screen** is one page of the sign in, such as "Enter your password". Screens are typed templates. Faye has a fixed list of screen types, and the Login UI knows how to draw each one. A tenant can brand the screens but cannot redesign them. See [Sign in screens](../reference/screens.md).
 
-A **handler** is the code that checks what the person entered. Only built in handlers exist. A handler that verifies something about the person, such as a password, is a **credential**.
+A **credential** is what a person gives to prove who they are: a password, a passkey or a one time code. A **handler** is the built in code that checks what the person entered. A handler that checks a credential records which kind of proof verified. Only built in handlers exist.
 
 ## Hook
 
-A **hook** is a small JavaScript function that a tenant writes. A hook can score the risk of a sign in, pick an option of a choice, or add a value for later steps. A hook runs in a sandbox with a time limit. It has no network access, except to the targets that the tenant grants.
+A **hook** is a small JavaScript function that a tenant writes. A hook can score the risk of a sign in, pick an option of a choice, or set a value for later steps. A hook runs in a sandbox with a time limit. It has no network access, except to the targets that the tenant grants.
 
-A hook can do only three things: set values, fail the step, or pick an option. It can never sign a person in. See [Hooks](../flows/hooks.md).
+A hook can return nothing, or do one of three things: set values, fail the step, or pick an option. It can never sign a person in. See [Hooks](../flows/hooks.md).
 
 ## Assurance: amr and acr
 
@@ -110,7 +110,7 @@ The engine knows no authorization server. A **host** adapter connects the engine
 
 ## IR
 
-Faye compiles each flow file to an **intermediate representation (IR)**: a small JSON form with eleven kinds of node. The checker and the engine read the IR, not the YAML. You never need to read or write the IR to build a flow. The IR exists so that each part of Faye can change on its own. See [How the IR is designed](../understand/ir-design.md).
+Faye compiles each flow file to an **intermediate representation (IR)**: a small JSON form with eleven forms, or kinds of node. The checker and the engine read the IR, not the YAML. You never need to read or write the IR to build a flow. The IR exists so that each part of Faye can change on its own. See [How the IR is designed](../understand/ir-design.md).
 
 ## Next steps
 

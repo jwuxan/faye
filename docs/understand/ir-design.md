@@ -4,19 +4,22 @@ description: Why Faye compiles every flow to a small intermediate representation
 
 # How the IR is designed
 
-Faye compiles every flow file to an intermediate representation (IR) before anything checks or runs it. This page explains why the IR exists, the choices behind its shape, and what those choices make possible. This page is for engineers who change the compiler, the checker or the engine, or who want to build another engine. Flow authors never need the IR. They write flows in the domain specific language (DSL), and the [Flow DSL reference](../reference/dsl.md) is for them.
+Faye compiles every flow file to an intermediate representation (IR) before anything checks or runs it. This page explains why the IR exists, the choices behind its shape, and what those choices make possible. This page is for engineers who change the compiler, the checker or the engine, or who want to build another engine. Flow authors never need the IR. They write flows in the domain specific language (DSL).
+
+> [!TIP]
+> If you only write flows, you can stop here and read [Write flows in YAML](../flows/flow-syntax.md) instead. Come back when you want to know how Faye works inside.
 
 The [Core IR specification](../ir-spec.md) is the normative definition. This page explains the specification. If the two differ, follow the specification.
 
 ## Why there is an IR
 
-The charter gives the IR one job: interoperability and modularity. In its words, the IR "lets the DSL, the checker, the editor and the engine evolve separately, and lets another engine implementation prove it behaves the same".
+The charter gives the IR two jobs: interoperability, so that other tools and engines can work with flows, and modularity, so that each part of Faye can change on its own. In its words, the IR "lets the DSL, the checker, the editor and the engine evolve separately, and lets another engine implementation prove it behaves the same".
 
 In practice, that means four things:
 
 - **Parts change alone.** The YAML surface can gain blocks and settings. The Admin UI can change how it edits flows. Meanwhile, the checker and the engine stay the same. [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) replaced the whole YAML step syntax with blocks and did not change any IR form.
-- **One target for every check.** The checker reads the IR, not YAML. Every safety rule is written once, for its entry kind, and holds for any front end.
-- **Another engine can prove itself.** The conformance suite in [`src/conformance/`](../../src/conformance/README.md) is a set of IR documents and scripted scenarios. An engine that passes every vector behaves like the reference engine.
+- **One target for every check.** The checker reads the IR, not YAML. Every safety rule is written once and holds for any front end. A rule can depend on the entry kind: sign in, consent or approve.
+- **Another engine can prove itself.** The conformance suite in [`src/conformance/`](../../src/conformance/README.md) is a set of IR documents and scripted scenarios. Each scenario, called a vector, says what an engine must do with one input. An engine that passes every vector behaves like the reference engine.
 - **Authors never see it.** People write YAML or use the block editor. The charter calls the IR "important but optional for authors". The charter also asks for the simpler path when the IR adds cost but does not help interoperability or modularity.
 
 ## The compiler model: source, bytecode, virtual machine
@@ -59,7 +62,7 @@ flowchart TB
   gen -. "conformance vectors" .-> engine
 ```
 
-Today there is one text front end. The Admin UI's block editor writes the same YAML that an author can edit by hand ([ADR 0010](../adr/0010-m5-admin-ui.md)). [`FlowCompiler`](../../src/faye-core/src/main/java/faye/dsl/FlowCompiler.java) lowers that YAML to the IR. To lower means to translate into a simpler form at a lower level. Everything below the IR depends only on the IR and on the catalogs of handlers and screens ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md)).
+Today there is one text front end. The Admin UI's block editor writes the same YAML that an author can edit by hand ([ADR 0010](../adr/0010-m5-admin-ui.md)). [`FlowCompiler`](../../src/faye-core/src/main/java/faye/dsl/FlowCompiler.java) lowers that YAML to the IR. To lower means to translate into a simpler form at a lower level. Everything below the IR depends only on the IR and on the catalogs: the fixed lists of built in handlers and screens ([ADR 0024](../adr/0024-core-ir-as-a-narrow-waist.md)).
 
 The table maps each part of Faye to its counterpart in the JVM and in LLVM.
 
@@ -92,7 +95,7 @@ If the engine read YAML directly, every improvement to how flows are written wou
 
 - **Versions are stored as IR.** A published version is the IR's canonical bytes, addressed by their SHA-256 hash. Faye keeps the YAML beside the IR only so that the Admin UI can show the YAML. A sign in in progress runs the IR, never the YAML.
 - **The surface can change while the IR stays.** This has already happened twice:
-  - [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) replaced the whole step syntax with blocks. The IR did not change. The shipped flows lowered to the same golden IR files. Stored versions kept running, "since they are IR".
+  - [ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md) replaced the whole step syntax with blocks. The IR did not change. The shipped flows still lowered to the same IR as before, which the test suite keeps in reference files called golden files. Stored versions kept running, because they are stored as IR.
   - [ADR 0026](../adr/0026-consent-as-a-step.md) turned consent from a section of its own into a step. The IR, the published versions, the stored flow states and the conformance vectors were untouched.
 - **New front ends need no engine work.** A front end only has to produce IR that passes the schema and the checker. A visual designer, a builder library in another language, or an importer from another system could each target the same IR. None of these exists today. The point is that a new front end does not change the checker or the engine.
 - **Authorization server words stay in the front end.** The compiler accepts `hydra.` as another name for `host.`, because the Hydra adapter gives the compiler that alias. The IR only ever contains `host.`. So a stored flow does not depend on Hydra.

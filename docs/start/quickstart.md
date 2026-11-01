@@ -1,10 +1,10 @@
 ---
-description: Run Faye with Docker, sign in as a seeded demo user, and change a flow, in about 10 minutes.
+description: Run Faye with Docker, sign in as a seeded demo user, and change a flow, in about 10 minutes after the first build.
 ---
 
 # Quickstart
 
-This page takes you from nothing to a signed in demo user and a changed flow in about 10 minutes. It is for anyone who wants to see Faye work before reading how it works. You run the whole stack in one Docker container on your own machine.
+This page takes you from nothing to a signed in demo user and a changed flow. Plan for about 10 minutes, plus the time Docker needs to build the image the first time. It is for anyone who wants to see Faye work before reading how it works. You run the whole stack in one Docker container on your own machine.
 
 ## Prerequisites
 
@@ -15,7 +15,7 @@ This page takes you from nothing to a signed in demo user and a changed flow in 
 > - Docker with Docker Compose.
 > - `make`. If you do not have it, each step also shows the plain `docker compose` command.
 > - Free ports 3000, 3001, 3002, 4444 and 8080.
-> - A web browser. Open every URL at `localhost`, not at `127.0.0.1`.
+> - A web browser. Type every URL with the host name `localhost`, not `127.0.0.1`. Passkeys work only on `localhost`.
 
 You do not need Java or Node.js. The image builds everything inside Docker.
 
@@ -34,7 +34,13 @@ cd faye
 make up
 ```
 
-`make up` runs `docker compose -f deploy/compose.yaml up -d --build --remove-orphans`. It builds one image from the [Dockerfile](../../Dockerfile) and starts one container named `faye` ([ADR 0023](../adr/0023-one-container-many-processes.md)). The image holds:
+Without `make`, run the same command directly:
+
+```bash
+docker compose -f deploy/compose.yaml up -d --build --remove-orphans
+```
+
+The command It builds one image from the [Dockerfile](../../Dockerfile) and starts one container named `faye` ([ADR 0023](../adr/0023-one-container-many-processes.md)). The image holds:
 
 - Ory Hydra, the authorization server.
 - The Faye server, a Java application.
@@ -122,12 +128,21 @@ The sidebar has these pages:
 On **Applications**, every application has **Try sign in**, which runs it through the demo client.
 
 > [!CAUTION]
-> The Admin UI has no sign in. Anyone who can reach the Admin UI can publish flows. The compose file binds the Admin UI to `127.0.0.1` only, so only your machine can reach it. Do not change this setting.
+> The Admin UI has no sign in. Anyone who can reach the Admin UI can publish flows. The compose file publishes the Admin UI only on the address `127.0.0.1`, so only your machine can reach it. You still open it as http://localhost:3002. Do not change this setting.
 
 ### 6. Change the flow and preview it
 
 1. Open **Login flow** and select the **YAML** tab.
-2. Delete the `add-phone` step. The step is the comment line, the `add-phone:` line and the three lines under it.
+2. Find the `add-phone` step and delete it. These are the lines to delete:
+
+   ```yaml
+       # Offered to people without phone codes; "Not now" skips it
+       add-phone:
+         if: { not: user.has_phone }
+         block: add-phone
+         with: { attempts: 1 }
+   ```
+
 3. Wait for the header to show **Draft saved** and the status bar to show **No problems**. The checker runs on every edit.
 4. Select the **Preview** tab. In **Account**, choose **New user**. Then select **Preview**.
 5. Sign in with the identifier and password that the panel shows. The **Add a phone number** screen no longer appears. The trace highlights each block that the run visits.

@@ -10,15 +10,15 @@ The compiler is [`FlowCompiler`](../../src/faye-core/src/main/java/faye/dsl/Flow
 
 ## How a flow file is processed
 
-A flow file passes three gates, or stages of checks, before it runs. Each gate reports a problem as `file:line:column: message`. The location is the YAML that caused the problem.
+A flow file passes two stages before it runs. First the compiler turns the YAML into the IR and checks the IR against its schema. Then the checker reads the IR. It first verifies the IR against the catalogs and the hard limits, then checks every path. Each stage reports a problem as `file:line:column: message`. The location is the YAML that caused the problem.
 
-| Gate | What it checks | When it runs |
+| Stage | What it checks | When it runs |
 |---|---|---|
-| Compiler | YAML rules, keys, block placement, settings, and the IR grammar | Every validate, preview and publish |
-| Verifier | Screens and handlers exist, screen options and paths, the hard limits | The checker, and the engine whenever it runs a version |
-| Checker | Every path through the flow, against the safety rules and the tenant's policy | Validate, publish, rollback, preview and startup |
+| Compiler | YAML rules, keys, block placement, settings, and the IR schema | Every validate, preview and publish |
+| Checker: verify | Screens and handlers are in the catalogs, screen options and paths, the hard limits | Every check, and the engine whenever it runs a version |
+| Checker: paths | Every path through the flow, against the safety rules and the tenant's policy | Validate, publish, rollback, preview and startup |
 
-An error at any gate stops a publish and a preview. A warning does not. The Admin UI shows both on the YAML tab and on the block that they point to.
+The [Core IR specification](../ir-spec.md#checks) calls these layers L0 (the schema), L1 (the verifier) and L2 (the path checks). An error at any stage stops a publish and a preview. A warning does not. The Admin UI shows both on the YAML tab and on the block that they point to.
 
 ## File layout
 
@@ -91,7 +91,7 @@ hooks:
 | `capabilities` | No | mapping with one key, `http` | no egress | `http` lists the named egress targets that the hook may call. Each name matches `[a-z][a-z0-9_-]*`. |
 | `timeout_ms` | No | integer from 1 to 2000 | 200 | The deadline of one run, measured in real time, egress calls included. |
 
-The hook id is the key under `hooks:`. It matches `^[a-z][a-z0-9_-]*$` and is at most 64 characters. The source is at most 64 KiB (65,536 bytes of UTF-8).
+The hook id is the key under `hooks:`. It matches `^[a-z][a-z0-9_-]*$` and is at most 64 characters. The size of the source, and every other hook limit, is in [Hooks](../flows/hooks.md#limits).
 
 The compiler locks each hook by the SHA-256 hash of its source, egress targets and timeout. If you change any of the three, the flow's hash changes. So you must publish a new version. The checker refuses a hook whose egress target the tenant does not grant.
 
@@ -102,11 +102,11 @@ A hook may return only one of these results. Any other result fails the step wit
 | Result | Effect |
 |---|---|
 | `{}` | Nothing. |
-| `{set: {...}}` | Merges 1 to 16 names into `vars`. Each name matches `^[a-z][a-z0-9_]*$`. Each value is a string of up to 1,024 characters, an integer or a boolean. Not allowed for a `pick` hook. |
-| `{fail: reason}` | Fails the step with that reason, an id of at most 64 characters. |
+| `{set: {...}}` | Merges the names and values into `vars`. Not allowed for a `pick` hook. |
+| `{fail: reason}` | Fails the step with that reason, an id. |
 | `{pick: id}` | Only for a `pick` hook: runs that option. It must name an enabled option. |
 
-A hook can never sign anyone in, bind a subject, write `auth` or show a screen. To write a hook, see [Hooks](../flows/hooks.md).
+The names, values and reasons that a result may hold are in [Hooks](../flows/hooks.md#limits-of-a-result). A hook can never sign anyone in, bind a subject, write `auth` or show a screen. To write a hook, see [Hooks](../flows/hooks.md).
 
 ## Steps and options
 
@@ -574,29 +574,23 @@ To use one of these refused values as a string, quote it: `"yes"`, `"0x1F"`.
 
 ## Limits
 
-Every flow must stay under these limits. See [ADR 0037](../adr/0037-hard-limits-on-flows-and-hooks.md). The shipped flows are far under them.
+Every flow must stay under these limits, and under the [hook limits](../flows/hooks.md#limits). See [ADR 0037](../adr/0037-hard-limits-on-flows-and-hooks.md). The shipped flows are far under them.
 
 | Limit | Value | Checked by |
 |---|---|---|
-| IR nodes in a flow, across all entries | 1,000 | Verifier |
-| Steps in a flow, nested steps included | 64 | Verifier |
-| Hook attachments in a flow: every `before`, `after` and `pick` | 16 | Verifier |
-| Different hooks in a flow | 8 | Verifier |
-| Options in one choice | 8 | Verifier |
+| IR nodes in a flow, across all entries | 1,000 | Checker: verify |
+| Steps in a flow, nested steps included | 64 | Checker: verify |
+| Options in one choice | 8 | Checker: verify |
 | Attempts of one block | 1 to 10 | Compiler |
-| Product of nested retries on any path | 10 | Verifier |
-| Different names written by `set` in a flow | 32 | Verifier |
-| Length of a string literal, in `set` or a condition | 1,024 characters | Verifier |
-| Length of an id: step, option, hook, set name or fail reason | 64 characters | Verifier |
-| Paths through one entry | 10,000 | Checker |
-| Hook runs in one entry, over all its requests | 32 | Checker |
-| Hook time in one entry: the sum of every attachment's `timeout_ms` | 5,000 ms | Checker |
-| Hook source | 64 KiB | Compiler |
-| Hook `timeout_ms` | 1 to 2,000 ms | Compiler |
+| Product of nested retries on any path | 10 | Checker: verify |
+| Different names written by `set` in a flow | 32 | Checker: verify |
+| Length of a string literal, in `set` or a condition | 1,024 characters | Checker: verify |
+| Length of an id: step, option, hook, set name or fail reason | 64 characters | Checker: verify |
+| Paths through one entry | 10,000 | Checker: paths |
 
-In YAML, a hook is never inside a retry, so each attachment counts once toward the hook limits. With the default timeout of 200 ms, 16 attachments use 3,200 ms. So only longer timeouts reach the 5,000 ms limit. For example, three attachments with `timeout_ms: 2000` take 6,000 ms and are refused.
+The limits on hooks, such as the number of hook attachments, hook runs and hook time in a flow, are in [Hooks](../flows/hooks.md#limits).
 
-The engine also stops a single request at 32 hook runs or at 10,000 ms of hook time. The engine limits `vars` to 64 names, and a saved flow to 256 KiB. One hook run makes at most 4 egress calls.
+The engine also limits `vars` to 64 names, and a saved flow to 256 KiB.
 
 > [!TIP]
 > Paths multiply with every choice, condition and attempt. If the checker reports more than 10,000 paths, lower the attempts of a block that does not need many, or remove an option that few people use. `acme.yaml` sets `with: { attempts: 1 }` on Add phone, so that the flow has fewer paths ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)).

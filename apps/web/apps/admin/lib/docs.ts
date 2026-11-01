@@ -186,7 +186,8 @@ export function resolveHref(fromFile: string, href: string): string | null {
     // docs/ sits at the repository root, so one more ../ than that leaves the repository
     const repoPath = target.replace(/^\.\.\/?/, "");
     if (repoPath === "" || repoPath === ".." || repoPath.startsWith("../")) return null;
-    const kind = /\.[a-z0-9]+$/i.test(repoPath) ? "blob" : "tree";
+    // A link that ends with a slash names a folder; anything else, a file (Dockerfile, Makefile)
+    const kind = path.endsWith("/") ? "tree" : "blob";
     return `${githubUrl(repoPath, kind)}${hash ? `#${hash}` : ""}`;
   }
   // A directory holding a README.md resolves through the README's own slug (<dir>/README.md -> <dir>)

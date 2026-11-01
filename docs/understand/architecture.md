@@ -34,7 +34,7 @@ flowchart TB
   Admin -- "admin API, Unix socket" --> Server
   Server --> DB
   AS --> DB
-  Server -- "granted egress only" --> Ext
+  Server -- "only allowed services" --> Ext
 ```
 
 Who does what:
@@ -44,8 +44,8 @@ Who does what:
 | **Authorization server** (Hydra) | Speaks OAuth2 and OpenID Connect, registers applications, issues tokens, keeps login sessions. | Show any screen. It sends the browser to Faye for login and consent. |
 | **Faye server** | Runs flows with the engine, checks every answer, tells the authorization server the result. Serves the screen API, and the admin API on a Unix socket. | Issue tokens or talk to applications. |
 | **Login UI** | Draws each typed screen and posts the person's answer to the server. | Make any security decision. It has no database access. |
-| **Admin UI** | Lets an operator edit, check, preview, publish and roll back flows, and read applications and users. | Run anywhere except on one machine, because it has no sign in. |
-| **Database** | One SQLite file holds Faye's state. In the container image, the same file also holds Hydra's state. | |
+| **Admin UI** | Lets an operator edit, check, preview, publish and roll back flows, and read applications and users. | Run on a network. It has no sign in, so it must run only on your own machine. |
+| **Database** | One SQLite file holds Faye's state. In the container image, the same file also holds Hydra's state. | Hold state in memory. Faye keeps nothing between requests outside the database. |
 
 ## A sign in, end to end
 
@@ -79,6 +79,8 @@ sequenceDiagram
   H->>B: Redirect to the application with a code
   B->>App: Callback; the application gets tokens from Hydra
 ```
+
+Two words in the diagram need a definition. A *login challenge* is an opaque id that Hydra creates for one login request. Faye uses it to read that request and to answer it. The *flow cookie* holds a random secret that ties the sign in to this browser, so no other browser can continue it.
 
 The flow decides which screens appear. For example, the shipped flows skip the consent screen for first party applications. A remembered session may skip the login screens. [How the engine works](engine.md#the-life-of-one-sign-in) shows the same sign in from inside the engine.
 
@@ -141,7 +143,7 @@ All of Faye's state is in one SQLite file. In the container, the file is `/var/l
 
 | Table | Holds |
 |---|---|
-| `faye_flow` | Each sign in in progress: its continuation, as JSON, with a revision number. |
+| `faye_flow` | Each sign in in progress: where the flow is and what it knows (its *continuation*), as JSON, with a revision number. |
 | `faye_version`, `faye_version_source` | Every flow version by its hash, and the YAML it came from. Published versions are never deleted. |
 | `faye_history`, `faye_tenant` | Which version each tenant published when, which one is live, and each tenant's draft, settings and preview scenario. |
 | `faye_hook` | Hook code by its hash. |
@@ -187,7 +189,7 @@ flowchart LR
 - `FAYE_DEMO=true` adds the demo client, the IP reputation stub, and two one time jobs that register demo applications and seed demo users.
 - The compose file publishes the Admin UI on `127.0.0.1` only.
 
-For a production setup, run the authorization server and Faye as you run any other service. Production hardening is not built yet. See [Vision and north star](vision.md#where-faye-is-today).
+The single container is how the prototype ships and how the demo runs. It is not a production setup: high availability, several regions and rate limiting at scale are not built yet. See [Vision and north star](vision.md#where-faye-is-today).
 
 ## Next steps
 

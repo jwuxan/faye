@@ -55,6 +55,17 @@ Pick one kind of page and stay with it:
 | Explanation | "Why is it like this?" | [How the engine works](../understand/engine.md) |
 | Reference | "What exactly is allowed?" | [Flow DSL reference](../reference/dsl.md) |
 
+## Give each fact one home
+
+Each fact lives on one page. Other pages give a one line summary and link to that page. When a fact changes, you then change one page, and no two pages can disagree.
+
+- Reference tables, such as every key of a flow file, live in the [Flow DSL reference](../reference/dsl.md). Guides link to its sections.
+- The meaning of the IR lives in the [Core IR specification](../ir-spec.md). Other pages explain it and link to it.
+- Settings and environment variables live in [Configuration](../reference/configuration.md).
+- Words live in the [Glossary](../reference/glossary.md).
+
+Keep a page under about 3,000 words. If a page grows past that, split it.
+
 ## Use these Markdown features
 
 The docs use only Markdown that GitHub also understands. The docs site adds a better look on top.

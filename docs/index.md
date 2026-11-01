@@ -1,5 +1,5 @@
 ---
-description: Faye runs the sign in and sign up screens in front of an OAuth2 authorization server, from YAML flows that Faye checks before they run.
+description: Faye runs the sign in and consent screens in front of an OAuth2 authorization server, from YAML flows that Faye checks before they run.
 ---
 
 # What is Faye?
@@ -9,7 +9,7 @@ Faye is a sign in flow engine. It sits between the browser and an OAuth2 / OpenI
 You describe a sign in as a short YAML file. Faye checks the flow before the flow runs anywhere. Then Faye runs the flow one screen at a time.
 
 > [!NOTE]
-> Faye is a working prototype. It runs end to end with Hydra, two demo tenants and ten demo applications. The design plans for production needs, such as high availability and rate limiting at scale. That work is not built yet. See [Vision and north star](understand/vision.md#where-faye-is-today).
+> Faye is a working prototype. It runs end to end with Hydra, two demo tenants (customers, each with its own setup) and ten demo applications. Production features, such as high availability and rate limiting at scale, are planned and not built yet. Sign up is not built yet either. See [Vision and north star](understand/vision.md#where-faye-is-today).
 
 ## The problem Faye solves
 
@@ -21,11 +21,11 @@ A login app looks small. But it is hard to build correctly:
 - It needs safe rules. One wrong branch can let a person in without a password. A careless error message can tell an attacker which accounts exist.
 - It changes often. The security team asks for a second factor on risky sign ins. A partner app needs a consent screen. Each change means new code and a new deploy.
 
-Faye replaces that app. You change a flow as data. The checker proves that the flow is still safe. You try the flow before you publish it.
+Faye replaces that app. You change a flow as data. The checker refuses the change if any path through the flow could skip a credential. You try the flow before you publish it.
 
 ## How it works
 
-The diagram shows one sign in. The application sends the person to the authorization server. The authorization server hands the sign in to Faye. Faye runs the tenant's flow and shows each screen in its Login UI. When the flow succeeds, Faye tells the authorization server who signed in and how. The authorization server then issues the tokens.
+The diagram shows one sign in. The application sends the person to the authorization server. The authorization server hands the sign in to Faye. Faye runs the flow of the application's tenant and shows each screen in its Login UI. When the flow succeeds, Faye tells the authorization server who signed in and how. The authorization server then issues the tokens.
 
 ```mermaid
 sequenceDiagram
@@ -93,20 +93,20 @@ Each `block` brings its own screen and its own verification code. The flow decid
 |---|---|
 | Flows as YAML | Sign in logic that people can read and review, kept in version control. |
 | A checker | The checker lists and checks every path before you publish or preview a flow. |
-| Built in screens | Identifier, password, passkey, one time codes, QR code sign in and consent, accessible and branded per tenant. |
+| Built in screens | Identifier, password, passkey, one time codes, QR code sign in and consent, branded per tenant. One set of screens serves every tenant. |
 | Sandboxed hooks | Small JavaScript functions that score risk or route a sign in, but can never sign anyone in. |
 | An Admin UI | Edit a flow as blocks or YAML beside a live graph, preview a draft with a real application, publish and roll back. |
 | Host neutral engine | The engine knows no authorization server. Hydra is the first host, behind one adapter. |
 
 ## What Faye is not
 
-Faye has a narrow job on purpose. The [charter](../CHARTER.md) lists what Faye does not do.
+Faye has a narrow job on purpose. The [charter](../CHARTER.md), the project's founding document, lists what Faye does not do.
 
 | Faye is not | Instead |
 |---|---|
 | An OAuth2 or OpenID Connect provider | The authorization server serves the protocol, registers clients and talks to applications. |
 | A token service | The authorization server issues and signs tokens and owns sessions. Faye reports the result of a flow. |
-| A general UI platform | Faye shows only the screens that sign people in, sign them up and ask for consent. Account settings belong elsewhere. |
+| A general UI platform | Faye shows only the screens that sign people in and ask for consent, and later the screens that sign people up. Account settings belong elsewhere. |
 | A programming language | The flow language is closed and every flow ends. Hooks make decisions inside a flow. They cannot replace the flow. |
 
 ## Where to go next
@@ -121,4 +121,4 @@ Pick the path that matches what you want to do.
 - **Contribute.** Build from source and find your way around: [Build and run from source](develop/build-from-source.md).
 
 > [!TIP]
-> AI agents can read every page as Markdown. Add `.md` to a page's URL, or start from `/llms.txt`. Each page also has **Copy Markdown** and **Ask Devin** buttons.
+> AI agents can read every page as Markdown. Add `.md` to a page's URL, or start from `/llms.txt`. Each page also has a **Copy Markdown** button, an **Open** menu that hands the page to ChatGPT, Claude or Cursor, and an **Ask Devin** button. Ask Devin opens [DeepWiki](https://deepwiki.com/jwuxan/faye), an AI assistant that has read Faye's code and answers questions about it.

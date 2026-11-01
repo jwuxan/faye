@@ -12,7 +12,7 @@ The north star is the one outcome that guides every decision:
 
 > A team deploys Faye next to its authorization server and has secure sign in and sign up working the same day, without writing code. Then it shapes every sign in to its needs, and no flow, however it is written, can let a person in without a verified credential.
 
-That sentence makes two promises. The first promise is speed: sign in should take a few hours, not a long project. The second promise is safety: speed must never reduce security. Faye keeps both promises because it moves sign in logic out of code and into checked data.
+That sentence makes two promises. The first promise is speed: sign in should take a few hours, not a long project. The second promise is safety: speed must never reduce security. Faye keeps both promises because it moves sign in logic out of code and into checked data. Today Faye keeps the promise for sign in. Sign up is not built yet; see [Where Faye is today](#where-faye-is-today).
 
 ## Why Faye exists
 
@@ -21,7 +21,7 @@ Most authorization servers fall into one of two groups.
 - **All in one identity products** ship their own login screens. They are fast to start. But the product decides the shape of the sign in. To change the sign in, you often need themes, plugins or a fork.
 - **Headless authorization servers**, such as Ory Hydra, speak OAuth2 and OpenID Connect and ship no screens at all. They delegate the login and consent pages to an app that you write.
 
-The headless model gives full control. But then every team writes the same hard app again: screens, password checks, passkeys, one time codes, second factor rules, consent and risk checks. Each copy can contain the one branch that skips a password.
+The headless model gives full control. But then every team writes the same hard app again: screens, password checks, passkeys, one time codes, second factor rules, consent and risk checks. Each team's app can have a bug that lets a person in without a password.
 
 Faye solves this problem. Faye is the login and consent app for a headless authorization server. It is built once, and the rules that keep it safe are built in. A tenant changes what happens and in what order. A tenant does not write the code that verifies a credential.
 
@@ -58,7 +58,7 @@ When two goals conflict, Faye follows the charter's principles in order. The ear
 
 ## Where Faye is today
 
-Faye is a prototype that runs end to end. The milestones M0 to M6 built the prototype. These milestones are closed, and their exit tests pass ([ADR 0036](../adr/0036-retire-the-roadmap.md)).
+Faye is a prototype that runs end to end. The planned prototype work is done, and its acceptance tests pass ([ADR 0036](../adr/0036-retire-the-roadmap.md)).
 
 What works today:
 
@@ -73,7 +73,7 @@ Some work is planned but not built yet. [ADR 0036](../adr/0036-retire-the-roadma
 
 | Gap | Today |
 |---|---|
-| A second real authorization server (success test 4) | Hydra is the only real host. Tests drive flows through other hosts. |
+| A second real authorization server (success test 4) | Hydra is the only real host. Tests use stand in hosts, but no second real authorization server is supported yet. |
 | Sign up and account recovery | Not built. The Sign up button on the login page shows a notice. |
 | Logout through Faye | Hydra's logout request is not routed to Faye yet. |
 | Translated screens | The Login UI's text is English only. |

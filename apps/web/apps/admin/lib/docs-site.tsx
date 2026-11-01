@@ -110,12 +110,14 @@ export function searchIndexes(): AdvancedIndex[] {
   return indexes;
 }
 
-const SUMMARY =
-  "Faye is a sign in and sign up flow engine. It runs as middleware between the browser and an OAuth2 / OpenID Connect authorization server such as Ory Hydra. The authorization server keeps the protocol; Faye owns every screen and every decision about how a person proves who they are. Flows are YAML, checked before they run, and compiled to a small intermediate representation (IR).";
+/** What /llms.txt says Faye is: the docs home page's own description, so the two never drift. */
+function summary(): string {
+  return loadDoc([])?.description ?? "Faye is a sign in flow engine in front of an OAuth2 authorization server.";
+}
 
 /** /llms.txt: a title, a summary, then each sidebar section as a list of its pages' Markdown URLs. */
 export function llmsIndex(origin: string): string {
-  const lines = ["# Faye", "", `> ${SUMMARY}`, ""];
+  const lines = ["# Faye", "", `> ${summary()}`, ""];
   for (const section of docIndex()) {
     const pages = [...(section.folder?.index ? [section.folder.index] : []), ...section.pages];
     lines.push(`## ${section.folder ? "Optional" : section.title}`, "");
@@ -126,9 +128,13 @@ export function llmsIndex(origin: string): string {
   return lines.join("\n");
 }
 
-/** /llms-full.txt: every doc of the sidebar as Markdown, in sidebar order. */
+/**
+ * /llms-full.txt: every guide and reference page of the sidebar as Markdown, in sidebar order. The
+ * decision records (a `dir` section) are left out: they would make the file too large for one
+ * context, and /llms.txt lists them under Optional.
+ */
 export function llmsFull(): string {
-  return allPages()
+  return allPages(docIndex().filter((section) => !section.folder))
     .map((p) => loadDoc(p.href.replace(/^\/docs\/?/, "").split("/").filter(Boolean)))
     .filter((d) => d !== null)
     .map(markdownOf)

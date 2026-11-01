@@ -12,7 +12,7 @@ The [charter](../../CHARTER.md) sets one promise that comes before all others:
 
 > No flow or hook, however written, can produce a successful sign in unless a built in handler verified or enrolled a credential for that subject, in this flow or in the session it reuses.
 
-Faye does not trust a flow author or a hook author to keep this promise. The design keeps this promise in four layers. Each layer is enough on its own for its part:
+Faye does not trust a flow author or a hook author to keep this promise. The design keeps this promise in four layers. Each layer enforces its rules without relying on the others:
 
 1. **A closed language.** A flow can only arrange built in blocks, handlers and screens. It cannot define new ones.
 2. **The checker.** Before a version runs anywhere, the checker proves rules about every path through it.

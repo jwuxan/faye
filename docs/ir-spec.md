@@ -2,7 +2,7 @@
 description: "The normative meaning of Faye's Core IR, formats 1 and 2: every form, the host contract, evaluation, failures, predicates, catalogs, checks and versioning."
 ---
 
-# Core IR specification, format 1
+# Core IR specification
 
 This is the normative meaning of the Core IR ([ADR 0024](adr/0024-core-ir-as-a-narrow-waist.md)). Each fact has one source:
 

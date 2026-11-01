@@ -13,8 +13,8 @@ It compares designs, not speed. No performance benchmark of Faye exists, and thi
 - **Faye checks every path of a flow before it runs.** It refuses a flow if any path can succeed without verifying a credential. We found no equivalent in the other products. The closest are tools that simulate one request or step through one live run.
 - **In Faye, custom code cannot decide who signed in.** A hook can only set values, fail a step, or pick an option. In most other products, custom code can verify a credential or end the sign in successfully.
 - **In Faye, assurance is computed.** The authentication methods references (`amr`) and the authentication context class reference (`acr`) come from the credentials that verified. In other products, an administrator often configures them, or a login app asserts them.
-- **Faye stores a flow as a small, versioned intermediate representation (IR).** So the way flows are written can change, and a flow can run on another authorization server. Other products also export their configuration as files. So today, Faye and the others are about equal on portability. Hydra is still Faye's only real host.
-- **The other products are far more mature and do far more.** They run in production at scale, and they ship sign up, account recovery, federation, user management and logout. Faye is a prototype that does none of those yet.
+- **Faye stores a flow as a small, versioned intermediate representation (IR).** The IR is designed so that the way flows are written can change, and so that a flow can run on another authorization server. That second part is not proven yet: Hydra is still Faye's only real host. Other products also export their configuration as files. So today, Faye and the others are about equal on portability.
+- **The other products are far more mature and do far more.** They run in production at scale, and they ship sign up, account recovery, federation, user management and logout. Faye is a prototype. It has a read only list of users, and none of the rest yet.
 
 ## Four questions that separate the designs
 
@@ -75,7 +75,7 @@ Faye can list every path because its flow language is closed and every flow ends
 | **Ory Kratos** | Kratos computes an assurance level, `aal1` or `aal2`, from the methods used ([sessions](https://github.com/ory/docs/blob/master/docs/kratos/session-management/01_overview.mdx)). |
 | **Ory Hydra** | Taken from the login app. The login app passes `subject`, `acr` and `amr` when it accepts the login ([login flow](https://github.com/ory/docs/blob/master/docs/oauth2-oidc/custom-login-consent/flow.mdx)). |
 
-Auth0, Okta, Cognito and Kratos also keep these values out of the reach of custom code. Faye is different in two ways. It derives `acr` from `amr` by a fixed rule. And at publish time, it refuses a flow whose paths cannot meet the tenant's policy.
+Auth0, Okta, Cognito and Kratos also keep these values out of the reach of custom code. Faye is different in two ways. It derives `acr` from `amr` by a fixed rule: two kinds of factor give `faye:2fa`, one kind gives `faye:1fa`. And at publish time, it refuses a flow whose paths cannot meet the tenant's policy.
 
 ## Faye and Ory Hydra
 
@@ -88,7 +88,7 @@ So Hydra's safety depends on the login app. A login app with one wrong branch ca
 | | Faye | Most others |
 |---|---|---|
 | **Screens** | Typed screens that a tenant can brand but not redesign | Hosted pages with themes or templates, and often a way to build your own UI, such as Auth0's custom login screens, Okta's embedded widget or Kratos's bring your own UI |
-| **Preview** | You run a draft with a real application before you publish it. Faye compares the run with the checker's paths. | Azure AD B2C runs a policy that is already uploaded ("Run now"). authentik's inspector runs a live flow. Auth0 versions single Actions, not a whole login. |
+| **Preview** | You run a draft with a real application before you publish it. Faye then checks that the run ended the way one of the checker's predicted paths says it should. | Azure AD B2C runs a policy that is already uploaded ("Run now"). authentik's inspector runs a live flow. Auth0 versions single Actions, not a whole login. |
 | **Versions** | Every published flow is kept by its hash. A sign in keeps the version that it started with. Roll back to any version. | Varies. Many products overwrite the current configuration. |
 | **Lock in** | The IR is designed to run on other authorization servers. Not proven yet. | Each product's flow format runs only on that product. |
 
@@ -97,7 +97,7 @@ So Hydra's safety depends on the login app. A login app with one wrong branch ca
 Faye is a prototype. Before you choose Faye, understand what it does not do.
 
 - **Maturity and scale.** Every other product on this page runs in production. Most have high availability, several regions, rate limiting and years of security review. Faye runs on one SQLite file, with no high availability and no rate limiting at scale.
-- **Scope.** The others ship sign up, account recovery, user management and logout. Most also federate with social and enterprise identity providers. Faye has none of these yet ([open gaps](../adr/0036-retire-the-roadmap.md#open-gaps)).
+- **Scope.** The others ship sign up, account recovery, user management and logout. Most also federate with social and enterprise identity providers. Faye has none of these yet, apart from a read only list of users ([open gaps](../adr/0036-retire-the-roadmap.md#open-gaps)).
 - **Ecosystem.** Keycloak's providers, the Auth0 marketplace and the Okta Integration Network offer ready integrations. Faye has none.
 - **UI freedom.** If you need fully custom sign in pages, products that let you bring your own UI fit better. Faye limits tenants to typed screens on purpose.
 
@@ -117,3 +117,4 @@ Faye does not fit yet if you need a complete identity product today, with sign u
 - Why the IR is the contract, not the YAML: [How the IR is designed](ir-design.md).
 - The guarantees in detail: [Security model](security.md).
 - What it takes to run Faye on another authorization server: [Embed Faye: the host SPI](host-spi.md).
+- Try Faye on your own machine: [Quickstart](../start/quickstart.md).
