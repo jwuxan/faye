@@ -16,7 +16,8 @@ class HookCompileTest {
 
     static FlowCompiler.Compiled compile(String yaml) {
         Map<String, String> files = Map.of("risk.js", RISK_JS);
-        return FlowCompiler.compileWithHooks("t.yaml", yaml, name -> Optional.ofNullable(files.get(name)));
+        return FlowCompiler.compileWithHooks(
+                "t.yaml", yaml, name -> Optional.ofNullable(files.get(name)), FlowCompilerTest.DSL);
     }
 
     @Test
@@ -32,19 +33,20 @@ class HookCompileTest {
                   route: { source: "export default () => ({})" }
                 login:
                   steps:
-                    risk: { hook: risk }
+                    identify: { block: identifier, after: risk }
                     credential:
                       pick: route
                       alternative:
-                        password: { screen: password, use: password.verify }
-                        otp: { screen: otp, use: totp.verify }
+                        password: { block: password, with: { attempts: 1 } }
+                        otp: { block: totp, with: { attempts: 1 } }
                 """);
         HookDef risk = new HookDef(RISK_JS, List.of("ip-reputation"), 300);
         HookDef route = new HookDef("export default () => ({})", List.of(), HookDef.DEFAULT_TIMEOUT_MS);
         assertThat(compiled.hooks()).isEqualTo(Map.of(risk.hash(), risk, route.hash(), route));
         assertThat(IrCodec.canonicalJson(compiled.flow()))
                 .isEqualTo("[\"flow\",1,\"risk\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
-                        + "[\"step\",\"risk\",[\"hook\",\"risk\",\"" + risk.hash() + "\"]],"
+                        + "[\"step\",\"identify\",[\"seq\",[\"screen\",\"identifier\"],"
+                        + "[\"call\",\"identity.resolve\"],[\"hook\",\"risk\",\"" + risk.hash() + "\"]]],"
                         + "[\"step\",\"credential\",[\"choose\",["
                         + "[\"opt\",\"password\",[\"seq\",[\"screen\",\"password\"],[\"call\",\"password.verify\"]]],"
                         + "[\"opt\",\"otp\",[\"seq\",[\"screen\",\"otp\"],[\"call\",\"totp.verify\"]]]],"
@@ -64,7 +66,7 @@ class HookCompileTest {
                   risk: { source: "%s" }
                 login:
                   steps:
-                    risk: { hook: risk }
+                    identify: { block: identifier, before: risk }
                 """;
         var a = compile(flow.formatted("export default () => ({})"));
         var b = compile(flow.formatted("export default () => ({ set: { x: 1 } })"));
@@ -84,8 +86,8 @@ class HookCompileTest {
                           empty: { timeout_ms: 100 }
                         login:
                           steps:
-                            a: { hook: undeclared }
-                            b: { pick: missing, screen: password }
+                            a: { block: identifier, before: undeclared }
+                            b: { pick: missing, alternative: { x: { fail: nope }, y: { fail: nope } } }
                         """))
                 .isInstanceOfSatisfying(
                         DslException.class,
@@ -96,8 +98,7 @@ class HookCompileTest {
                                         "t.yaml:6:40: unknown capability 'fs'; hooks may have 'http'",
                                         "t.yaml:7:36: timeout_ms must be an integer from 1 to 2000",
                                         "t.yaml:8:10: hook needs 'file' or 'source'",
-                                        "t.yaml:11:16: unknown hook 'undeclared'; declare it under 'hooks'",
-                                        "t.yaml:12:16: 'pick' needs an 'alternative' to pick from"));
+                                        "t.yaml:11:37: unknown hook 'undeclared'; declare it under 'hooks'"));
     }
 
     @Test
@@ -109,7 +110,7 @@ class HookCompileTest {
                           risk: { file: risk.js }
                         login:
                           steps:
-                            risk: { hook: risk }
+                            identify: { block: identifier, after: risk }
                         """))
                 .isInstanceOf(DslException.class)
                 .hasMessageContaining("hook file 'risk.js' not found");

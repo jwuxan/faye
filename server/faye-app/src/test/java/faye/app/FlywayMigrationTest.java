@@ -56,7 +56,7 @@ class FlywayMigrationTest {
                     .containsExactly("hydra-1");
             List<Map<String, Object>> history =
                     jdbc.queryForList("SELECT version, success FROM faye_schema_history ORDER BY installed_rank");
-            assertThat(history).extracting(row -> row.get("version")).containsExactly("0", "1", "2");
+            assertThat(history).extracting(row -> row.get("version")).containsExactly("0", "1", "2", "3");
             assertThat(history).allSatisfy(row -> assertThat(row.get("success")).isIn(1, true));
         }
     }
@@ -69,7 +69,8 @@ class FlywayMigrationTest {
      */
     static final Map<String, String> APPLIED = Map.of(
             "V1__faye_schema.sql", "95c4bdb40dbdb43667530de7f417d66d7d6475fa1d7a94fbe4ad59b36a1dd3ee",
-            "V2__ir_format_1.sql", "0a12ad20dd8f28da0d8623f61ae3255ed2780d545534ba469897474e3be7faf9");
+            "V2__ir_format_1.sql", "0a12ad20dd8f28da0d8623f61ae3255ed2780d545534ba469897474e3be7faf9",
+            "V3__publish_time.sql", "db6b9e78ba6967169cacb0b2e36f3e18f4f56670f46c510f42008bfcb75ab33b");
 
     @Test
     void migrationsAreNeverEdited() throws IOException, java.security.NoSuchAlgorithmException {

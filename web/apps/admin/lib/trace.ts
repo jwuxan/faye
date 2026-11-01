@@ -13,17 +13,34 @@ export type LiveRun = {
   /** Visit key of the step or option waiting on a screen; null once the run moved on or ended. */
   waiting: string | null;
   end: TraceEvent | null;
+  /** The sign in this run's consent steps follow: its flow and how it ended (ADR 0026). */
+  signIn?: { flowId: string; end: TraceEvent };
 };
 
-/** Folds one more event into the run it belongs to; an event of another flow starts a new run. */
+/**
+ * Folds one more event into the run it belongs to; an event of another flow starts a new run,
+ * except the consent entry of the version a sign in just succeeded on: the authorization server
+ * runs it as a flow of its own, but it is the rest of the same run.
+ */
 export function follow(run: LiveRun | null, r: Recorded): LiveRun {
-  const current =
-    run && run.flowId === r.flowId ? run : { flowId: r.flowId, events: [], visits: [], waiting: null, end: null };
-  const visits = [...current.visits];
   const e = r.event;
+  const consent =
+    run !== null &&
+    run.flowId !== r.flowId &&
+    !run.signIn &&
+    run.end?.outcome === "succeed" &&
+    e.event === "start" &&
+    e.outcome === "consent" &&
+    e.id === run.events[0]?.event.id;
+  const current: LiveRun =
+    run && (run.flowId === r.flowId || consent)
+      ? { ...run, ...(consent ? { waiting: null, end: null, signIn: { flowId: run.flowId, end: run.end! } } : {}) }
+      : { flowId: r.flowId, events: [], visits: [], waiting: null, end: null };
+  const visits = [...current.visits];
   if (e.event === "step" && e.id) visits.push(e.id);
   if (e.event === "option" && e.id) visits.push(`${visits.at(-1) ?? ""}/${e.id}`);
   return {
+    ...current,
     flowId: r.flowId,
     events: [...current.events, r],
     visits,

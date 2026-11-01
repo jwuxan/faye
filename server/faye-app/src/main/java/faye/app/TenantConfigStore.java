@@ -20,6 +20,9 @@ interface TenantConfigStore {
     /** Keeps the first YAML published for a hash; later ones compile to the same flow. */
     void saveSource(String versionHash, String yaml);
 
+    /** Puts this YAML in place of the one kept for a hash. */
+    void replaceSource(String versionHash, String yaml);
+
     Optional<TenantSettings> settings(String tenantId);
 
     void saveSettings(String tenantId, TenantSettings settings);

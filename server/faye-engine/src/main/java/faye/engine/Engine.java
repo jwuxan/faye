@@ -66,6 +66,12 @@ public final class Engine {
      */
     public static final String ISSUER_ERROR = "issuer_error";
 
+    /**
+     * The payload field that carries "keep me signed in" on a screen that offers it ({@link
+     * ScreenSpec#offersRemember}); the engine takes it off before the screen judges the answer.
+     */
+    public static final String REMEMBER = "remember";
+
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final FlowVersions versions;
@@ -271,7 +277,8 @@ public final class Engine {
                 List.of(),
                 0,
                 preview,
-                kind == HostKind.CONSENT ? user : Map.of());
+                kind == HostKind.CONSENT ? user : Map.of(),
+                false);
 
         List<TraceEvent> trace = new ArrayList<>();
         trace.add(TraceEvent.of("start", version.hash(), entry.get()));
@@ -281,14 +288,15 @@ public final class Engine {
         run = commit(run, trace);
         emit(run.state(), trace);
         return switch (run) {
-            case Suspended s -> view(s.state());
+            case Suspended s -> view(s.state(), version);
             case Ended e -> finish(req, e);
         };
     }
 
     /** The screen a flow is currently waiting on. */
     public ScreenView view(String flowId, String binder) {
-        return view(load(flowId, binder));
+        FlowState state = load(flowId, binder);
+        return view(state, pinned(state));
     }
 
     /**
@@ -298,25 +306,39 @@ public final class Engine {
      * successfully.
      */
     public EngineResponse submit(String flowId, String binder, String nonce, Submission input) {
-        FlowState state = load(flowId, binder);
-        FlowState.Awaiting awaiting = Objects.requireNonNull(state.awaiting(), "load refuses finished flows");
+        FlowState loaded = load(flowId, binder);
+        FlowState.Awaiting awaiting = Objects.requireNonNull(loaded.awaiting(), "load refuses finished flows");
         if (!awaiting.nonce().equals(nonce)) {
             throw new FlowException(Code.STALE_NONCE);
         }
-        if (!screen(awaiting.screen()).accepts(input, awaiting.data())) {
+        ScreenSpec spec = screen(awaiting.screen());
+        // "Keep me signed in" rides along with the answer of a screen that offered it (ADR 0033):
+        // the person's choice, recorded on the flow; the rest of the payload is the screen's answer
+        Submission answer = input;
+        FlowState state = loaded;
+        if (spec.offersRemember(awaiting.data()) && input.payload().containsKey(REMEMBER)) {
+            if (!(input.payload().get(REMEMBER) instanceof Boolean remember)) {
+                throw new FlowException(Code.INVALID_SUBMISSION);
+            }
+            Map<String, Object> rest = new LinkedHashMap<>(input.payload());
+            rest.remove(REMEMBER);
+            answer = new Submission(rest);
+            state = loaded.withRemember(remember);
+        }
+        if (!spec.accepts(answer, awaiting.data())) {
             throw new FlowException(Code.INVALID_SUBMISSION);
         }
         FlowVersion version = pinned(state);
 
         List<TraceEvent> trace = new ArrayList<>();
-        Run run = run(state, version, input.withContext(awaiting.data()), state.revision() + 1, trace);
+        Run run = run(state, version, answer.withContext(awaiting.data()), state.revision() + 1, trace);
         // Save before any lasting change and before talking to the host: only the submit that wins
         // the revision race may apply staged writes or accept.
         if (!store.replace(run.state())) return lost(state);
         run = commit(run, trace);
         emit(run.state(), trace);
         return switch (run) {
-            case Suspended s -> view(s.state());
+            case Suspended s -> view(s.state(), version);
             case Ended e -> finish(host.load(state.kind(), state.hostRef()), e);
         };
     }
@@ -331,7 +353,7 @@ public final class Engine {
         FlowState now = store.load(answered.flowId()).orElseThrow(() -> new FlowException(Code.FLOW_NOT_FOUND));
         if (now.revision() == answered.revision()) throw new FlowException(Code.CONFLICT);
         if (now.awaiting() == null) throw new FlowException(Code.FLOW_FINISHED);
-        return view(now);
+        return view(now, pinned(now));
     }
 
     // ---- interpreter ----
@@ -780,7 +802,8 @@ public final class Engine {
                 pending,
                 revision,
                 s.preview(),
-                s.proven());
+                s.proven(),
+                s.remember());
     }
 
     // ---- edges ----
@@ -924,11 +947,12 @@ public final class Engine {
         return screens.find(type).orElseThrow(() -> new IllegalStateException("unknown screen " + type));
     }
 
-    private ScreenView view(FlowState state) {
+    /** The screen the flow waits on, at the path its node sets (ADR 0029); a picker has its default. */
+    private ScreenView view(FlowState state, FlowVersion version) {
         var awaiting = state.awaiting();
         if (awaiting == null) throw new FlowException(Code.FLOW_FINISHED);
-        Map<String, Object> screen =
-                new LinkedHashMap<>(screen(awaiting.screen()).render(state.env(), awaiting.data()));
+        ScreenSpec spec = screen(awaiting.screen());
+        Map<String, Object> screen = new LinkedHashMap<>(spec.render(state.env(), awaiting.data()));
         Optional<CredentialIssuer> issuer = screens.issuer(awaiting.screen());
         if (issuer.isPresent()) {
             Map<String, Object> shown;
@@ -947,7 +971,11 @@ public final class Engine {
         }
         if (awaiting.error() != null) screen.put("errors", List.of(Map.of("code", awaiting.error())));
         if (awaiting.attemptsLeft() != null) screen.put("attemptsLeft", awaiting.attemptsLeft());
-        return new ScreenView(state.flowId(), awaiting.nonce(), awaiting.step(), screen);
+        Entry entry = Objects.requireNonNull(version.flow().entries().get(state.entry()), "the state fits its version");
+        Map<String, Object> opts =
+                resolve(entry.body(), awaiting.path()) instanceof Screen node ? node.opts() : Map.of();
+        String path = ScreenPaths.of(spec, opts, awaiting.step());
+        return new ScreenView(state.flowId(), awaiting.nonce(), awaiting.step(), path, screen);
     }
 
     private Completion finish(HostRequest req, Ended ended) {
@@ -956,7 +984,10 @@ public final class Engine {
         if (failure != null) {
             Completion rejected = reported(s, () -> host.reject(req, "access_denied", failure));
             emit(s, List.of(TraceEvent.of("end", null, failure)));
-            return rejected;
+            // A failed sign in, not a denied consent: a consent the person refused goes back to the app
+            return s.kind() == HostKind.LOGIN && rejected instanceof Redirect r
+                    ? new Redirect(r.url(), true)
+                    : rejected;
         }
         Env.Auth auth = s.env().auth();
         Completion accepted = reported(s, () -> switch (s.kind()) {
@@ -968,7 +999,8 @@ public final class Engine {
                                 Objects.requireNonNull(auth.subject()),
                                 auth.amr(),
                                 Objects.requireNonNull(auth.acr()),
-                                Map.of("flowId", s.flowId(), "versionHash", s.versionHash())));
+                                Map.of("flowId", s.flowId(), "versionHash", s.versionHash()),
+                                s.remember()));
             // Only what the login that proved this subject learned, as the consent started: user.*
             // filled inside the consent entry may describe someone else (O16), and the login row
             // may have expired since

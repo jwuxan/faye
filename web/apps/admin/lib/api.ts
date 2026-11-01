@@ -17,10 +17,13 @@ export type Catalog = {
   egress: string[];
 };
 export type Draft = { yaml: string; origin: "draft" | "current" | "config"; files: Record<string, string> };
-export type Branding = { name?: string; logoUrl?: string; primaryColor?: string; radius?: number };
-export type Settings = { mfaRequired: boolean; handlers: string[] | null; screens: string[] | null; branding: Branding };
+export type Branding = { name?: string; logoUrl?: string; primaryColor?: string; radius?: number; showPassword?: true; signUp?: true };
+/** Defaults for blocks' settings, by block id and setting (ADR 0030). */
+export type BlockDefaults = Record<string, Record<string, string | number | boolean>>;
+export type Settings = { mfaRequired: boolean; handlers: string[] | null; screens: string[] | null; branding: Branding; blocks?: BlockDefaults; rememberMe?: boolean };
 export type SettingsView = { settings: Settings; configured: Settings; saved: boolean; egress: string[] };
-export type Versions = { current: string | null; versions: string[] };
+/** published: when each version was published (ISO 8601), by hash; missing for one published before times were kept. */
+export type Versions = { current: string | null; versions: string[]; published?: Record<string, string> };
 export type VersionView = { hash: string; yaml: string; ir: string; current: boolean };
 export type HookRun = {
   result: unknown;

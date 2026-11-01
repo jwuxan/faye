@@ -5,14 +5,9 @@ version: 1
 login:
   steps:
     identify:
-      screen: identifier
-      use: identity.resolve
+      block: identifier
     credential:
-      retry: 3
-      screen: password
-      use: password.verify
+      block: password
     second-factor:
       if: { or: [tenant.mfa_required, user.has_totp] }
-      retry: 3
-      screen: otp
-      use: totp.verify
+      block: totp

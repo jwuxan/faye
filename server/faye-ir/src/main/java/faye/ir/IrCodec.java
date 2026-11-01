@@ -267,7 +267,6 @@ public final class IrCodec {
         return leaves(SCHEMA.validate(json), "");
     }
 
-    /** The pointer of the first container deeper than {@link #MAX_DEPTH}, or null; without recursion. */
     /** The most digits, and the largest exponent, a number in a flow may have. */
     public static final int MAX_DIGITS = 1000;
 
@@ -295,6 +294,7 @@ public final class IrCodec {
         return null;
     }
 
+    /** The pointer of the first container deeper than {@link #MAX_DEPTH}, or null; without recursion. */
     private static @Nullable String tooDeep(JsonNode root) {
         java.util.ArrayDeque<Object[]> todo = new java.util.ArrayDeque<>();
         todo.push(new Object[] {root, "", 0});

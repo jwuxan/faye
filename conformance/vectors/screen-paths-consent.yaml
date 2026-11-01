@@ -1,0 +1,14 @@
+name: the consent screen is shown at its default path, /consent
+ir: flows/screen-paths.json
+host:
+  kind: consent
+  client: { client_id: partner-app, first_party: false }
+  params: { subject: alice, requested_scope: [openid] }
+handlers:
+  consent.record: [ok]
+events:
+  - expect_screen: consent
+    expect_step: grant
+    expect_path: /consent
+  - submit: { decision: allow }
+  - expect_result: { succeed: true, subject: alice, grant_scope: [openid] }

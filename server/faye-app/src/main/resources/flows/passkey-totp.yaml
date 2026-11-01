@@ -4,26 +4,24 @@
 # goes to the password screen. Offering passkeys only through autofill keeps the flow from
 # revealing which accounts have one. After a password, accounts with TOTP (or that must use
 # MFA, or whose client asked for acr faye:2fa) prove a second factor, enrolling TOTP if they
-# have none. Once signed in with two factors, an account without a passkey is offered one.
+# have none. Once signed in with two factors, an account without a passkey is offered one. Third
+# party applications (registered without metadata.first_party = true) ask for consent.
 flow: passkey-totp
 version: 1
 
 login:
   steps:
     identify:
-      screen: { type: identifier, passkey: true }
-      use: identity.resolve
+      block: identifier
+      with: { passkey: true }
     credential:
       alternative:
         passkey:
           if: { eq: [user.identified_by, passkey] }
-          screen: passkey
-          use: webauthn.assert
+          block: passkey
         password:
           if: { eq: [user.identified_by, identifier] }
-          retry: 3
-          screen: password
-          use: password.verify
+          block: password
     second-factor:
       if:
         and:
@@ -35,19 +33,17 @@ login:
       alternative:
         totp:
           if: user.has_totp
-          retry: 3
-          screen: otp
-          use: totp.verify
+          block: totp
         passkey:
           if: { and: [user.has_passkey, { not: { has: [auth.amr, hwk] } }] }
-          screen: passkey
-          use: webauthn.assert
+          block: passkey
         enroll:
           if: { not: { or: [user.has_totp, user.has_passkey] } }
-          retry: 3
-          screen: otp_enroll
-          use: totp.enroll
+          block: enroll-totp
     add-passkey:
       if: { and: [{ not: user.has_passkey }, { eq: [auth.acr, "faye:2fa"] }] }
-      screen: { type: passkey, register: true }
-      use: webauthn.register
+      block: add-passkey
+    # Consent runs once the sign in is accepted, on the authorization server's consent challenge
+    grant:
+      if: { not: client.first_party }
+      block: consent

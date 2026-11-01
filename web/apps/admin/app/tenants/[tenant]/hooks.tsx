@@ -20,6 +20,7 @@ import { Kbd } from "@faye/ui/components/kbd";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@faye/ui/components/resizable";
 import { Tabs, TabsList, TabsTrigger } from "@faye/ui/components/tabs";
 import { Textarea } from "@faye/ui/components/textarea";
+import { useIsMobile } from "@faye/ui/hooks/use-mobile";
 import { cn } from "@faye/ui/lib/utils";
 import { CircleCheck, CircleX, FileCode, Play, Plus, SquareCode, Trash } from "lucide-react";
 import Link from "next/link";
@@ -28,7 +29,7 @@ import { api, type HookRun } from "../../../lib/api";
 import { type Entry, type FlowDoc, ID, removeHook, setHook } from "../../../lib/flow";
 import { HOOK_TEMPLATE, SAMPLE_CTX } from "../../../lib/hook-contract";
 import { PageHeader } from "../../shell";
-import { denseMono, Empty, IconButton, Overline, Prop, Switch } from "../../ui";
+import { denseMono, Empty, Help, IconButton, Overline, Prop, Switch, Tile } from "../../ui";
 import { CodeEditor } from "./code-editor";
 import { DraftActions, useDraft } from "./draft";
 import { StatusBar } from "./workspace";
@@ -43,8 +44,134 @@ export function HooksPage() {
   const [chosen, setChosen] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [side, setSide] = useState<"test" | "settings">("test");
+  const isMobile = useIsMobile();
+  const [pane, setPane] = useState<"list" | "source" | "side">("source");
   const selected = chosen ?? doc?.hooks[0]?.id ?? null;
   const hook = doc?.hooks.find((h) => h.id === selected) ?? null;
+
+  const listPane = doc && (
+    <>
+      <div className="flex h-10 shrink-0 items-center border-b px-3">
+        <span className="text-xs font-medium">Hooks</span>
+        <span className="ml-1.5 font-mono text-xs text-muted-foreground">{doc.hooks.length}</span>
+        <IconButton icon={Plus} label="New hook" className="ml-auto" onClick={() => setAdding(true)} />
+      </div>
+      <ul className="grid min-h-0 content-start gap-0.5 overflow-auto p-2" aria-label="Hooks">
+        {doc.hooks.map((h) => {
+          const used = uses(doc, h.id);
+          return (
+            <li key={h.id}>
+              <button
+                type="button"
+                aria-current={selected === h.id}
+                onClick={() => {
+                  setChosen(h.id);
+                  setPane("source");
+                }}
+                className={cn(
+                  "grid w-full gap-0.5 rounded-lg px-2 py-1.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                  selected === h.id ? "bg-sidebar-accent text-sidebar-accent-foreground" : "hover:bg-accent",
+                )}
+              >
+                <span className="flex items-center gap-2">
+                  <Tile icon={SquareCode} tone="orange" size="sm" />
+                  <span className="truncate font-mono text-sm">{h.id}</span>
+                </span>
+                <span className="truncate pl-7 text-xs text-muted-foreground">
+                  {used.length > 0 ? `used by ${used.join(", ")}` : "not used yet"}
+                  {h.file !== undefined && ` · ${h.file}`}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+  const sourcePane = hook && doc && (
+    <>
+      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
+        <span className="font-mono text-sm font-medium">{hook.id}</span>
+        <span className="text-xs text-muted-foreground">JavaScript</span>
+        {hook.file !== undefined && (
+          <Badge variant="outline" className="gap-1 font-mono font-normal text-muted-foreground">
+            <FileCode className="size-3" />
+            {hook.file}
+          </Badge>
+        )}
+        <span className="ml-auto flex items-center gap-1">
+          {hook.file !== undefined && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2.5 text-xs"
+              disabled={d.files[hook.file] === undefined}
+              onClick={() => d.edit(setHook(doc, { ...hook, file: undefined, source: d.files[hook.file!] ?? "" }))}
+            >
+              Edit inline
+            </Button>
+          )}
+          <DeleteHook id={hook.id} used={uses(doc, hook.id)} onDelete={() => {
+            d.edit(removeHook(doc, hook.id));
+            setChosen(null);
+            d.notify("ok", `Deleted hook ${hook.id}`, true);
+          }} />
+        </span>
+      </div>
+      {hook.file !== undefined ? (
+        <>
+          <p className="border-b bg-surface-2 px-3 py-1.5 text-xs text-muted-foreground">Read only: this hook comes from a file next to the configured flow. Edit inline to change it here.</p>
+          <CodeEditor key={`${hook.id}-file`} language="javascript" value={d.files[hook.file] ?? ""} readOnly label={`${hook.id} source`} className="min-h-0 flex-1" />
+        </>
+      ) : (
+        <CodeEditor
+          key={hook.id}
+          language="javascript"
+          value={hook.source ?? ""}
+          onChange={(source) => d.edit(setHook(doc, { ...hook, source }))}
+          label={`${hook.id} source`}
+          className="min-h-0 flex-1"
+        />
+      )}
+    </>
+  );
+  const sidePane = hook && doc && (
+    <Tabs value={side} onValueChange={(v) => setSide(v as "test" | "settings")} className="flex min-h-0 flex-1 flex-col gap-0">
+      <div className="flex h-10 shrink-0 items-center border-b px-2">
+        <TabsList className="p-0.5 group-data-[orientation=horizontal]/tabs:h-7">
+          <TabsTrigger value="test" className="h-6 px-2.5 text-xs">
+            Test run
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="h-6 px-2.5 text-xs">
+            Capabilities
+          </TabsTrigger>
+        </TabsList>
+      </div>
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        {side === "settings" ? (
+          <Capabilities doc={doc} hookId={hook.id} granted={d.settings?.egress ?? []} available={d.catalog?.egress ?? []} />
+        ) : (
+          <TestRun
+            key={hook.id}
+            tenant={d.tenant}
+            source={hook.file !== undefined ? (d.files[hook.file] ?? "") : (hook.source ?? "")}
+            http={hook.http}
+            timeoutMs={hook.timeoutMs}
+            picks={pickedBy(doc, hook.id)}
+          />
+        )}
+      </div>
+    </Tabs>
+  );
+  const emptyPane = (
+    <Empty icon={SquareCode} title="No hooks yet">
+      <p className="max-w-xs">Hooks score risk, route between options, or enrich a sign in. They can set values, fail a step, or pick an option, never sign someone in.</p>
+      <Button size="sm" className="mt-2" onClick={() => setAdding(true)}>
+        <Plus />
+        New hook
+      </Button>
+    </Empty>
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -63,129 +190,57 @@ export function HooksPage() {
             <Link href={`/tenants/${encodeURIComponent(d.tenant)}/flow`}>Open the flow</Link>
           </Button>
         </div>
+      ) : isMobile ? (
+        // A phone has room for one pane: pick it here
+        <Tabs value={hook ? pane : "list"} onValueChange={(v) => setPane(v as typeof pane)} className="flex min-h-0 flex-1 flex-col gap-0">
+          <div className="flex h-10 shrink-0 items-center border-b bg-surface-2 px-2">
+            <TabsList className="w-full p-0.5 group-data-[orientation=horizontal]/tabs:h-8">
+              <TabsTrigger value="list" className="h-7 text-xs">
+                Hooks
+              </TabsTrigger>
+              <TabsTrigger value="source" disabled={!hook} className="h-7 text-xs">
+                Source
+              </TabsTrigger>
+              <TabsTrigger value="side" disabled={!hook} className="h-7 text-xs">
+                Test
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {!hook ? (
+              doc.hooks.length > 0 ? (
+                <div className="flex min-h-0 flex-1 flex-col bg-surface-2">{listPane}</div>
+              ) : (
+                emptyPane
+              )
+            ) : pane === "list" ? (
+              <div className="flex min-h-0 flex-1 flex-col bg-surface-2">{listPane}</div>
+            ) : pane === "source" ? (
+              sourcePane
+            ) : (
+              sidePane
+            )}
+          </div>
+        </Tabs>
       ) : (
         <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
           <ResizablePanel id="list" defaultSize={232} minSize={180} maxSize={360} className="flex min-w-0 flex-col bg-surface-2">
-            <div className="flex h-10 shrink-0 items-center border-b px-3">
-              <span className="text-xs font-medium">Hooks</span>
-              <span className="ml-1.5 font-mono text-xs text-muted-foreground">{doc.hooks.length}</span>
-              <IconButton icon={Plus} label="New hook" className="ml-auto" onClick={() => setAdding(true)} />
-            </div>
-            <ul className="grid min-h-0 content-start gap-0.5 overflow-auto p-2" aria-label="Hooks">
-              {doc.hooks.map((h) => {
-                const used = uses(doc, h.id);
-                return (
-                  <li key={h.id}>
-                    <button
-                      type="button"
-                      aria-current={selected === h.id}
-                      onClick={() => setChosen(h.id)}
-                      className={cn(
-                        "grid w-full gap-0.5 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
-                        selected === h.id ? "bg-background shadow-xs ring-1 ring-border" : "hover:bg-accent",
-                      )}
-                    >
-                      <span className="flex items-center gap-2">
-                        <SquareCode className="size-4 shrink-0 text-warm" strokeWidth={1.75} />
-                        <span className="truncate font-mono text-[13px]">{h.id}</span>
-                      </span>
-                      <span className="truncate pl-6 text-[11px] text-muted-foreground">
-                        {used.length > 0 ? `used by ${used.join(", ")}` : "not used yet"}
-                        {h.file !== undefined && " · file"}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+            {listPane}
           </ResizablePanel>
           <ResizableHandle />
           {hook ? (
             <>
               <ResizablePanel id="source" defaultSize="55" minSize="30" className="flex min-w-0 flex-col">
-                <div className="flex h-10 shrink-0 items-center gap-2 border-b px-3">
-                  <span className="font-mono text-[13px] font-medium">{hook.id}</span>
-                  <span className="text-xs text-muted-foreground">JavaScript</span>
-                  {hook.file !== undefined && (
-                    <Badge variant="outline" className="gap-1 font-mono font-normal text-muted-foreground">
-                      <FileCode className="size-3" />
-                      {hook.file}
-                    </Badge>
-                  )}
-                  <span className="ml-auto flex items-center gap-1">
-                    {hook.file !== undefined && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2.5 text-xs"
-                        disabled={d.files[hook.file] === undefined}
-                        onClick={() => d.edit(setHook(doc, { ...hook, file: undefined, source: d.files[hook.file!] ?? "" }))}
-                      >
-                        Edit inline
-                      </Button>
-                    )}
-                    <DeleteHook id={hook.id} used={uses(doc, hook.id)} onDelete={() => {
-                      d.edit(removeHook(doc, hook.id));
-                      setChosen(null);
-                      d.notify("ok", `Deleted hook ${hook.id}`, true);
-                    }} />
-                  </span>
-                </div>
-                {hook.file !== undefined ? (
-                  <>
-                    <p className="border-b bg-surface-2 px-3 py-1.5 text-xs text-muted-foreground">Read only: this hook comes from a file next to the configured flow. Edit inline to change it here.</p>
-                    <CodeEditor key={`${hook.id}-file`} language="javascript" value={d.files[hook.file] ?? ""} readOnly label={`${hook.id} source`} className="min-h-0 flex-1" />
-                  </>
-                ) : (
-                  <CodeEditor
-                    key={hook.id}
-                    language="javascript"
-                    value={hook.source ?? ""}
-                    onChange={(source) => d.edit(setHook(doc, { ...hook, source }))}
-                    label={`${hook.id} source`}
-                    className="min-h-0 flex-1"
-                  />
-                )}
+                {sourcePane}
               </ResizablePanel>
               <ResizableHandle />
               <ResizablePanel id="side" defaultSize="30" minSize={300} className="flex min-w-0 flex-col">
-                <Tabs value={side} onValueChange={(v) => setSide(v as "test" | "settings")} className="flex min-h-0 flex-1 flex-col gap-0">
-                  <div className="flex h-10 shrink-0 items-center border-b px-2">
-                    <TabsList variant="line" className="h-10 gap-0 p-0">
-                      <TabsTrigger value="test" className="h-10 px-2.5 text-xs">
-                        Test run
-                      </TabsTrigger>
-                      <TabsTrigger value="settings" className="h-10 px-2.5 text-xs">
-                        Capabilities
-                      </TabsTrigger>
-                    </TabsList>
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-                    {side === "settings" ? (
-                      <Capabilities doc={doc} hookId={hook.id} granted={d.settings?.egress ?? []} available={d.catalog?.egress ?? []} />
-                    ) : (
-                      <TestRun
-                        key={hook.id}
-                        tenant={d.tenant}
-                        source={hook.file !== undefined ? (d.files[hook.file] ?? "") : (hook.source ?? "")}
-                        http={hook.http}
-                        timeoutMs={hook.timeoutMs}
-                        picks={pickedBy(doc, hook.id)}
-                      />
-                    )}
-                  </div>
-                </Tabs>
+                {sidePane}
               </ResizablePanel>
             </>
           ) : (
             <ResizablePanel id="empty" className="min-w-0">
-              <Empty icon={SquareCode} title="No hooks yet">
-                <p className="max-w-xs">Hooks score risk, route between options, or enrich a sign in. They can set values, fail a step, or pick an option, never sign someone in.</p>
-                <Button size="sm" className="mt-2" onClick={() => setAdding(true)}>
-                  <Plus />
-                  New hook
-                </Button>
-              </Empty>
+              {emptyPane}
             </ResizablePanel>
           )}
         </ResizablePanelGroup>
@@ -288,7 +343,10 @@ function Capabilities({ doc, hookId, granted, available }: { doc: FlowDoc; hookI
   const targets = [...new Set([...available, ...hook.http])];
   return (
     <div className="grid content-start gap-2.5 px-3 pt-3 pb-4">
-      <Overline>HTTP egress</Overline>
+      <div className="flex items-center gap-1">
+        <Overline>HTTP egress</Overline>
+        <Help>Hooks run sandboxed with no network. Each switch lets this hook call one named target the operator granted to the tenant; nothing else is reachable.</Help>
+      </div>
       {targets.map((t) => {
         const ok = granted.includes(t);
         return (
@@ -308,7 +366,10 @@ function Capabilities({ doc, hookId, granted, available }: { doc: FlowDoc; hookI
         The operator grants targets per tenant in the server config (<code className="font-mono">faye.tenants.&lt;id&gt;.egress</code>). A hook calls them with{" "}
         <code className="font-mono">cap.http</code>.
       </p>
-      <Overline className="pt-2">Deadline</Overline>
+      <div className="flex items-center gap-1 pt-2">
+        <Overline>Deadline</Overline>
+        <Help>The hook is stopped when this runs out, egress calls included. 200 ms unless set; at most 2000 ms.</Help>
+      </div>
       <Prop label="Timeout">
         <Input
           type="number"
@@ -333,7 +394,7 @@ function uses(doc: FlowDoc, id: string): string[] {
   const out: string[] = [];
   const walk = (list: Entry[] | undefined) =>
     (list ?? []).forEach((e) => {
-      if (e.body.hook === id || e.body.pick === id) out.push(e.id);
+      if (e.body.before === id || e.body.after === id || e.body.pick === id) out.push(e.id);
       walk(e.body.alternative);
       walk(e.body.steps);
     });
@@ -392,20 +453,20 @@ function TestRun({ tenant, source, http, timeoutMs, picks }: { tenant: string; s
         <Button onClick={test} disabled={busy} size="sm" className="ml-auto h-7 px-2.5 text-xs">
           <Play />
           {busy ? "Running" : "Run"}
-          <Kbd className="h-4 bg-primary-foreground/15 text-[10px] text-primary-foreground">⌘↵</Kbd>
+          <Kbd className="h-4 bg-primary-foreground/15 text-xs text-primary-foreground">⌘↵</Kbd>
         </Button>
       </div>
       {run && (
-        <div className="grid min-w-0 overflow-hidden rounded-md border" aria-live="polite">
+        <div className="grid min-w-0 animate-in fade-in-0 slide-in-from-top-2 overflow-hidden rounded-md border" aria-live="polite">
           <div className={cn("flex items-center gap-2 border-b px-2 py-1.5", run.accepted ? "bg-success/8" : "bg-danger/8")}>
             {run.accepted ? <CircleCheck className="size-3.5 text-success" /> : <CircleX className="size-3.5 text-danger" />}
             <span className="font-mono text-xs">{run.effect}</span>
-            <span className="ml-auto font-mono text-[11px] text-muted-foreground">{run.millis} ms</span>
+            <span className="ml-auto font-mono text-xs text-muted-foreground">{run.millis} ms</span>
           </div>
           {run.error && <p className="px-2 py-1.5 font-mono text-xs text-danger">{run.error}</p>}
-          {run.result !== null && <pre className="px-2 py-1.5 font-mono text-[11px] leading-4 break-all whitespace-pre-wrap">{JSON.stringify(run.result, null, 2)}</pre>}
+          {run.result !== null && <pre className="px-2 py-1.5 font-mono text-xs leading-4 break-all whitespace-pre-wrap">{JSON.stringify(run.result, null, 2)}</pre>}
           {run.logs.length > 0 && (
-            <pre className="border-t bg-surface-2 px-2 py-1.5 font-mono text-[11px] leading-4 break-all whitespace-pre-wrap text-muted-foreground" aria-label="Logs">
+            <pre className="border-t bg-surface-2 px-2 py-1.5 font-mono text-xs leading-4 break-all whitespace-pre-wrap text-muted-foreground" aria-label="Logs">
               {run.logs.join("\n")}
             </pre>
           )}
@@ -418,11 +479,14 @@ function TestRun({ tenant, source, http, timeoutMs, picks }: { tenant: string; s
           {problem}
         </p>
       )}
-      <Overline className="pt-1">ctx</Overline>
+      <div className="flex items-center gap-1 pt-1">
+        <Overline>ctx</Overline>
+        <Help>The input the hook receives in a test run, as JSON. Edit it to try other users or requests; ⌘↵ runs the test.</Help>
+      </div>
       <Textarea
         aria-label="Test ctx"
         spellCheck={false}
-        className="h-64 resize-y bg-surface-2 font-mono text-[11px] leading-4 md:text-[11px]"
+        className="h-64 resize-y bg-surface-2 font-mono text-xs leading-4 md:text-xs"
         value={ctx}
         onChange={(e) => setCtx(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && test()}

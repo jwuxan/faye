@@ -5,12 +5,14 @@ hooks:
   slow: { source: "export default () => ({})", timeout_ms: 9000 }
 login:
   steps:
-    a: { hook: nope }
-    b: { pick: risk, use: identity.resolve }
+    a: { block: identifier, after: nope }
+    b: { pick: risk, block: password }
+    c: { hook: slow }
 
 # Hook declarations are surface only. A hook whose declaration failed is not reported again where it
-# is used.
+# is used. A hook runs before or after a block, never as a step of its own.
 # expect: 4:17: hook file 'missing.js' not found
 # expect: 5:60: timeout_ms must be an integer from 1 to 2000
-# expect: 8:16: unknown hook 'nope'; declare it under 'hooks'
-# expect: 9:16: 'pick' needs an 'alternative' to pick from
+# expect: 8:36: unknown hook 'nope'; declare it under 'hooks'
+# expect: 9:10: a Password block takes 'if', 'before', 'block', 'with', 'path', 'after', not 'pick'
+# expect: 10:10: a hook runs around a block: write 'before: slow' on the block it runs before, or 'after: slow' on the one it follows

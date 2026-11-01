@@ -265,9 +265,11 @@ class GeneratedVectorsTest {
             if (view.screen().get("attemptsLeft") != null) {
                 expect.put("expect_attempts_left", view.screen().get("attemptsLeft"));
             }
+            boolean password = view.screen().containsKey("password");
+            if (password) expect.put("expect_password", true);
             events.add(expect);
             Map<String, Object> answer = switch (type) {
-                case "identifier" -> Map.of("identifier", "alice@example.com");
+                case "identifier" -> password ? identifierAndPassword() : Map.of("identifier", "alice@example.com");
                 case "password" -> Map.of("password", "correct horse battery staple");
                 case "method_picker" ->
                     Map.of("method", cursor.next(Chose.class).option());
@@ -553,5 +555,13 @@ class GeneratedVectorsTest {
                 return true;
             }
         }
+    }
+
+    /** In the order the Login UI's form sends them, so the generated vectors are stable. */
+    private static Map<String, Object> identifierAndPassword() {
+        Map<String, Object> answer = new LinkedHashMap<>();
+        answer.put("identifier", "alice@example.com");
+        answer.put("password", "correct horse battery staple");
+        return answer;
     }
 }

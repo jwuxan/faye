@@ -1,0 +1,12 @@
+name: a tenant that offers "keep me signed in" shows it on the identifier screen, and the person's choice reaches the host (ADR 0033)
+ir: flows/identifier-password.json
+tenant: { remember_me: true }
+handlers:
+  identity.resolve: [ok]
+  password.verify: [ok]
+events:
+  - expect_screen: identifier
+    expect_password: true
+    expect_remember: true
+  - submit: { identifier: alice@example.com, password: hunter2, remember: true }
+  - expect_result: { succeed: true, subject: alice, amr: [pwd], acr: "faye:1fa", remember: true }

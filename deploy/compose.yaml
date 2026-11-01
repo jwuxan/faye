@@ -10,7 +10,10 @@
 # The generated account passwords and application secrets stay inside the volume, out of
 # Faye's reach; to read them:
 #   docker exec faye cat /var/lib/faye/demo/users.csv /var/lib/faye/demo/clients.jsonl
-# The admin API token is generated on first boot (or set with FAYE_ADMIN_TOKEN):
+# Faye serves its admin API only on a Unix domain socket inside the container,
+# /run/faye/admin.sock, which only the Admin UI's group can open (ADR 0028); :8080 answers 404
+# there. The admin API token, checked on the socket too, is generated on first boot (or set
+# with FAYE_ADMIN_TOKEN):
 #   docker exec faye cat /var/lib/faye/secrets/admin-token
 name: faye
 

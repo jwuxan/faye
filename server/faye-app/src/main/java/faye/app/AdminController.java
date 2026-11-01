@@ -23,6 +23,7 @@ import faye.ir.HookDef;
 import faye.ir.IrCodec;
 import faye.ir.SourceRef;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -121,7 +122,8 @@ class AdminController {
 
     record Published(String versionHash, String summary, List<Problem> warnings) {}
 
-    record Versions(@Nullable String current, List<String> versions) {}
+    /** @param published when each version was published, by hash; absent for one published before times were kept */
+    record Versions(@Nullable String current, List<String> versions, Map<String, Instant> published) {}
 
     record Current(@Nullable String versionHash) {}
 
@@ -389,7 +391,10 @@ class AdminController {
             @PathVariable String tenant,
             @RequestHeader(name = "Authorization", required = false) @Nullable String authorization) {
         authorize(authorization, tenant);
-        return new Versions(versions.current(tenant).map(FlowVersion::hash).orElse(null), versions.history(tenant));
+        return new Versions(
+                versions.current(tenant).map(FlowVersion::hash).orElse(null),
+                versions.history(tenant),
+                versions.publishedAt(tenant));
     }
 
     @GetMapping("/admin/tenants/{tenant}/versions/{hash}")
@@ -527,7 +532,8 @@ class AdminController {
                 && !s.screens().stream().allMatch(t -> screens.find(t).isPresent())) {
             return "unknown screen type in screens";
         }
-        return s.branding().problem();
+        String blocks = EngineConfiguration.blocksProblem(dsl, s);
+        return blocks != null ? blocks : s.branding().problem();
     }
 
     private void authorize(@Nullable String authorization) {
@@ -545,7 +551,8 @@ class AdminController {
 
     /** A flow sent here carries hooks inline as {@code source}, or names a file next to the configured flow. */
     private FlowCompiler.Compiled compile(String tenant, String yaml) {
-        return EngineConfiguration.compileDraft(configured(tenant), tenant, yaml, dsl);
+        return EngineConfiguration.compileDraft(
+                configured(tenant), tenant, yaml, EngineConfiguration.forTenant(dsl, tenants, tenant));
     }
 
     /** The hook files {@code yaml} names that exist next to the tenant's configured flow. */

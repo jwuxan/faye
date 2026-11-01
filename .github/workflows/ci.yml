@@ -42,6 +42,18 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+      # Browser tests of the Login UI (ADR 0033): the build above against a stub of Faye's screen
+      # API, in the Chromium build this Playwright version pins, with its system libraries
+      - name: Install Chromium for the Login UI's browser tests
+        working-directory: web/apps/login
+        run: PLAYWRIGHT_BROWSERS_PATH="$PWD/.playwright" pnpm exec playwright install --with-deps chromium
+      - run: pnpm e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: login-e2e-traces
+          path: web/apps/login/test-results/
+          if-no-files-found: ignore
 
   # M2 to M6 checks: the compose stack signs in through every tenant and application and the Admin UI (deploy/smoke.sh).
   e2e:

@@ -1,0 +1,24 @@
+flow: typed
+version: 1
+hooks:
+  risk: { source: "export default () => ({})" }
+login:
+  steps:
+    identify:
+      before: risk
+      block: identifier
+      with: { password: true, attempts: 2 }
+      path: /login/both
+      after: risk
+    second:
+      if: user.has_totp
+      before: risk
+      pick: risk
+      alternative:
+        otp: { block: totp, with: { attempts: 2 }, after: risk }
+        deny: { fail: denied }
+    group:
+      steps:
+        note: { set: { done: true } }
+    add: { block: add-passkey }
+    grant: { block: consent, after: risk }

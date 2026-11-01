@@ -83,7 +83,7 @@ Registration is explicit: nothing is discovered from the classpath, so the trust
 
 | Call | Returns | Notes |
 |---|---|---|
-| `start(kind, ref, request, binder)` | `ScreenView`, or the host's `Completion` if the flow ended at once (a remembered session, a rejection) | `ref` is the host's id for the request, handed to `FlowHost.load`. `request` is read as `request.*`. `binder` is a secret the caller creates (`Engine.newBinder()`), gives the browser out of reach of the page's scripts (an HttpOnly cookie), and presents on every later call; the state keeps only its hash. |
+| `start(kind, ref, request, binder)` | `ScreenView`, or the host's `Completion` if the flow ended at once (a remembered session, a rejection); a `Redirect` after an authenticate entry that ran and failed is marked `failed` (ADR 0031) | `ref` is the host's id for the request, handed to `FlowHost.load`. `request` is read as `request.*`. `binder` is a secret the caller creates (`Engine.newBinder()`), gives the browser out of reach of the page's scripts (an HttpOnly cookie), and presents on every later call; the state keeps only its hash. |
 | `view(flowId, binder)` | `ScreenView` | The screen the flow waits on. |
 | `submit(flowId, binder, nonce, submission)` | `ScreenView`, or the host's `Completion` | `nonce` is the `ScreenView`'s; a submission is the person's answer only (`Submission(payload)`), the engine adds the issued context. |
 

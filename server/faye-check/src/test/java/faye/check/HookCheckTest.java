@@ -29,18 +29,15 @@ class HookCheckTest {
                 capabilities: { http: [ip-reputation] }
             login:
               steps:
-                identify: { screen: identifier, use: identity.resolve }
-                risk: { hook: risk }
-                credential: { retry: 3, screen: password, use: password.verify }
+                identify: { block: identifier, after: risk }
+                credential: { block: password }
                 second-factor:
                   if: { eq: [vars.risk, high] }
-                  retry: 3
-                  screen: otp
-                  use: totp.verify
+                  block: totp
             """;
 
     static FlowCompiler.Compiled compile(String yaml) {
-        return FlowCompiler.compileWithHooks("tenant.yaml", yaml, name -> Optional.empty());
+        return FlowCompiler.compileWithHooks("tenant.yaml", yaml, name -> Optional.empty(), Fixtures.DSL);
     }
 
     static Report check(FlowCompiler.Compiled compiled, TenantPolicy policy) {
@@ -62,13 +59,13 @@ class HookCheckTest {
         assertThat(report.errors()).isEmpty();
         // The hook may set vars.risk either way, so both the one and two factor paths exist
         assertThat(report.summary()).endsWith("assurance pwd (faye:1fa) to otp+pwd (faye:2fa)");
-        assertThat(report.paths()).anyMatch(p -> p.describe().equals("identify > risk > fail hook_error"));
+        assertThat(report.paths()).anyMatch(p -> p.describe().equals("identify > fail hook_error"));
     }
 
     @Test
     void egressTheTenantDidNotGrantIsAnError() {
         assertThat(errors(check(compile(RISK), TenantPolicy.DEFAULT)))
-                .containsExactly("tenant.yaml:11:19: hook 'risk' calls egress target 'ip-reputation',"
+                .containsExactly("tenant.yaml:10:43: hook 'risk' calls egress target 'ip-reputation',"
                         + " which is not granted to this tenant");
     }
 
@@ -94,16 +91,14 @@ class HookCheckTest {
                   trust: { source: "export default () => ({ set: { trusted: true } })" }
                 login:
                   steps:
-                    identify: { screen: identifier, use: identity.resolve }
-                    trust: { hook: trust }
+                    identify: { block: identifier, after: trust }
                     credential:
                       if: { not: vars.trusted }
-                      screen: password
-                      use: password.verify
+                      block: password
                 """);
         assertThat(errors(check(compiled, TenantPolicy.DEFAULT)))
-                .containsExactly("tenant.yaml:10:11: a path succeeds without verifying a credential:"
-                        + " identify > trust > credential > (condition at 10 false) > succeed with no credential");
+                .containsExactly("tenant.yaml:9:11: a path succeeds without verifying a credential:"
+                        + " identify > credential > (condition at 9 false) > succeed with no credential");
     }
 
     @Test
@@ -115,12 +110,12 @@ class HookCheckTest {
                   route: { source: "export default (ctx) => ({ pick: ctx.options[0] })" }
                 login:
                   steps:
-                    identify: { screen: identifier, use: identity.resolve }
+                    identify: { block: identifier }
                     credential:
                       pick: route
                       alternative:
-                        password: { screen: password, use: password.verify }
-                        otp: { if: user.has_totp, screen: otp, use: totp.verify }
+                        password: { block: password }
+                        otp: { if: user.has_totp, block: totp }
                 """);
         Report report = check(compiled, TenantPolicy.DEFAULT);
         assertThat(report.errors()).isEmpty();

@@ -26,20 +26,15 @@ hooks:
 login:
   steps:
     identify:
-      screen: identifier            # identity first: ask who, then decide how
-      use: identity.resolve
-    risk:
-      hook: risk
+      block: identifier             # always first: ask who, then decide how
+      after: risk                   # a hook runs before or after a block
     credential:
       alternative:                  # Keycloak ALTERNATIVE: the person picks one
         passkey:
           if: user.has_passkey
-          screen: passkey
-          use: webauthn.assert
+          block: passkey
         password:
-          screen: password
-          use: password.verify
-          retry: 3
+          block: password           # three attempts unless `with: { attempts: n }`
     mfa:
       if:
         or:
@@ -47,19 +42,32 @@ login:
           - { has: [host.acr_values, "faye:2fa"] }
           - user.mfa_required
       alternative:
-        totp:  { if: user.has_totp, screen: otp, use: totp.verify, retry: 3 }
-        enroll: { if: { not: user.has_totp }, screen: otp_enroll, use: totp.enroll }
+        totp:  { if: user.has_totp, block: totp }
+        enroll: { if: { not: user.has_totp }, block: enroll-totp }
     consent:                        # from here on: the consent challenge, after the sign in
       if: { not: client.first_party }
-      screen: consent
-      use: consent.record
+      block: consent
 ```
 
-Consent is a step like any other ([ADR 0026](../adr/0026-consent-as-a-step.md)). The step that asks for consent (it shows a consent screen or calls a consent handler, in its body or in a nested `alternative` or `steps`; the compiler learns which from its caller, `FlowCompiler.Options`, and the app derives them from its catalogs: the `consent` screen and `consent.record`, which belong in consent entries only) and every step after it run on the host's consent challenge, once the sign in was accepted, so they lower to the `consent` entry; the steps before it lower to the `authenticate` entry. A flow with no such step has no consent entry, and the host's consent is granted without a screen. The checker's rules for each entry kind still apply, so a credential step after consent is refused at the YAML that wrote it.
+A flow orchestrates blocks; it does not build them ([ADR 0030](../adr/0030-blocks-with-fixed-screens-and-handlers.md)). A block is a built in step whose screen and handler are fixed by its implementation (`BlockSpec`, implemented beside the handlers, e.g. faye-identity's `IdentityBlock`): `identifier`, `password`, `passkey`, `add-passkey`, `totp`, `enroll-totp`, `consent`. A step names one with `block:` and may change only the settings the block declares, under `with:`, each of which has a default (a tenant may replace the defaults, in `faye.tenants.<id>.blocks` or General settings, checked when saved and applied when a flow is compiled; `attempts` is 3 for the typed credentials and 1 for a passkey; the identifier's `passkey` offers passkey autofill, and its `password` asks for the password on the same screen, then takes no other option and no Password block may follow). Every body is exactly one kind of block, and takes only that kind's keys:
+
+| Block | Keys besides `if`, `before`, `after` | Where |
+|---|---|---|
+| `identifier` | `block`, `with`, `path`; no `if` | the first step, always, and only there |
+| `password`, `passkey`, `totp`, `enroll-totp`, `add-passkey` | `block`, `with`, `path` | a step, a group's step, or an option |
+| `consent` | `block`, `path` | a step of its own, not in a group or a choice |
+| choice | `alternative` (two options or more), `pick` | a step; its options are one credential block or a `fail` |
+| group | `steps` | a step |
+| set | `set` | a step |
+| fail | `fail`; no `after` | a step or an option |
+
+Writing `use`, `screen`, `retry` or a step that is only a `hook` is refused with what to write instead; the Admin UI opens such YAML (from before ADR 0030) converted.
+
+Consent is a step like any other ([ADR 0026](../adr/0026-consent-as-a-step.md)). The step that asks for consent (a block that shows a consent screen or calls a consent handler, in its body or in a nested `alternative` or `steps`; the compiler learns which from its caller, `FlowCompiler.Options`, and the app derives them from its catalogs: the `consent` screen and `consent.record`, which belong in consent entries only) and every step after it run on the host's consent challenge, once the sign in was accepted, so they lower to the `consent` entry; the steps before it lower to the `authenticate` entry. A flow with no such step has no consent entry, and the host's consent is granted without a screen. The checker's rules for each entry kind still apply, so a credential step after consent is refused at the YAML that wrote it.
 
 ## Lowering
 
-The compiler (`faye-dsl`) reads YAML into a positioned document (`YamlReader`, the only class that knows SnakeYAML; it refuses duplicate keys, anchors and aliases, and YAML 1.1 scalars that read as another type), lowers it to IR JSON while recording which YAML produced each JSON node, and hands the JSON to `IrCodec`, which checks it against the schema. Every grammar error is reported at the YAML that produced the offending node; the compiler keeps no copy of the grammar, only the rules of the surface itself (its keys, hook declarations and files).
+The compiler (`faye-dsl`) reads YAML into a positioned document (`YamlReader`, the only class that knows SnakeYAML; it refuses duplicate keys, anchors and aliases, and YAML 1.1 scalars that read as another type), lowers it to IR JSON while recording which YAML produced each JSON node, and hands the JSON to `IrCodec`, which checks it against the schema. Every grammar error is reported at the YAML that produced the offending node; the compiler keeps no copy of the grammar, only the rules of the surface itself (its keys, its blocks' places and settings, hook declarations and files).
 
 | YAML | IR |
 |---|---|
@@ -69,15 +77,15 @@ The compiler (`faye-dsl`) reads YAML into a positioned document (`YamlReader`, t
 | a top level `consent:` (before ADR 0026) | refused: move its steps to the end of `login.steps` |
 | `steps: { id: body }` | `(step id body)` each, in order |
 | `set: { name: v }` | `(set name v)` each, first in the body |
-| `hook: id` | `(hook id hash)`, the hash of the declared hook's definition |
-| `screen: type` or `{ type: t, opt: v }` | `(screen t {:opt v})` |
-| `use: handler` | `(call handler)` |
+| `block: id` | `(screen s {:opt v}) (call h)`, the block's screen `s` with its fixed options and the ones its settings turn on, and its handler `h`; an identifier with `password` also `(call p)`, the password block's handler |
+| `with: { attempts: n }`, `n` > 1 | `(retry n (seq (screen ...) (call ...)))` around the block's own parts |
+| `path: /challenge/p` | the block's screen's option, `(screen s {:path "/challenge/p"})`; where the Login UI shows it ([ADR 0029](../adr/0029-screen-paths.md)) |
+| `before: id`, `after: id` | `(hook id hash)` first and last in the body, once around its attempts; the hash of the declared hook's definition |
 | `alternative: { id: body }` | `(choose ((opt id body)...))` |
 | `pick: hook` beside `alternative` | `(choose (...) {:pick (hook id hash)})` |
 | `fail: reason` | `(fail reason)`, last in the body |
-| a body with several parts | `(seq part...)` in the order set, hook, screen, use, alternative or steps, fail |
-| `retry: n` | `(retry n body)` around the body |
-| `if: p` on a step | `(when p (retry ...))` around the retry |
+| a body with several parts | `(seq part...)` in the order before, set, block, alternative or steps, fail, after |
+| `if: p` on a step | `(when p body)` around the whole body |
 | `if: p` on an option | the option's guard, `(opt id body {:guard p})` |
 | a path `hydra.x` | `host.x`, the spelling before ADR 0024 |
 

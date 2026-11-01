@@ -6,14 +6,18 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@faye/ui/components/dropdown-menu";
+import { FayeLogo } from "@faye/ui/components/faye-logo";
 import { Kbd, KbdGroup } from "@faye/ui/components/kbd";
 import { Separator } from "@faye/ui/components/separator";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
@@ -29,21 +33,28 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@faye/ui/components/tooltip";
 import {
   AppWindow,
-  Building2,
   Check,
-  ChevronsUpDown,
+  ChevronDown,
   GitCommitHorizontal,
   LayoutList,
+  Monitor,
+  Moon,
   type LucideIcon,
-  Palette,
+  LogIn,
+  Search,
   Settings2,
+  Sun,
   SquareCode,
   Users,
   Workflow,
 } from "lucide-react";
+import { type Appearance, setAppearance, useAppearance } from "@faye/ui/lib/appearance";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
+import { toneOf } from "../lib/kinds";
+import { Tile } from "./ui";
+import { CommandPalette, ShortcutSheet } from "./command-palette";
 
 export type TenantView = { id: string; current: string | null };
 
@@ -72,13 +83,13 @@ function navigation(tenant: string): { label: string; items: NavItem[] }[] {
       label: "Settings",
       items: [
         { title: "General", href: `${base}/settings`, icon: Settings2, exact: true },
-        { title: "Branding", href: `${base}/settings/branding`, icon: Palette },
+        { title: "Login page", href: `${base}/settings/login`, icon: LogIn },
       ],
     },
   ];
 }
 
-/** The console frame: a collapsible sidebar (⌘B), the page beside it, and a footer below the page. */
+/** The console frame: a gray, collapsible sidebar (⌘B) with search, the page on a rounded sheet beside it, the ⌘K palette and the hold ⌘ shortcut sheet. */
 export function Shell({
   tenant,
   tenants,
@@ -92,13 +103,42 @@ export function Shell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const [palette, setPalette] = useState(false);
   return (
     <SidebarProvider defaultOpen={defaultOpen} className="h-svh min-h-0">
-      <Sidebar collapsible="icon">
-        <SidebarHeader>
-          <TenantSwitcher tenant={tenant} tenants={tenants} />
+      <Sidebar collapsible="icon" variant="inset">
+        <SidebarHeader className="gap-2.5 pb-1">
+          <div className="flex items-center gap-1">
+            <TenantSwitcher tenant={tenant} tenants={tenants} />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <SidebarTrigger className="size-7 shrink-0 text-muted-foreground hover:text-foreground group-data-[collapsible=icon]:hidden" />
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="flex items-center gap-2">
+                Hide sidebar
+                <KbdGroup>
+                  <Kbd>⌘</Kbd>
+                  <Kbd>B</Kbd>
+                </KbdGroup>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                variant="outline"
+                tooltip="Search ⌘K"
+                onClick={() => setPalette(true)}
+                className="h-8 rounded-full bg-background pr-1.5 text-muted-foreground hover:bg-background hover:text-foreground hover:ring-1 hover:ring-input group-data-[collapsible=icon]:rounded-lg"
+              >
+                <Search />
+                <span>Search or jump to…</span>
+                <Kbd className="ml-auto h-5 rounded-full px-1.5 text-xs group-data-[collapsible=icon]:hidden">⌘K</Kbd>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
         </SidebarHeader>
-        <SidebarContent>
+        <SidebarContent className="gap-0">
           {tenant === null ? (
             <SidebarGroup>
               <SidebarGroupLabel>Workspace</SidebarGroupLabel>
@@ -115,16 +155,16 @@ export function Shell({
             </SidebarGroup>
           ) : (
             navigation(tenant).map((group) => (
-              <SidebarGroup key={group.label}>
-                <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-                <SidebarMenu>
+              <SidebarGroup key={group.label} className="py-1.5">
+                <SidebarGroupLabel className="h-7">{group.label}</SidebarGroupLabel>
+                <SidebarMenu className="gap-0.5">
                   {group.items.map((item) => {
                     const active = item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(`${item.href}/`);
                     return (
                       <SidebarMenuItem key={item.href}>
-                        <SidebarMenuButton asChild isActive={active} tooltip={item.title}>
+                        <SidebarMenuButton asChild isActive={active} tooltip={item.title} className="h-8 rounded-lg text-sm [&>svg]:text-muted-foreground data-[active=true]:[&>svg]:text-foreground">
                           <Link href={item.href}>
-                            <item.icon />
+                            <item.icon strokeWidth={1.75} />
                             <span>{item.title}</span>
                           </Link>
                         </SidebarMenuButton>
@@ -136,13 +176,66 @@ export function Shell({
             ))
           )}
         </SidebarContent>
+        <SidebarFooter className="gap-1">
+          <AppearanceMenu />
+          <p className="flex items-center gap-1 px-2 pb-0.5 text-xs text-muted-foreground group-data-[collapsible=icon]:hidden">
+            Local console · hold <Kbd className="h-4 min-w-4 border bg-background px-1 text-xs">⌘</Kbd> for shortcuts
+          </p>
+        </SidebarFooter>
         <SidebarRail />
       </Sidebar>
-      <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
+      <SidebarInset className="min-h-0 min-w-0 overflow-hidden md:peer-data-[variant=inset]:shadow-sheet dark:md:peer-data-[variant=inset]:shadow-sheet-flat">
         {children}
-        <footer className="shrink-0 border-t px-3 py-1.5 text-[11px] text-muted-foreground">Faye @ 2026</footer>
       </SidebarInset>
+      <CommandPalette groups={tenant === null ? [] : navigation(tenant)} tenants={tenants.map((t) => t.id)} open={palette} setOpen={setPalette} />
+      <ShortcutSheet />
     </SidebarProvider>
+  );
+}
+
+const APPEARANCES: { value: Appearance; label: string; icon: LucideIcon }[] = [
+  { value: "light", label: "Light", icon: Sun },
+  { value: "dark", label: "Dark", icon: Moon },
+  { value: "system", label: "System", icon: Monitor },
+];
+
+/** Theme change crossfades the whole console where view transitions exist; elsewhere it snaps. */
+function changeAppearance(next: Appearance) {
+  const doc = document as Document & { startViewTransition?: (update: () => void) => unknown };
+  if (doc.startViewTransition) doc.startViewTransition(() => setAppearance(next));
+  else setAppearance(next);
+}
+
+/** Light, dark, or whatever the OS uses; kept in this browser. */
+function AppearanceMenu() {
+  const { isMobile } = useSidebar();
+  const { appearance } = useAppearance();
+  const current = APPEARANCES.find((a) => a.value === appearance) ?? APPEARANCES[2];
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton tooltip="Appearance" className="h-8 rounded-lg data-[state=open]:bg-sidebar-accent [&>svg]:text-muted-foreground">
+              <current.icon strokeWidth={1.75} />
+              <span>Appearance</span>
+              <span className="ml-auto text-xs text-muted-foreground">{current.label}</span>
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="min-w-40 rounded-lg" align="end" side={isMobile ? "top" : "right"} sideOffset={4}>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">Appearance</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={appearance} onValueChange={(v) => changeAppearance(v as Appearance)}>
+              {APPEARANCES.map((a) => (
+                <DropdownMenuRadioItem key={a.value} value={a.value} className="gap-2">
+                  <a.icon className="text-muted-foreground" />
+                  {a.label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }
 
@@ -150,32 +243,27 @@ export function Shell({
 function TenantSwitcher({ tenant, tenants }: { tenant: string | null; tenants: TenantView[] }) {
   const { isMobile } = useSidebar();
   return (
-    <SidebarMenu>
+    <SidebarMenu className="mr-auto w-auto min-w-0">
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
-              <span className="grid aspect-square size-8 place-items-center rounded-md bg-sidebar-primary font-serif text-[18px] leading-none text-sidebar-primary-foreground">
-                f
-              </span>
-              <span className="grid flex-1 text-left leading-tight">
-                <span className="truncate font-serif text-[15px]">Faye</span>
-                <span className="truncate font-mono text-xs text-muted-foreground">{tenant ?? "all tenants"}</span>
-              </span>
-              <ChevronsUpDown className="ml-auto" />
+            <SidebarMenuButton className="h-9 w-auto gap-2 rounded-lg px-1.5 pr-2 data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground group-data-[collapsible=icon]:p-1!">
+              <FayeLogo className="h-6! w-auto! shrink-0 group-data-[collapsible=icon]:h-auto! group-data-[collapsible=icon]:w-6!" />
+              <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{tenant ?? "all tenants"}</span>
+              <ChevronDown className="-ml-0.5 size-3.5! text-muted-foreground" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="min-w-56 rounded-lg" align="start" side={isMobile ? "bottom" : "right"} sideOffset={4}>
+          <DropdownMenuContent className="min-w-56 rounded-xl" align="start" side={isMobile ? "bottom" : "right"} sideOffset={4}>
             <DropdownMenuLabel className="text-xs text-muted-foreground">Tenants</DropdownMenuLabel>
             {tenants.map((t) => (
               <DropdownMenuItem key={t.id} asChild className="gap-2">
                 <Link href={`/tenants/${encodeURIComponent(t.id)}/flow`}>
-                  <Building2 className="text-muted-foreground" />
+                  <Tile letter={t.id} tone={toneOf(t.id)} size="sm" />
                   <span className="font-mono">{t.id}</span>
                   {t.id === tenant ? (
                     <Check className="ml-auto" />
                   ) : (
-                    t.current && <span className="ml-auto font-mono text-[11px] text-muted-foreground">{t.current.slice(7, 13)}</span>
+                    t.current && <span className="ml-auto font-mono text-xs text-muted-foreground">{t.current.slice(7, 13)}</span>
                   )}
                 </Link>
               </DropdownMenuItem>
@@ -194,39 +282,45 @@ function TenantSwitcher({ tenant, tenants }: { tenant: string | null; tenants: T
   );
 }
 
-/** The bar on top of every page: sidebar toggle, where you are, and the page's actions. */
+/** The bar on top of every page: where you are, and the page's actions; the sidebar toggle only while the sidebar is hidden. */
 export function PageHeader({ tenant, title, children }: { tenant?: string; title: string; children?: ReactNode }) {
+  const { state, isMobile } = useSidebar();
+  const hidden = isMobile || state === "collapsed";
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <SidebarTrigger className="-ml-0.5" />
-        </TooltipTrigger>
-        <TooltipContent side="bottom" className="flex items-center gap-2">
-          Toggle sidebar
-          <KbdGroup>
-            <Kbd>⌘</Kbd>
-            <Kbd>B</Kbd>
-          </KbdGroup>
-        </TooltipContent>
-      </Tooltip>
-      <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-4" />
+      {hidden && (
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <SidebarTrigger className="-ml-0.5 size-7 text-muted-foreground hover:text-foreground" />
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="flex items-center gap-2">
+              Show sidebar
+              <KbdGroup>
+                <Kbd>⌘</Kbd>
+                <Kbd>B</Kbd>
+              </KbdGroup>
+            </TooltipContent>
+          </Tooltip>
+          <Separator orientation="vertical" className="mr-1 data-[orientation=vertical]:h-4" />
+        </>
+      )}
       <Breadcrumb className="min-w-0">
-        <BreadcrumbList className="flex-nowrap">
+        <BreadcrumbList className="flex-nowrap gap-1 sm:gap-1.5">
           {tenant && (
             <>
               <BreadcrumbItem className="hidden md:inline-flex">
                 <BreadcrumbLink asChild>
-                  <Link href={`/tenants/${encodeURIComponent(tenant)}/flow`} className="font-mono">
+                  <Link href={`/tenants/${encodeURIComponent(tenant)}/flow`} className="font-mono text-xs">
                     {tenant}
                   </Link>
                 </BreadcrumbLink>
               </BreadcrumbItem>
-              <BreadcrumbSeparator className="hidden md:block" />
+              <BreadcrumbSeparator className="hidden md:block [&>svg]:size-3" />
             </>
           )}
           <BreadcrumbItem>
-            <BreadcrumbPage className="truncate font-medium">{title}</BreadcrumbPage>
+            <BreadcrumbPage className="truncate text-base font-semibold tracking-tight">{title}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>

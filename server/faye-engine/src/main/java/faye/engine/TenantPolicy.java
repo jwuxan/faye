@@ -16,15 +16,27 @@ import org.jspecify.annotations.Nullable;
  * @param egress named HTTP targets this tenant's hooks may call; none unless granted
  * @param name the tenant's display name, read as {@code tenant.name} (an authenticator app labels
  *     an enrolled secret with it); null when it has none
+ * @param rememberMe the identifier screen offers "keep me signed in", read as {@code
+ *     tenant.remember_me} (ADR 0033); a person who ticks it has the host remember the sign in
  */
 public record TenantPolicy(
         boolean mfaRequired,
         @Nullable Set<String> handlers,
         @Nullable Set<String> screens,
         Set<String> egress,
-        @Nullable String name) {
+        @Nullable String name,
+        boolean rememberMe) {
 
     public static final TenantPolicy DEFAULT = new TenantPolicy(false, null, null);
+
+    public TenantPolicy(
+            boolean mfaRequired,
+            @Nullable Set<String> handlers,
+            @Nullable Set<String> screens,
+            Set<String> egress,
+            @Nullable String name) {
+        this(mfaRequired, handlers, screens, egress, name, false);
+    }
 
     public TenantPolicy(
             boolean mfaRequired, @Nullable Set<String> handlers, @Nullable Set<String> screens, Set<String> egress) {
@@ -46,6 +58,8 @@ public record TenantPolicy(
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("mfa_required", mfaRequired);
         if (name != null) out.put("name", name);
+        // Only when offered, so a tenant without it reads exactly as before
+        if (rememberMe) out.put("remember_me", true);
         return out;
     }
 }

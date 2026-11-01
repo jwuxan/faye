@@ -5,6 +5,7 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import org.jspecify.annotations.Nullable;
 
 /**
  * One typed screen: what the engine stores for it, the payload it sends for it and which answers it
@@ -18,7 +19,10 @@ public interface ScreenSpec {
     /** The screen type on the wire and in {@code (screen type)}. */
     String type();
 
-    /** The keys a {@code (screen type options)} may set; the verifier refuses any other. */
+    /**
+     * The keys a {@code (screen type options)} may set, besides {@value ScreenPaths#OPTION}, which
+     * every screen takes; the verifier refuses any other.
+     */
     default java.util.Set<String> options() {
         return java.util.Set.of();
     }
@@ -29,6 +33,16 @@ public interface ScreenSpec {
      */
     default boolean issued() {
         return false;
+    }
+
+    /**
+     * The URL path the Login UI shows this screen at when its options set none (ADR 0029). A path
+     * the options set must start with the same first segment: {@code /challenge} here.
+     *
+     * @param step the innermost enclosing step id, or null
+     */
+    default String path(@Nullable String step) {
+        return step == null ? ScreenPaths.CHALLENGE : ScreenPaths.CHALLENGE + "/" + step;
     }
 
     /**
@@ -78,6 +92,16 @@ public interface ScreenSpec {
 
     /** Whether an answer hosted for screen {@code hosted} answers this screen with these options. */
     default boolean answeredBy(String hosted, Map<String, Object> opts) {
+        return false;
+    }
+
+    /**
+     * Whether this instance of the screen offers "keep me signed in": its answer may then carry a
+     * boolean {@link Engine#REMEMBER}, which the engine records for the host and takes off before
+     * {@link #accepts} judges the answer (ADR 0033). Only the person's answer sets it; a flow or hook
+     * cannot.
+     */
+    default boolean offersRemember(Map<String, Object> data) {
         return false;
     }
 }

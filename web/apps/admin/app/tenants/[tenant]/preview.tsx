@@ -2,14 +2,13 @@
 
 import { Button } from "@faye/ui/components/button";
 import { cn } from "@faye/ui/lib/utils";
-import { CircleCheck, CircleX, Copy, ExternalLink, LoaderCircle, RotateCcw } from "lucide-react";
+import { CircleCheck, CircleX, ExternalLink, LoaderCircle, RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, type PreviewRun, type PreviewView, type Seeded } from "../../../lib/api";
 import { remaining, totp } from "../../../lib/totp";
-import { describe, type LiveRun, type Recorded } from "../../../lib/trace";
+import { describe, type LiveRun, type Recorded, type TraceEvent } from "../../../lib/trace";
 import { Input } from "@faye/ui/components/input";
-import { Toggle } from "@faye/ui/components/toggle";
-import { Choice, denseMono, IconButton, Overline } from "../../ui";
+import { Choice, CopyButton, denseMono, Help, IconButton, Overline, Prop, Segmented, Switch } from "../../ui";
 
 /** An IP in TEST-NET-3, which the local ip-reputation stub scores as high risk. */
 const RISKY_IP = "203.0.113.7";
@@ -44,7 +43,8 @@ export function Preview({
   const [secret, setSecret] = useState("");
   const [seeding, setSeeding] = useState(false);
   const [following, setFollowing] = useState<"connecting" | "open" | "lost">("connecting");
-  const [summary, setSummary] = useState<PreviewRun | null>(null);
+  // What the checker predicted, by flow: a sign in and the consent run that follows it are two
+  const [summaries, setSummaries] = useState<Record<string, PreviewRun>>({});
 
   useEffect(() => {
     api<PreviewView>(`tenants/${tenant}/preview`)
@@ -70,7 +70,7 @@ export function Preview({
   useEffect(() => {
     if (!ended) return;
     api<PreviewRun>(`tenants/${tenant}/preview/flows/${ended}`)
-      .then(({ body }) => setSummary(body))
+      .then(({ body }) => setSummaries((s) => ({ ...s, [ended]: body })))
       .catch(fail);
   }, [ended, tenant, fail]);
 
@@ -109,7 +109,7 @@ export function Preview({
   if (!view) return <div className="p-4 text-muted-foreground">Loading…</div>;
   if (!view.enabled) {
     return (
-      <div className="grid gap-2 p-4 text-[13px]">
+      <div className="grid gap-2 p-4 text-sm">
         <h2 className="font-medium">Preview</h2>
         <p className="text-muted-foreground">
           Previews are off on this server. Start Faye with <code className="font-mono text-xs">FAYE_PREVIEW_ENABLED=true</code> to run drafts with the{" "}
@@ -121,7 +121,7 @@ export function Preview({
 
   const set = (patch: Partial<Launch>) => setLaunch((l) => ({ ...l, ...patch }));
   return (
-    <div className="grid content-start gap-5 p-4 text-[13px]">
+    <div className="grid content-start gap-5 p-4 text-sm">
       <header className="grid gap-1">
         <div className="flex items-center gap-2">
           <h2 className="font-medium">Preview</h2>
@@ -136,23 +136,13 @@ export function Preview({
       </header>
 
       <section className="grid gap-2" aria-label="Scenario">
-        <Overline>Scenario</Overline>
-        <div className="flex flex-wrap gap-1.5">
-          <Preset onClick={() => seed(false)} disabled={seeding}>
-            New user
-          </Preset>
-          <Preset onClick={() => seed(true)} disabled={seeding}>
-            User with TOTP
-          </Preset>
-          <Preset onClick={() => set({ ip: RISKY_IP })} active={launch.ip === RISKY_IP}>
-            High risk IP
-          </Preset>
-          <Preset onClick={() => set({ acrValues: "faye:2fa" })} active={launch.acrValues === "faye:2fa"}>
-            Client requests MFA
-          </Preset>
+        <div className="flex items-center gap-1">
+          <Overline>Scenario</Overline>
+          <Help>Who signs in and under what conditions. The account tab seeds a fresh preview account and passes it as login_hint; the switches set the request IP and acr_values.</Help>
           <IconButton
             icon={RotateCcw}
             label="Reset scenario"
+            className="ml-auto size-6"
             onClick={() => {
               setLaunch(EMPTY);
               setAccount(null);
@@ -160,26 +150,50 @@ export function Preview({
             }}
           />
         </div>
+        <Segmented
+          label="Account"
+          value={account ? (account.totpSecret ? "totp" : "new") : "none"}
+          options={[
+            { value: "none", label: "No account" },
+            { value: "new", label: "New user" },
+            { value: "totp", label: "User with TOTP" },
+          ]}
+          onChange={(v) => {
+            if (v === "none") {
+              setAccount(null);
+              setSecret("");
+              set({ loginHint: "" });
+            } else if (!seeding) seed(v === "totp");
+          }}
+        />
+        <Prop label="High risk IP">
+          <Switch label="High risk IP" checked={launch.ip === RISKY_IP} onChange={(on) => set({ ip: on ? RISKY_IP : "" })} />
+          <span className="font-mono text-xs text-muted-foreground">{RISKY_IP}</span>
+        </Prop>
+        <Prop label="Requests MFA">
+          <Switch label="Client requests MFA" checked={launch.acrValues === "faye:2fa"} onChange={(on) => set({ acrValues: on ? "faye:2fa" : "" })} />
+          <span className="font-mono text-xs text-muted-foreground">acr_values=faye:2fa</span>
+        </Prop>
         {account && (
           <dl className="grid grid-cols-[max-content_1fr_auto] items-center gap-x-2 gap-y-1 rounded-md border p-2 text-xs">
             <dt className="text-muted-foreground">Account</dt>
             <dd className="truncate font-mono" title={account.identifier}>
               {account.identifier}
             </dd>
-            <CopyButton text={account.identifier} label="Copy identifier" />
+            <CopyButton value={account.identifier} label="Copy identifier" className="size-6" />
             <dt className="text-muted-foreground">Password</dt>
             <dd className="truncate font-mono">{account.password}</dd>
-            <CopyButton text={account.password} label="Copy password" />
+            <CopyButton value={account.password} label="Copy password" className="size-6" />
           </dl>
         )}
         <p className="text-xs text-muted-foreground">Seeded accounts sign in only through preview clients.</p>
       </section>
 
       <section className="grid gap-2" aria-label="Launch">
-        <Overline>Launch</Overline>
-        <Row label="login_hint">
-          <Input className={cn(denseMono, "w-full")} value={launch.loginHint} onChange={(e) => set({ loginHint: e.target.value })} placeholder="alice@example.com" />
-        </Row>
+        <div className="flex items-center gap-1">
+          <Overline>Launch</Overline>
+          <Help>The authorization request the demo client sends with the preview client. Launch opens it in a popup; the run uses this draft, not the published version.</Help>
+        </div>
         <Row label="acr_values">
           <Choice label="acr_values" className="w-full" none="none" value={launch.acrValues} options={[{ value: "faye:1fa" }, { value: "faye:2fa" }]} onChange={(acrValues) => set({ acrValues })} />
         </Row>
@@ -201,6 +215,7 @@ export function Preview({
       <section className="grid gap-2" aria-label="Trace">
         <div className="flex items-center">
           <Overline>Trace</Overline>
+          <Help>Each step of the preview run as the engine takes it. When the run ends, its path is checked against the paths the checker enumerated for this draft.</Help>
           {run && <span className="ml-auto font-mono text-xs text-muted-foreground">{run.flowId.slice(0, 10)}</span>}
         </div>
         {!run ? (
@@ -208,7 +223,7 @@ export function Preview({
         ) : (
           <ol className="grid gap-0.5 font-mono text-xs" aria-live="polite">
             {run.events.map((r) => (
-              <li key={r.seq} className="grid grid-cols-[3.75rem_1fr] gap-2">
+              <li key={r.seq} className="trace-in grid grid-cols-[--spacing(15)_1fr] gap-2">
                 <span className="text-muted-foreground">{r.event.event}</span>
                 <span className="truncate" title={describe(r.event)}>
                   {r.event.event === "start" ? (r.event.outcome ?? "") + " " + (r.event.id ?? "").slice(7, 15) : describe(r.event)}
@@ -222,20 +237,21 @@ export function Preview({
             )}
           </ol>
         )}
-        {run?.end && <Expectation run={run} summary={summary?.flowId === run.flowId ? summary : null} />}
+        {run?.signIn && <Expectation part="Sign in" end={run.signIn.end} summary={summaries[run.signIn.flowId] ?? null} />}
+        {run?.end && <Expectation part={run.signIn ? "Consent" : null} end={run.end} summary={summaries[run.flowId] ?? null} />}
       </section>
     </div>
   );
 }
 
-/** How the run ended, and whether that is what the Paths tab predicted for the way it went. */
-function Expectation({ run, summary }: { run: LiveRun; summary: PreviewRun | null }) {
-  const end = run.end!;
+/** How the run (or one part of it) ended, and whether that is what the Paths tab predicted for the way it went. */
+function Expectation({ part, end, summary }: { part: string | null; end: TraceEvent; summary: PreviewRun | null }) {
   const succeeded = end.outcome === "succeed";
   return (
-    <div className={cn("grid gap-1 rounded-md border p-2 text-xs", summary?.matches === false && "border-danger")}>
+    <div className={cn("grid animate-in fade-in-0 slide-in-from-top-2 gap-1 rounded-md border p-2 text-xs", summary?.matches === false && "border-danger")}>
       <div className="flex items-center gap-1.5 font-medium">
         {succeeded ? <CircleCheck className="size-3.5 text-success" /> : <CircleX className="size-3.5 text-danger" />}
+        {part && <span>{part}</span>}
         {succeeded ? (
           <span className="font-mono">
             {end.amr?.join("+") ?? ""} {end.acr ?? ""}
@@ -263,7 +279,7 @@ function Expectation({ run, summary }: { run: LiveRun; summary: PreviewRun | nul
           for this path.
         </span>
       )}
-      <span className="text-muted-foreground">The demo client window shows the issued token and checks it too.</span>
+      {part !== "Sign in" && <span className="text-muted-foreground">The demo client window shows the issued token and checks it too.</span>}
     </div>
   );
 }
@@ -297,11 +313,11 @@ function TotpField({ secret, onChange }: { secret: string; onChange: (s: string)
         />
         {shown && (
           <span className="flex items-center gap-2 text-xs">
-            <span className="font-mono text-[15px] tracking-widest" aria-label="Current code">
+            <span className="font-mono text-base tracking-widest" aria-label="Current code">
               {shown.code.slice(0, 3)} {shown.code.slice(3)}
             </span>
             <span className="text-muted-foreground">{shown.left}s</span>
-            <CopyButton text={shown.code} label="Copy code" />
+            <CopyButton value={shown.code} label="Copy code" className="size-6" />
           </span>
         )}
       </div>
@@ -309,30 +325,11 @@ function TotpField({ secret, onChange }: { secret: string; onChange: (s: string)
   );
 }
 
-function Preset({ children, onClick, active, disabled }: { children: string; onClick: () => void; active?: boolean; disabled?: boolean }) {
-  return (
-    <Toggle
-      variant="outline"
-      size="sm"
-      pressed={!!active}
-      onPressedChange={onClick}
-      disabled={disabled}
-      className="h-7 px-2 text-xs font-normal data-[state=on]:border-accent-ui data-[state=on]:bg-accent-ui/8 data-[state=on]:text-accent-ui"
-    >
-      {children}
-    </Toggle>
-  );
-}
-
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="grid grid-cols-[6.5rem_1fr] items-start gap-2">
+    <label className="grid grid-cols-[--spacing(26)_1fr] items-start gap-2">
       <span className="pt-1 font-mono text-xs text-muted-foreground">{label}</span>
       {children}
     </label>
   );
-}
-
-function CopyButton({ text, label }: { text: string; label: string }) {
-  return <IconButton icon={Copy} label={label} className="size-6" onClick={() => navigator.clipboard?.writeText(text)} />;
 }

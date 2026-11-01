@@ -6,14 +6,10 @@ version: 1
 login:
   steps:
     identify:
-      screen: identifier
-      use: identity.resolve
+      block: identifier
     credential:
-      retry: 3
-      screen: password
-      use: password.verify
+      block: password
     # Consent runs once the sign in is accepted, on the authorization server's consent challenge
     grant:
       if: { not: client.first_party }
-      screen: consent
-      use: consent.record
+      block: consent

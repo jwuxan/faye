@@ -10,16 +10,20 @@ export interface ScreenResponse {
    * Innermost enclosing step id, when there is one.
    */
   step?: string;
+  /**
+   * Where the Login UI shows this screen, with ?flow={flowId} (ADR 0029). A label only: the flow decides the screen, so a browser at another path is shown this screen and moved to this path.
+   */
+  path: string;
   screen: Screen;
   branding?: Branding;
 }
 
 /**
- * The tenant's branding, when it has any. Appearance only: layout is not tenant configurable.
+ * How the tenant dresses its login screens, when it sets any of it: appearance and two optional controls (ADR 0033). The layout is not tenant configurable.
  */
 export interface Branding {
   /**
-   * Shown above every screen.
+   * Shown above every screen, and in the footer of every screen.
    */
   name?: string;
   /**
@@ -34,6 +38,14 @@ export interface Branding {
    * Corner radius in px.
    */
   radius?: number;
+  /**
+   * Password fields have a button that shows what was typed.
+   */
+  showPassword?: true;
+  /**
+   * The identifier screen shows a sign up button. Sign up is not supported yet: the button says so.
+   */
+  signUp?: true;
 }
 
 export type Screen =
@@ -78,6 +90,14 @@ export interface IdentifierScreen {
      */
     challenge: string;
   };
+  /**
+   * Present when the screen asks for the password with the identifier: answer with IdentifierPasswordPayload. Never offered with passkey.
+   */
+  password?: true;
+  /**
+   * Present when the tenant offers "keep me signed in": the answer may carry remember (ADR 0033).
+   */
+  remember?: true;
   errors?: Errors;
   attemptsLeft?: AttemptsLeft;
 }
@@ -183,6 +203,7 @@ export interface SubmitRequest {
   action: "submit";
   payload:
     | IdentifierPayload
+    | IdentifierPasswordPayload
     | PasswordPayload
     | PasskeyPayload
     | SkipPayload
@@ -194,6 +215,22 @@ export interface SubmitRequest {
 
 export interface IdentifierPayload {
   identifier: string;
+  /**
+   * Answers identifier when it offers remember: whether the person asked to stay signed in on this browser (ADR 0033).
+   */
+  remember?: boolean;
+}
+
+/**
+ * Answers identifier when it asks for the password.
+ */
+export interface IdentifierPasswordPayload {
+  identifier: string;
+  password: string;
+  /**
+   * Answers identifier when it offers remember: whether the person asked to stay signed in on this browser (ADR 0033).
+   */
+  remember?: boolean;
 }
 
 export interface PasswordPayload {
@@ -208,6 +245,10 @@ export interface PasskeyPayload {
    * The browser's PublicKeyCredential as JSON (base64url fields).
    */
   passkey: {};
+  /**
+   * Answers identifier when it offers remember: whether the person asked to stay signed in on this browser (ADR 0033).
+   */
+  remember?: boolean;
 }
 
 /**
@@ -242,6 +283,10 @@ export interface RedirectResponse {
    * Where the browser goes next: always an absolute http or https URL, so the Login UI can hand it to window.location (ADR 0007).
    */
   redirectTo: string;
+  /**
+   * Present, and true, only when the sign in failed: the host has been told, and the Login UI shows /error?reason=failed instead of following redirectTo (ADR 0031). Never set for a consent the person denied, which goes back to the app.
+   */
+  failed?: true;
 }
 
 /**

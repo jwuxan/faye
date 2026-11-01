@@ -1,9 +1,11 @@
 (flow 1 risk-totp 1
   (entry login authenticate
     (seq
-      (step identify (seq (screen identifier) (call identity.resolve)))
-      (step risk
-        (hook risk sha256:3281897b274bd5d56dd70e10e3052884f9754c1a3560cc2f24b20689117d878b))
+      (step identify
+        (seq
+          (screen identifier)
+          (call identity.resolve)
+          (hook risk sha256:3281897b274bd5d56dd70e10e3052884f9754c1a3560cc2f24b20689117d878b)))
       (step credential (retry 3 (seq (screen password) (call password.verify))))
       (step second-factor
         (when

@@ -4,6 +4,8 @@ import faye.check.CheckFailed;
 import faye.check.Publisher;
 import faye.check.Report;
 import faye.clients.ClientDirectory;
+import faye.dsl.BlockSpec;
+import faye.dsl.DslException;
 import faye.dsl.FlowCompiler;
 import faye.engine.Engine;
 import faye.engine.FlowHost;
@@ -22,6 +24,7 @@ import faye.hooks.SandboxedHooks;
 import faye.host.hydra.HydraClientDirectory;
 import faye.host.hydra.HydraFlowHost;
 import faye.host.mock.MockFlowHost;
+import faye.identity.IdentityBlock;
 import faye.identity.IdentityHandlers;
 import faye.identity.IdentityIssuers;
 import faye.identity.Passwords;
@@ -36,6 +39,7 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +47,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.jspecify.annotations.Nullable;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -102,14 +107,24 @@ class EngineConfiguration {
             FlowCompiler.Options dsl) {
         Publisher publisher = new Publisher(versions, hooks, handlers, screens, tenants);
         props.tenants().forEach((id, tenant) -> {
-            FlowCompiler.Compiled compiled = compile(tenant.flow(), id, dsl);
+            String problem = blocksProblem(dsl, tenants.configured(id));
+            if (problem != null) throw new IllegalStateException("tenant " + id + " blocks: " + problem);
+            // The configured file with the configured defaults only: defaults saved in the console
+            // apply when a flow is next published from it, never to what a restart publishes
+            FlowCompiler.Options options =
+                    dsl.withDefaults(tenants.configured(id).blocks());
+            FlowCompiler.Compiled compiled = compile(tenant.flow(), id, options);
             Flow flow = compiled.flow();
             String hash = FlowVersion.of(flow).hash();
             if (!versions.history(id).contains(hash)) {
                 refuse(id, "flow", publisher.check(id, flow, compiled.hooks()));
                 publisher.publish(id, flow, compiled.hooks());
             }
-            store.saveSource(hash, read(tenant.flow()));
+            String yaml = read(tenant.flow());
+            store.saveSource(hash, yaml);
+            // A source kept from before a DSL change that left the IR alone (consent moving into
+            // login.steps, ADR 0026) no longer compiles; this file compiles to the same version
+            if (!compiles(tenant.flow(), id, store.source(hash).orElse(yaml), options)) store.replaceSource(hash, yaml);
             FlowVersion current = versions.current(id).orElseThrow();
             refuse(id, "current version " + current.hash(), publisher.check(id, current.flow()));
         });
@@ -135,7 +150,8 @@ class EngineConfiguration {
      * What the compiler takes from this app, since it knows no host and no catalog: the namespace
      * spelling tenant YAML may still use (this app's flows were written for Hydra, and say {@code
      * hydra.} for {@code host.}; the alias comes from the host module), and the screens and handlers
-     * that belong in consent entries only, which start a flow's consent steps (ADR 0026).
+     * that belong in consent entries only, which start a flow's consent steps (ADR 0026), and the
+     * blocks of its handlers (ADR 0030).
      */
     @Bean
     FlowCompiler.Options dslOptions(HandlerRegistry handlers, ScreenRegistry screens) {
@@ -149,7 +165,36 @@ class EngineConfiguration {
                 handlers.all().stream()
                         .filter(h -> h.meta().entries().equals(consentOnly))
                         .map(Handler::name)
-                        .collect(Collectors.toSet()));
+                        .collect(Collectors.toSet()),
+                blocks());
+    }
+
+    /** The compiler's options for a tenant: its blocks take the tenant's defaults (ADR 0030). */
+    static FlowCompiler.Options forTenant(FlowCompiler.Options dsl, Tenants tenants, String tenant) {
+        return dsl.withDefaults(tenants.settings(tenant).blocks());
+    }
+
+    /** Why a tenant's block defaults cannot be used, or null. */
+    static @Nullable String blocksProblem(FlowCompiler.Options dsl, TenantSettings settings) {
+        for (var e : settings.blocks().entrySet()) {
+            BlockSpec block = dsl.blocks().get(e.getKey());
+            if (block == null) return "unknown block '" + e.getKey() + "'";
+            String problem = block.problem(e.getValue());
+            if (problem != null) return problem;
+            // Which blocks may follow the identifier depends on its view: the flow says it
+            for (String name : e.getValue().keySet()) {
+                if (block.settings().get(name) instanceof BlockSpec.Setting s
+                        && s.target() == BlockSpec.Setting.Target.PASSWORD) {
+                    return "the " + block.title() + " block's '" + name + "' is set in the flow, not as a default";
+                }
+            }
+        }
+        return null;
+    }
+
+    /** The blocks a flow's steps may be, by id: the identity module's (ADR 0030). */
+    static Map<String, BlockSpec> blocks() {
+        return Arrays.stream(IdentityBlock.values()).collect(Collectors.toMap(BlockSpec::id, b -> b));
     }
 
     /** Compiles a configured flow; a hook's {@code file:} is read from next to it. */
@@ -165,6 +210,15 @@ class EngineConfiguration {
     static FlowCompiler.Compiled compileDraft(
             Resource configured, String tenant, String yaml, FlowCompiler.Options dsl) {
         return FlowCompiler.compileWithHooks(tenant + ".yaml", yaml, name -> sibling(configured, name), dsl);
+    }
+
+    private static boolean compiles(Resource configured, String tenant, String yaml, FlowCompiler.Options dsl) {
+        try {
+            compileDraft(configured, tenant, yaml, dsl);
+            return true;
+        } catch (DslException e) {
+            return false;
+        }
     }
 
     /** A hook file next to a configured flow. */

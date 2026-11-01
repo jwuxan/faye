@@ -1,5 +1,7 @@
 dependencies {
     api(project(":faye-engine"))
+    // The blocks of these handlers implement the YAML surface's BlockSpec (ADR 0030)
+    implementation(project(":faye-dsl"))
     implementation(libs.jackson.databind)
     // Argon2PasswordEncoder; Argon2 itself comes from Bouncy Castle
     implementation(libs.spring.security.crypto)

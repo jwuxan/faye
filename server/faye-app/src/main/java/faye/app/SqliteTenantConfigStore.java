@@ -45,6 +45,14 @@ final class SqliteTenantConfigStore implements TenantConfigStore {
     }
 
     @Override
+    public void replaceSource(String versionHash, String yaml) {
+        db.sql("INSERT INTO faye_version_source (hash, yaml) VALUES (?, ?)"
+                        + " ON CONFLICT (hash) DO UPDATE SET yaml = excluded.yaml")
+                .params(versionHash, yaml)
+                .update();
+    }
+
+    @Override
     public Optional<TenantSettings> settings(String tenantId) {
         return column(tenantId, "settings").map(json -> {
             try {

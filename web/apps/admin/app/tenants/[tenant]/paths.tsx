@@ -5,7 +5,7 @@ import { cn } from "@faye/ui/lib/utils";
 import { Route } from "lucide-react";
 import { useState } from "react";
 import type { PathView, Validation } from "../../../lib/api";
-import { Empty, Segmented } from "../../ui";
+import { Empty, Help, Segmented } from "../../ui";
 
 type Filter = "all" | "succeed" | "fail";
 
@@ -29,6 +29,10 @@ export function Paths({ validation, selected, onSelect }: { validation: Validati
             { value: "fail", label: <>Fail <span className="font-mono text-muted-foreground">{validation.paths.length - succeed}</span></> },
           ]}
         />
+        <Help side="bottom">
+          The checker walks every branch of the draft and lists each way it can end. A succeeding path shows the amr and acr it would issue, computed from the
+          credentials it verifies.
+        </Help>
       </div>
       <p className="text-xs text-muted-foreground">Select a path to light it up in the blocks and the graph.</p>
       <ul className="grid gap-1" aria-label="Paths">
@@ -52,18 +56,18 @@ export function Paths({ validation, selected, onSelect }: { validation: Validati
                   <span className="font-mono text-muted-foreground">{p.entry}</span>
                   <span className="ml-auto flex gap-1">
                     {p.amr.map((a) => (
-                      <Badge key={a} variant="secondary" className="h-4 rounded-[3px] px-1 font-mono text-[10px] font-normal">
+                      <Badge key={a} variant="secondary" className="h-4 rounded-xs px-1 font-mono text-xs font-normal">
                         {a}
                       </Badge>
                     ))}
                     {p.acr && (
-                      <Badge variant="outline" className="h-4 rounded-[3px] px-1 font-mono text-[10px] font-normal">
+                      <Badge variant="outline" className="h-4 rounded-xs px-1 font-mono text-xs font-normal">
                         {p.acr}
                       </Badge>
                     )}
                   </span>
                 </span>
-                <span className="font-mono text-[11px] leading-4 break-words">
+                <span className="font-mono text-xs leading-4 break-words">
                   {parts.map((part, j) => (
                     <span key={j} className={j === parts.length - 1 ? "text-muted-foreground" : ""}>
                       {part}

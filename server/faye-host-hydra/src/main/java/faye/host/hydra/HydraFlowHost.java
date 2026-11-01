@@ -34,6 +34,9 @@ public final class HydraFlowHost implements FlowHost {
 
     private static final int TIMEOUT_MS = 10_000;
 
+    /** How long Hydra remembers a sign in the person asked it to: 30 days. */
+    static final long REMEMBER_FOR_SECONDS = 30L * 24 * 60 * 60;
+
     private final OAuth2Api api;
 
     /** @param adminUrl Hydra admin base URL, e.g. {@code http://hydra:4445} */
@@ -138,8 +141,11 @@ public final class HydraFlowHost implements FlowHost {
         AcceptOAuth2LoginRequest body = new AcceptOAuth2LoginRequest()
                 .subject(outcome.subject())
                 .amr(outcome.amr())
-                .remember(false)
+                .remember(outcome.remember())
                 .context(outcome.context());
+        // The person asked to stay signed in (ADR 0033): Hydra keeps its login session, and skips
+        // the next sign in from this browser for this long; the engine counts that as one factor
+        if (outcome.remember()) body.rememberFor(REMEMBER_FOR_SECONDS);
         if (outcome.acr() != null) body.acr(outcome.acr());
         try {
             return redirect(api.acceptOAuth2LoginRequest(request.ref(), body));

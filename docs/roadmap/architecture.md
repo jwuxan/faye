@@ -92,7 +92,7 @@ faye/
 1. Demo client redirects the browser to Hydra `/oauth2/auth`.
 2. Hydra redirects to Faye `/login?login_challenge=…`.
 3. Faye `FlowHost.load` fetches the login request (client, scopes, `skip`, `acr_values`), resolves the tenant, creates a `flowId`, starts the engine.
-4. Engine runs until a `screen`; continuation is persisted; browser is sent to Login UI `/flow/{flowId}`.
+4. Engine runs until a `screen`; continuation is persisted; browser is sent to the Login UI at the screen's path, `{path}?flow={flowId}` (ADR 0029).
 5. Login UI fetches the screen, renders it, posts submissions back. Each post resumes the engine.
 6. On `succeed`, `FlowHost.accept` sends `subject`, `amr`, `acr`, `remember`, and `context.flowId` to Hydra and returns its redirect URL.
 7. Hydra redirects to `/consent?consent_challenge=…`; Faye runs the consent entry of the flow version the login ran (see [hydra-integration.md](hydra-integration.md)).

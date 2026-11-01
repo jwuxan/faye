@@ -46,12 +46,13 @@ export function methodLabel(id: string): string {
   return known[id] ?? id;
 }
 
-export function scopeLabel(scope: string): string {
-  const known: Record<string, string> = {
-    openid: "Know who you are",
-    profile: "See your name",
-    email: "See your email address",
-    offline_access: "Stay connected when you're not using it",
+/** What a scope lets the application do, and what it shares; unknown scopes show as written. */
+export function scopeLabel(scope: string): { label: string; detail?: string } {
+  const known: Record<string, { label: string; detail: string }> = {
+    openid: { label: "Know who you are", detail: "Your account's unique identifier" },
+    profile: { label: "See your name", detail: "Your name and basic profile details" },
+    email: { label: "See your email address", detail: "The email address on your account" },
+    offline_access: { label: "Stay connected", detail: "Keep access when you're not using it" },
   };
-  return known[scope] ?? scope;
+  return known[scope] ?? { label: scope };
 }

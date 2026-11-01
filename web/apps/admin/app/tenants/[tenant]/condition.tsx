@@ -101,7 +101,7 @@ export function ConditionBuilder({ value, onChange }: { value: Predicate; onChan
   return (
     <div className="grid gap-2">
       <Group mode={group.mode} items={group.items} onChange={(mode, items) => onChange(items.length === 1 && mode === "all" ? items[0] : fromGroup(mode, items))} />
-      <code className="block rounded-md bg-surface-2 px-2 py-1 font-mono text-[11px] leading-4 break-words text-muted-foreground">{describe(value)}</code>
+      <code className="block rounded-md bg-surface-2 px-2 py-1 font-mono text-xs leading-4 break-words text-muted-foreground">{describe(value)}</code>
     </div>
   );
 }
@@ -163,7 +163,7 @@ function Row({ leaf, onChange, onRemove }: { leaf: Leaf; onChange: (l: Leaf) => 
           label="Operator"
           value={leaf.op}
           mono={false}
-          className="w-[112px]"
+          className="w-28"
           options={LEAF_OPS.map((o) => ({ value: o.op, label: o.label }))}
           onChange={(v) => {
             const op = v as LeafOp;

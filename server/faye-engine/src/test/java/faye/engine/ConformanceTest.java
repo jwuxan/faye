@@ -33,6 +33,8 @@ class ConformanceTest {
     static final Path DIR = Path.of(System.getProperty("faye.repoRoot"), "conformance");
     static final ObjectMapper YAML = new YAMLMapper();
     static final ObjectMapper JSON = new ObjectMapper();
+    /** Reasons a request is refused with before any flow runs, which never mark the redirect failed. */
+    static final Set<String> REFUSED_BEFORE_RUN = Set.of("flow_unavailable", "preview_unavailable");
 
     /** Hand written vectors, then the ones generated from path enumeration ({@code faye-check}). */
     static Stream<Path> vectors() throws IOException {
@@ -93,7 +95,13 @@ class ConformanceTest {
                 map(v.path("host").path("client")),
                 HostParams.fromMap(map(v.path("host").path("params")))));
         var tenant = v.path("tenant");
-        var policy = new TenantPolicy(tenant.path("mfa_required").asBoolean(), null, null);
+        var policy = new TenantPolicy(
+                tenant.path("mfa_required").asBoolean(),
+                null,
+                null,
+                Set.of(),
+                null,
+                tenant.path("remember_me").asBoolean());
         var previews = new ScriptedPreviews(v.path("preview"), versions);
         var store = new RacingStore();
         var engine = Engine.builder()
@@ -123,6 +131,9 @@ class ConformanceTest {
                 if (event.has("expect_step")) {
                     assertThat(screen.step()).isEqualTo(event.get("expect_step").asText());
                 }
+                if (event.has("expect_path")) {
+                    assertThat(screen.path()).isEqualTo(event.get("expect_path").asText());
+                }
                 if (event.has("expect_identifier")) {
                     assertThat(screen.screen().get("identifier"))
                             .isEqualTo(event.get("expect_identifier").asText());
@@ -145,6 +156,14 @@ class ConformanceTest {
                 if (event.has("expect_passkey")) {
                     assertThat(screen.screen().containsKey("passkey"))
                             .isEqualTo(event.get("expect_passkey").asBoolean());
+                }
+                if (event.has("expect_password")) {
+                    assertThat(screen.screen().containsKey("password"))
+                            .isEqualTo(event.get("expect_password").asBoolean());
+                }
+                if (event.has("expect_remember")) {
+                    assertThat(screen.screen().containsKey("remember"))
+                            .isEqualTo(event.get("expect_remember").asBoolean());
                 }
             } else if (event.has("publish")) {
                 versions.publish(
@@ -186,6 +205,13 @@ class ConformanceTest {
             } else if (event.has("expect_result")) {
                 JsonNode expected = event.get("expect_result");
                 assertThat(last).isInstanceOf(Redirect.class);
+                // Only a sign in that ran and failed is marked; a refused consent, and a request
+                // refused before any flow ran, go back to the app (ADR 0031)
+                boolean beforeRun =
+                        REFUSED_BEFORE_RUN.contains(expected.path("reason").asText());
+                assertThat(((Redirect) last).failed())
+                        .as("redirect marked failed")
+                        .isEqualTo(!expected.path("succeed").asBoolean() && kind == HostKind.LOGIN && !beforeRun);
                 if (expected.path("succeed").asBoolean() && kind == HostKind.CONSENT) {
                     assertThat(host.rejected()).isEmpty();
                     assertThat(host.consented()).hasSize(1);
@@ -204,6 +230,10 @@ class ConformanceTest {
                     if (expected.has("acr")) {
                         assertThat(a.acr()).isEqualTo(expected.get("acr").asText());
                     }
+                    // Absent means the person did not ask to stay signed in
+                    assertThat(a.remember())
+                            .as("remember")
+                            .isEqualTo(expected.path("remember").asBoolean(false));
                 } else {
                     assertThat(host.accepted()).isEmpty();
                     assertThat(host.consented()).isEmpty();

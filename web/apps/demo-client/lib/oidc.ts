@@ -19,7 +19,8 @@ export function oidcConfig() {
 }
 
 /** @param secret null for a public client, which redeems codes with PKCE alone */
-export type Client = { id: string; label: string; tenant: string; secret: string | null };
+/** thirdParty: registered without metadata.first_party, so the tenant's flow may ask for consent. */
+export type Client = { id: string; label: string; tenant: string; secret: string | null; thirdParty: boolean };
 
 /** Where deploy/bootstrap.mjs appends Hydra's response for each application it registers. */
 function registrations(): string {
@@ -41,6 +42,7 @@ export function clients(): Client[] {
     label: `Preview: tenant ${tenant}'s draft`,
     tenant,
     secret: null,
+    thirdParty: false,
   }));
   let lines: string[] = [];
   try {
@@ -50,8 +52,14 @@ export function clients(): Client[] {
   }
   const apps = lines
     .filter((line) => line.trim())
-    .map((line) => JSON.parse(line) as { client_id: string; client_name: string; client_secret?: string; metadata?: { tenant?: string } })
-    .map((c) => ({ id: c.client_id, label: c.client_name, tenant: c.metadata?.tenant ?? "", secret: c.client_secret ?? null }));
+    .map((line) => JSON.parse(line) as { client_id: string; client_name: string; client_secret?: string; metadata?: { tenant?: string; first_party?: boolean } })
+    .map((c) => ({
+      id: c.client_id,
+      label: c.client_name,
+      tenant: c.metadata?.tenant ?? "",
+      secret: c.client_secret ?? null,
+      thirdParty: c.metadata?.first_party !== true,
+    }));
   return [...apps.sort((a, b) => a.tenant.localeCompare(b.tenant) || a.label.localeCompare(b.label)), ...previews];
 }
 

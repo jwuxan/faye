@@ -43,25 +43,29 @@ import org.jspecify.annotations.Nullable;
  *     timeout_ms: 200                      # optional
  * login:                                   # the sign in, from the first step to consent
  *   steps:
- *     step-id:
+ *     step-id:                             # the first step is the identifier block
  *       if: predicate                      # (when predicate ...); on an option, its guard
- *       retry: 3                           # (retry 3 ...)
- *       set: { name: literal }             # (set name literal), first
- *       hook: hook-id                      # (hook hook-id hash)
- *       screen: type | { type: t, opt: literal }
- *       use: handler
+ *       before: hook-id                    # (hook hook-id hash), before the rest
+ *       set: { name: literal }             # (set name literal)
+ *       block: id                          # (screen ...) (call ...), as the block says
+ *       with: { setting: literal }         # the block's settings that differ from its defaults
+ *       path: /challenge/name              # the block's screen's path option (ADR 0029)
  *       alternative: { option-id: body }   # (choose ((opt option-id body) ...)); or
  *       pick: hook-id                      # with alternative: (choose (...) {:pick (hook ...)})
  *       steps: { step-id: body }           # nested steps
- *       fail: reason                       # last
+ *       fail: reason
+ *       after: hook-id                     # (hook hook-id hash), after the rest
  * </pre>
  *
- * A body needs at least one of set, hook, screen, use, alternative, steps, fail; its parts run in
- * the order above. Option bodies take the same keys. Predicates have the IR shape ({@code eq},
- * {@code and}, ...). A caller may give namespace aliases, which predicates' paths are rewritten
- * from (the app passes its host's legacy spelling); the compiler itself knows none. Each entry compiles to
- * {@code (seq (step ...) ... (succeed))}. A hook is pinned by the hash of its definition ({@link
- * HookDef}). docs/roadmap/dsl-and-ir.md has the lowering table.
+ * A body is one kind of block, which decides the keys it takes (ADR 0030): a built in block ({@code
+ * block}, a {@link BlockSpec} the caller gives, which fixes its screen and handler), a choice
+ * ({@code alternative}), a group ({@code steps}), {@code set} or {@code fail}. The identifier is the
+ * first step and only there; an option is one credential block or a fail. Its parts run in the
+ * order above. Predicates have the IR shape ({@code eq}, {@code and}, ...). A caller may give
+ * namespace aliases, which predicates' paths are rewritten from (the app passes its host's legacy
+ * spelling); the compiler itself knows none. Each entry compiles to {@code (seq (step ...) ...
+ * (succeed))}. A hook is pinned by the hash of its definition ({@link HookDef}).
+ * docs/roadmap/dsl-and-ir.md has the lowering table.
  *
  * <p>Consent is a step like any other (ADR 0026): the steps of {@code login} up to the first one
  * that shows a consent screen or calls a consent handler ({@link Options}: the caller names them
@@ -89,15 +93,34 @@ public final class FlowCompiler {
      *     one starts the consent steps
      * @param consentHandlers handlers that belong to the consent entry: the first step calling one
      *     starts the consent steps
+     * @param blocks the blocks a step may be, by {@link BlockSpec#id} (ADR 0030)
      */
-    public record Options(Map<String, String> aliases, Set<String> consentScreens, Set<String> consentHandlers) {
-        /** No aliases and no consent steps: every step lowers to the authenticate entry. */
-        public static final Options NONE = new Options(Map.of(), Set.of(), Set.of());
+    public record Options(
+            Map<String, String> aliases,
+            Set<String> consentScreens,
+            Set<String> consentHandlers,
+            Map<String, BlockSpec> blocks) {
+        /** No aliases, no consent steps and no blocks: every step lowers to the authenticate entry. */
+        public static final Options NONE = new Options(Map.of(), Set.of(), Set.of(), Map.of());
 
         public Options {
             aliases = Map.copyOf(aliases);
             consentScreens = Set.copyOf(consentScreens);
             consentHandlers = Set.copyOf(consentHandlers);
+            blocks = Map.copyOf(blocks);
+        }
+
+        /** These options with a tenant's defaults for its blocks' settings, by block id. */
+        public Options withDefaults(Map<String, Map<String, Object>> defaults) {
+            if (defaults.isEmpty()) return this;
+            Map<String, BlockSpec> next = new LinkedHashMap<>(blocks);
+            defaults.forEach((id, d) -> next.computeIfPresent(id, (k, b) -> b.withDefaults(d)));
+            return new Options(aliases, consentScreens, consentHandlers, next);
+        }
+
+        /** Without blocks: a flow of choices, groups, sets and fails only. */
+        public Options(Map<String, String> aliases, Set<String> consentScreens, Set<String> consentHandlers) {
+            this(aliases, consentScreens, consentHandlers, Map.of());
         }
     }
 
@@ -138,11 +161,25 @@ public final class FlowCompiler {
 
     private final Options options;
 
+    /** The id of the first step of {@code login}, which is the identifier. */
+    private @Nullable String firstStep;
+
+    /** Whether the identifier asks for the password, so no password block may. */
+    private boolean passwordOnIdentifier;
+
+    /** The caller's identifier block, which the first step is; null if it has none. */
+    private final @Nullable BlockSpec identifier;
+
+    /** The caller's password block, whose handler an identifier asking for the password calls. */
+    private final @Nullable BlockSpec password;
+
     private FlowCompiler(String origin, Function<String, Optional<String>> files, Options options) {
         this.origin = origin;
         this.files = files;
         this.options = options;
         this.aliases = options.aliases();
+        this.identifier = blockOf(options, BlockSpec.Role.IDENTIFIER);
+        this.password = blockOf(options, BlockSpec.Role.PASSWORD);
     }
 
     /** @param origin file name used in source refs and diagnostics */
@@ -268,6 +305,17 @@ public final class FlowCompiler {
         } else {
             error(login.value().source(), "an entry must be a mapping with 'steps'");
         }
+        firstStep = steps == null
+                ? null
+                : steps.entries().keySet().stream().findFirst().orElse(null);
+        if (firstStep == null && login.value() instanceof Doc.Map) {
+            error(
+                    login.key(),
+                    identifier == null
+                            ? "'login' needs a step"
+                            : "'login' needs its first step, the " + identifier.title() + " ('block: " + identifier.id()
+                                    + "')");
+        }
         java.util.Map<String, Doc.Entry> signIn = new LinkedHashMap<>();
         java.util.Map<String, Doc.Entry> consent = new LinkedHashMap<>();
         Doc.@Nullable Entry first = null;
@@ -293,19 +341,12 @@ public final class FlowCompiler {
         for (var e : m.entries().entrySet()) {
             Doc value = e.getValue().value();
             boolean asks = switch (e.getKey()) {
-                case "use" ->
+                case "block" ->
                     value instanceof Doc.Scalar s
-                            && s.value() instanceof String h
-                            && options.consentHandlers().contains(h);
-                case "screen" ->
-                    (value instanceof Doc.Scalar s
-                                    && s.value() instanceof String named
-                                    && options.consentScreens().contains(named))
-                            || (value instanceof Doc.Map screen
-                                    && screen.entries().get("type") instanceof Doc.Entry type
-                                    && type.value() instanceof Doc.Scalar t
-                                    && t.value() instanceof String name
-                                    && options.consentScreens().contains(name));
+                            && s.value() instanceof String id
+                            && options.blocks().get(id) instanceof BlockSpec b
+                            && (options.consentHandlers().contains(b.handler())
+                                    || options.consentScreens().contains(b.screen()));
                 case "alternative", "steps" ->
                     value instanceof Doc.Map nested
                             && nested.entries().values().stream().anyMatch(n -> recordsConsent(n.value()));
@@ -321,7 +362,7 @@ public final class FlowCompiler {
         ArrayNode entry = JSON.arrayNode().add("entry").add(id).add(kind.wireName());
         ArrayNode seq = JSON.arrayNode().add("seq");
         mark(seq, at, "steps");
-        steps(new Doc.Map(steps, at)).forEach(seq::add);
+        steps(new Doc.Map(steps, at), false).forEach(seq::add);
         ArrayNode succeed = JSON.arrayNode().add("succeed");
         mark(succeed, at, "succeed");
         entry.add(seq.add(succeed));
@@ -329,14 +370,98 @@ public final class FlowCompiler {
         return entry;
     }
 
-    private List<JsonNode> steps(Doc.Map steps) {
+    /** Where a body sits, which decides the blocks it may be. */
+    private enum Where {
+        /** The first step of {@code login}: the identifier. */
+        FIRST,
+        /** Any other step of {@code login}. */
+        STEP,
+        /** A step of a group. */
+        NESTED,
+        /** An option of a choice. */
+        OPTION
+    }
+
+    /** What a body does, which decides the keys it takes. */
+    private enum Kind {
+        BLOCK,
+        CHOOSE,
+        GROUP,
+        SET,
+        FAIL
+    }
+
+    /** A body's kind and, for a block's step, the block. */
+    private record Shape(Kind kind, @Nullable BlockSpec block) {
+
+        BlockSpec.@Nullable Role role() {
+            return block == null ? null : block.role();
+        }
+
+        String named() {
+            if (block != null) return article(block.title()) + " block";
+            return switch (kind) {
+                case BLOCK -> "a block";
+                case CHOOSE -> "a Choose block";
+                case GROUP -> "a Group block";
+                case SET -> "a Set block";
+                case FAIL -> "a Fail block";
+            };
+        }
+
+        /** Whether the body takes {@code key}: hooks around any block but a fail, which nothing follows. */
+        boolean takes(String key) {
+            if ("after".equals(key)) return kind != Kind.FAIL;
+            if ("if".equals(key)) return role() != BlockSpec.Role.IDENTIFIER;
+            if ("before".equals(key)) return true;
+            return switch (kind) {
+                case BLOCK -> "block".equals(key) || "path".equals(key) || ("with".equals(key) && hasSettings());
+                case CHOOSE -> "alternative".equals(key) || "pick".equals(key);
+                case GROUP -> "steps".equals(key);
+                case SET -> "set".equals(key);
+                case FAIL -> "fail".equals(key);
+            };
+        }
+
+        private boolean hasSettings() {
+            return block == null || !block.settings().isEmpty();
+        }
+
+        /** The keys the body takes, in the order the surface documents them, for a diagnostic. */
+        String keys() {
+            return BODY_ORDER.stream()
+                    .filter(this::takes)
+                    .map(k -> "'" + k + "'")
+                    .collect(java.util.stream.Collectors.joining(", "));
+        }
+
+        /** Whether the body may be an option of a choice: one credential, or a fail. */
+        boolean option() {
+            BlockSpec.Role role = role();
+            return kind == Kind.FAIL || (kind == Kind.BLOCK && (role == null || role.option()));
+        }
+    }
+
+    /** "an Identifier", "a Password". */
+    private static String article(String title) {
+        return ("AEIOU".indexOf(title.charAt(0)) >= 0 ? "an " : "a ") + title;
+    }
+
+    /** The keys a step or option may have, in the order the surface documents them. */
+    private static final List<String> BODY_ORDER =
+            List.of("if", "before", "set", "block", "with", "path", "alternative", "pick", "steps", "fail", "after");
+
+    private static final Set<String> BODY_KEYS = Set.copyOf(BODY_ORDER);
+
+    private List<JsonNode> steps(Doc.Map steps, boolean nested) {
         List<JsonNode> out = new ArrayList<>();
         steps.entries().forEach((id, step) -> {
             if (!(step.value() instanceof Doc.Map body)) {
                 error(step.value().source(), "step must be a mapping");
                 return;
             }
-            Lowered inner = body(body, step.key(), "step", false);
+            Where where = nested ? Where.NESTED : id.equals(firstStep) ? Where.FIRST : Where.STEP;
+            Lowered inner = body(body, step.key(), where);
             if (inner == null) return;
             ArrayNode node = JSON.arrayNode().add("step").add(id).add(inner.node());
             mark(node, step.key(), "step");
@@ -349,31 +474,72 @@ public final class FlowCompiler {
     /** A lowered body, and for an option the guard its {@code if} became. */
     private record Lowered(JsonNode node, @Nullable JsonNode guard) {}
 
+    /** The kind of a body, or null if it has none of the keys that decide one. */
+    private @Nullable Shape shape(Doc.Map body) {
+        Set<String> keys = body.entries().keySet();
+        if (body.entries().get("block") instanceof Doc.Entry at) {
+            Doc id = at.value();
+            return new Shape(
+                    Kind.BLOCK,
+                    id instanceof Doc.Scalar s && s.value() instanceof String b
+                            ? options.blocks().get(b)
+                            : null);
+        }
+        if (keys.contains("alternative")) return new Shape(Kind.CHOOSE, null);
+        if (keys.contains("steps")) return new Shape(Kind.GROUP, null);
+        if (keys.contains("set")) return new Shape(Kind.SET, null);
+        if (keys.contains("fail")) return new Shape(Kind.FAIL, null);
+        return null;
+    }
+
     /**
-     * A step or option body: its parts in a fixed order, wrapped in retry, then in when (a step) or
-     * guarded (an option).
+     * A step or option body: one kind of block, its parts in a fixed order, a block's attempts
+     * around its own parts, then its {@code before} and {@code after} hooks, then in when (a step)
+     * or guarded (an option).
      */
-    private @Nullable Lowered body(Doc.Map body, SourceRef owner, String what, boolean option) {
+    private @Nullable Lowered body(Doc.Map body, SourceRef owner, Where where) {
+        String what = where == Where.OPTION ? "option" : "step";
+        Shape shape = shape(body);
         List<JsonNode> sets = new ArrayList<>();
-        JsonNode hook = null;
+        JsonNode before = null;
+        JsonNode after = null;
         JsonNode pick = null;
-        Doc.Entry pickAt = null;
         Doc.Map alternative = null;
-        JsonNode screen = null;
-        JsonNode call = null;
+        Doc.Entry blockAt = null;
+        Doc.Entry withAt = null;
+        Doc.Entry pathAt = null;
         JsonNode nested = null;
         JsonNode fail = null;
         JsonNode test = null;
         Doc.Entry testAt = null;
-        Doc.Entry retryAt = null;
         for (var e : body.entries().entrySet()) {
             Doc value = e.getValue().value();
-            switch (e.getKey()) {
+            String key = e.getKey();
+            String moved = moved(key, value, shape, body);
+            if (moved != null) {
+                error(e.getValue().key(), moved);
+                continue;
+            }
+            if (!BODY_KEYS.contains(key)) {
+                error(e.getValue().key(), "unknown " + what + " key '" + key + "'");
+                continue;
+            }
+            if (shape != null
+                    && shape.block() instanceof BlockSpec b
+                    && b.role() == BlockSpec.Role.IDENTIFIER
+                    && "if".equals(key)) {
+                error(e.getValue().key(), "the " + b.title() + " always runs: it takes no 'if'");
+                continue;
+            }
+            if (shape != null && !shape.takes(key)) {
+                error(e.getValue().key(), shape.named() + " takes " + shape.keys() + ", not '" + key + "'");
+                continue;
+            }
+            switch (key) {
                 case "if" -> {
                     test = predicate(value);
                     testAt = e.getValue();
                 }
-                case "retry" -> retryAt = e.getValue();
                 case "set" -> {
                     if (value instanceof Doc.Map vars) {
                         vars.entries().forEach((name, v) -> {
@@ -388,25 +554,17 @@ public final class FlowCompiler {
                         error(value.source(), "'set' must be a mapping of variable name to literal");
                     }
                 }
-                case "hook" -> hook = hookRef(value);
-                case "pick" -> {
-                    pick = hookRef(value);
-                    pickAt = e.getValue();
-                }
-                case "screen" -> screen = screen(value);
-                case "use" -> {
-                    ArrayNode node = JSON.arrayNode().add("call").add(scalar(value));
-                    mark(node, value.source(), "use");
-                    markChild(node, 1, value.source(), "handler name");
-                    call = node;
-                }
+                case "before" -> before = hookRef(value);
+                case "after" -> after = hookRef(value);
+                case "pick" -> pick = hookRef(value);
+                case "block" -> blockAt = e.getValue();
+                case "with" -> withAt = e.getValue();
+                case "path" -> pathAt = e.getValue();
                 case "alternative", "steps" -> {
-                    if (nested != null || alternative != null) {
-                        error(e.getValue().key(), "'alternative' and 'steps' cannot be combined");
-                    } else if (!(value instanceof Doc.Map m) || m.entries().isEmpty()) {
-                        error(value.source(), "'" + e.getKey() + "' must be a non empty mapping");
-                    } else if (e.getKey().equals("steps")) {
-                        List<JsonNode> children = steps(m);
+                    if (!(value instanceof Doc.Map m) || m.entries().isEmpty()) {
+                        error(value.source(), "'" + key + "' must be a non empty mapping");
+                    } else if ("steps".equals(key)) {
+                        List<JsonNode> children = steps(m, true);
                         if (children.size() == 1) {
                             nested = children.get(0);
                         } else if (!children.isEmpty()) {
@@ -415,6 +573,10 @@ public final class FlowCompiler {
                             mark(seq, value.source(), "steps");
                             nested = seq;
                         }
+                    } else if (m.entries().size() < 2) {
+                        error(
+                                value.source(),
+                                "a choice needs two options or more; with one, use that block as the step");
                     } else {
                         // Lowered once the whole body is read, since 'pick' may come after it
                         alternative = m;
@@ -426,40 +588,45 @@ public final class FlowCompiler {
                     markChild(node, 1, value.source(), "fail reason");
                     fail = node;
                 }
-                default -> error(e.getValue().key(), "unknown " + what + " key '" + e.getKey() + "'");
+                default -> throw new IllegalStateException("BODY_KEYS has " + key);
             }
         }
-        if (pickAt != null && alternative == null) {
-            error(pickAt.value().source(), "'pick' needs an 'alternative' to pick from");
-        }
-        if (alternative != null) nested = alternative(alternative, pick);
-        List<JsonNode> parts = new ArrayList<>(sets);
-        for (JsonNode part : new JsonNode[] {hook, screen, call, nested, fail}) {
-            if (part != null) parts.add(part);
-        }
-        if (parts.isEmpty()) {
-            // An unknown hook was reported where it is named
-            if (!body.entries().containsKey("hook")) {
-                error(owner, what + " needs one of 'set', 'hook', 'screen', 'use', 'alternative', 'steps' or 'fail'");
+        if (shape == null) {
+            // A key the surface moved was reported where it is, with what to write instead
+            if (body.entries().entrySet().stream()
+                    .noneMatch(k -> moved(k.getKey(), k.getValue().value(), null, body) != null)) {
+                error(owner, what + " needs one of 'block', 'alternative', 'steps', 'set' or 'fail'");
             }
             return null;
         }
-        JsonNode inner = parts.get(0);
-        if (parts.size() > 1) {
-            ArrayNode seq = JSON.arrayNode().add("seq");
-            parts.forEach(seq::add);
-            mark(seq, owner, what);
-            inner = seq;
+        if (shape.kind() == Kind.BLOCK && shape.block() == null) {
+            if (blockAt != null) {
+                error(
+                        blockAt.value().source(),
+                        blockAt.value() instanceof Doc.Scalar
+                                ? "unknown block " + unknownBlock(blockAt.value())
+                                : "a block is named by its id"
+                                        + unknownBlock(blockAt.value()).replaceFirst("^'[^']*'", ""));
+            }
+            return null;
         }
-        if (retryAt != null) {
-            ArrayNode retry =
-                    JSON.arrayNode().add("retry").add(scalar(retryAt.value())).add(inner);
-            mark(retry, retryAt.value().source(), "retry");
-            markChild(retry, 1, retryAt.value().source(), "retry");
-            inner = retry;
+        place(shape, owner, where);
+        if (alternative != null) nested = alternative(alternative, pick);
+        List<JsonNode> parts = new ArrayList<>(sets);
+        if (shape.block() != null && blockAt != null) {
+            List<JsonNode> lowered = block(shape.block(), blockAt, withAt, where);
+            parts.addAll(lowered);
+            if (pathAt != null) path(pathAt, firstScreen(lowered.get(0)));
         }
+        for (JsonNode part : new JsonNode[] {nested, fail}) {
+            if (part != null) parts.add(part);
+        }
+        if (parts.isEmpty()) return null;
+        if (before != null) parts.add(0, before);
+        if (after != null) parts.add(after);
+        JsonNode inner = seq(parts, owner, what);
         if (test == null || testAt == null) return new Lowered(inner, null);
-        if (option) {
+        if (where == Where.OPTION) {
             ObjectNode guard = JSON.objectNode().set("guard", test);
             mark(guard, testAt.value().source(), "if");
             return new Lowered(inner, guard);
@@ -469,6 +636,252 @@ public final class FlowCompiler {
         return new Lowered(when, null);
     }
 
+    /**
+     * What to write instead of a key the surface no longer has (ADR 0030): a step names its block,
+     * which brings its screen, handler and attempts; a hook runs around a block. Null for any other
+     * key.
+     */
+    private @Nullable String moved(String key, Doc value, @Nullable Shape shape, Doc.Map body) {
+        return switch (key) {
+            case "use" -> {
+                String id = value instanceof Doc.Scalar s && s.value() instanceof String handler
+                        ? options.blocks().values().stream()
+                                .filter(b -> b.handler().equals(handler))
+                                .map(BlockSpec::id)
+                                .findFirst()
+                                .orElse(null)
+                        : null;
+                yield "a step names its block, which brings its handler: write 'block: " + (id == null ? "<block>" : id)
+                        + "'";
+            }
+            case "screen" -> "a block shows its own screen; change what it offers under 'with'";
+            case "retry" -> {
+                // The block the step is, or the one its old 'use' names
+                BlockSpec block = shape != null ? shape.block() : null;
+                if (block == null
+                        && body.entries().get("use") instanceof Doc.Entry use
+                        && use.value() instanceof Doc.Scalar h) {
+                    block = options.blocks().values().stream()
+                            .filter(b -> b.handler().equals(h.value()))
+                            .findFirst()
+                            .orElse(null);
+                }
+                Object attempts = block == null ? null : attemptsOf(block);
+                String title = block == null ? "" : block.title();
+                yield attempts != null && value instanceof Doc.Scalar v && attempts.equals(v.value())
+                        ? article(title) + " block makes " + attempts + " attempts by default: remove 'retry'"
+                        : "attempts are a setting of a block: write 'with: { attempts: " + text(value) + " }'";
+            }
+            case "hook" ->
+                "a hook runs around a block: write 'before: " + text(value)
+                        + "' on the block it runs before, or 'after: " + text(value) + "' on the one it follows";
+            default -> null;
+        };
+    }
+
+    private String unknownBlock(Doc value) {
+        String known = options.blocks().keySet().stream().sorted().collect(java.util.stream.Collectors.joining(", "));
+        return "'" + text(value) + "'" + (known.isEmpty() ? "" : "; the blocks are " + known);
+    }
+
+    /** The block's default attempts, or null if it does not retry. */
+    private static @Nullable Object attemptsOf(BlockSpec block) {
+        return block.settings().values().stream()
+                .filter(s -> s.target() == BlockSpec.Setting.Target.ATTEMPTS)
+                .map(BlockSpec.Setting::byDefault)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** The one part, or {@code (seq parts...)}. */
+    private JsonNode seq(List<JsonNode> parts, SourceRef owner, String what) {
+        if (parts.size() == 1) return parts.get(0);
+        ArrayNode seq = JSON.arrayNode().add("seq");
+        parts.forEach(seq::add);
+        mark(seq, owner, what);
+        return seq;
+    }
+
+    /** The first {@code screen} node of a lowered block: under its retry, if it has one. */
+    private static JsonNode firstScreen(JsonNode lowered) {
+        JsonNode node = lowered;
+        while (node.isArray() && !"screen".equals(node.path(0).asText())) {
+            node = "retry".equals(node.path(0).asText()) ? node.path(2) : node.path(1);
+        }
+        return node;
+    }
+
+    /**
+     * Where each block may go: the identifier first and only there, consent at the top, options of
+     * one credential, and no password block when the identifier asks for the password.
+     */
+    private void place(Shape shape, SourceRef owner, Where where) {
+        BlockSpec.Role role = shape.role();
+        String title = shape.block() == null ? "" : shape.block().title();
+        if (where == Where.FIRST && identifier != null && role != BlockSpec.Role.IDENTIFIER) {
+            error(
+                    owner,
+                    "the first step is the " + identifier.title() + " ('block: " + identifier.id() + "'), not "
+                            + shape.named());
+        } else if (role == BlockSpec.Role.IDENTIFIER && where != Where.FIRST) {
+            error(owner, "the " + title + " is the first step and the only one; remove this block");
+        } else if (where == Where.OPTION && !shape.option()) {
+            error(owner, "an option is one credential block or a 'fail', not " + shape.named());
+        } else if (role == BlockSpec.Role.CONSENT && where == Where.NESTED) {
+            error(owner, title + " is a step of its own, not inside a group");
+        } else if (role == BlockSpec.Role.PASSWORD && passwordOnIdentifier) {
+            error(
+                    owner,
+                    "the identifier already asks for the password; remove this block, or ask for the identifier"
+                            + " first");
+        }
+    }
+
+    /**
+     * A block's parts: its screen, with its fixed options and the ones its settings turn on, and its
+     * handler's call, run as many times as its attempts allow. An identifier that asks for the
+     * password also calls the password block's handler.
+     */
+    private List<JsonNode> block(BlockSpec block, Doc.Entry blockAt, Doc.@Nullable Entry withAt, Where where) {
+        SourceRef at = blockAt.value().source();
+        Map<String, Object> values = settings(block, withAt);
+        ObjectNode opts = JSON.objectNode();
+        block.fixed().forEach((k, v) -> opts.set(k, literal(v)));
+        boolean asksPassword = block.settings().entrySet().stream()
+                .anyMatch(e -> e.getValue().target() == BlockSpec.Setting.Target.PASSWORD
+                        && Boolean.TRUE.equals(values.get(e.getKey())));
+        // What the flow wrote itself, as against a default; asking for the password turns off the
+        // options a default turned on, and refuses only those the flow turned on
+        java.util.Set<String> written = withAt != null && withAt.value() instanceof Doc.Map with
+                ? with.entries().keySet()
+                : java.util.Set.of();
+        String other = null;
+        for (var s : block.settings().entrySet()) {
+            Object value = values.get(s.getKey());
+            switch (s.getValue().target()) {
+                case OPTION -> {
+                    if (asksPassword && !written.contains(s.getKey())) continue;
+                    if (value != null && !Boolean.FALSE.equals(value)) {
+                        opts.set(s.getKey(), literal(value));
+                        if (Boolean.TRUE.equals(value)) other = s.getKey();
+                    }
+                }
+                case PASSWORD -> {
+                    if (Boolean.TRUE.equals(value)) opts.put(s.getKey(), true);
+                }
+                case ATTEMPTS -> {}
+            }
+        }
+        ArrayNode screen = JSON.arrayNode().add("screen").add(block.screen());
+        mark(screen, at, "screen");
+        markChild(screen, 1, at, "screen type");
+        if (!opts.isEmpty()) {
+            mark(opts, withAt != null ? withAt.value().source() : at, "screen options");
+            screen.add(opts);
+        }
+        List<JsonNode> parts = new ArrayList<>();
+        parts.add(screen);
+        parts.add(call(block.handler(), at));
+        boolean retries = true;
+        if (block.role() == BlockSpec.Role.IDENTIFIER) {
+            if (asksPassword && other != null) {
+                error(at, "the " + block.title() + " asks for the password with no other option, not '" + other + "'");
+            }
+            BlockSpec verifies = password;
+            if (asksPassword && verifies == null) {
+                error(at, "no block verifies a password, so the " + block.title() + " cannot ask for one");
+            } else if (asksPassword && verifies != null) {
+                if (where == Where.FIRST) passwordOnIdentifier = true;
+                parts.add(call(verifies.handler(), at));
+            } else {
+                // An identifier alone never fails, so it has nothing to retry
+                retries = false;
+                if (withAt != null && withAt.value() instanceof Doc.Map with) {
+                    block.settings().forEach((name, s) -> {
+                        if (s.target() == BlockSpec.Setting.Target.ATTEMPTS
+                                && with.entries().containsKey(name)) {
+                            error(
+                                    with.entries().get(name).key(),
+                                    "the " + block.title() + " retries only when it asks for the password: an"
+                                            + " identifier alone never fails");
+                        }
+                    });
+                }
+            }
+        }
+        int attempts = 1;
+        SourceRef attemptsAt = at;
+        for (var s : block.settings().entrySet()) {
+            if (s.getValue().target() == BlockSpec.Setting.Target.ATTEMPTS
+                    && values.get(s.getKey()) instanceof Integer n) {
+                attempts = n;
+                if (withAt != null
+                        && withAt.value() instanceof Doc.Map with
+                        && with.entries().get(s.getKey()) instanceof Doc.Entry e) {
+                    attemptsAt = e.value().source();
+                }
+            }
+        }
+        if (!retries || attempts == 1) return parts;
+        ArrayNode retry = JSON.arrayNode().add("retry").add(attempts).add(seq(parts, at, "block"));
+        mark(retry, attemptsAt, "attempts");
+        markChild(retry, 1, attemptsAt, "attempts");
+        return List.of(retry);
+    }
+
+    /** The block's settings: its defaults, and what the flow sets under {@code with}, checked against them. */
+    private Map<String, Object> settings(BlockSpec block, Doc.@Nullable Entry withAt) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        block.settings().forEach((name, s) -> values.put(name, s.byDefault()));
+        if (withAt == null) return values;
+        if (!(withAt.value() instanceof Doc.Map with)) {
+            error(withAt.value().source(), "'with' must be a mapping of setting to value");
+            return values;
+        }
+        String known = block.settings().keySet().stream()
+                .sorted()
+                .map(k -> "'" + k + "'")
+                .collect(java.util.stream.Collectors.joining(", "));
+        with.entries().forEach((name, e) -> {
+            BlockSpec.Setting s = block.settings().get(name);
+            Object value = e.value() instanceof Doc.Scalar sc ? sc.value() : null;
+            if (s == null) {
+                error(e.key(), article(block.title()) + " block has no setting '" + name + "'; it has " + known);
+            } else if (s.byDefault() instanceof Boolean && !(value instanceof Boolean)) {
+                error(e.value().source(), "'" + name + "' is true or false");
+            } else if (s.byDefault() instanceof Integer && !(value instanceof Integer n && n >= 1)) {
+                error(e.value().source(), "'" + name + "' is a whole number of 1 or more");
+            } else {
+                values.put(name, value);
+            }
+        });
+        return values;
+    }
+
+    private ArrayNode call(String handler, SourceRef at) {
+        ArrayNode node = JSON.arrayNode().add("call").add(handler);
+        mark(node, at, "block");
+        markChild(node, 1, at, "handler name");
+        return node;
+    }
+
+    private static JsonNode literal(Object value) {
+        return switch (value) {
+            case Boolean b -> JSON.booleanNode(b);
+            case Integer i -> JSON.numberNode(i);
+            default -> JSON.textNode(String.valueOf(value));
+        };
+    }
+
+    /** The caller's block with this role, if there is one. */
+    private static @Nullable BlockSpec blockOf(Options options, BlockSpec.Role role) {
+        return options.blocks().values().stream()
+                .filter(b -> b.role() == role)
+                .sorted(java.util.Comparator.comparing(BlockSpec::id))
+                .findFirst()
+                .orElse(null);
+    }
+
     private @Nullable JsonNode alternative(Doc.Map options, @Nullable JsonNode pick) {
         ArrayNode list = JSON.arrayNode();
         options.entries().forEach((id, option) -> {
@@ -476,7 +889,7 @@ public final class FlowCompiler {
                 error(option.value().source(), "option must be a mapping");
                 return;
             }
-            Lowered inner = body(body, option.key(), "option", true);
+            Lowered inner = body(body, option.key(), Where.OPTION);
             if (inner == null) return;
             ArrayNode opt = JSON.arrayNode().add("opt").add(id).add(inner.node());
             if (inner.guard() != null) opt.add(inner.guard());
@@ -491,30 +904,35 @@ public final class FlowCompiler {
         return choose;
     }
 
-    /** {@code type} or {@code { type: t, opt: literal, ... }}. */
-    private JsonNode screen(Doc value) {
-        ArrayNode node = JSON.arrayNode().add("screen");
-        mark(node, value.source(), "screen");
-        if (!(value instanceof Doc.Map m)) {
-            markChild(node, 1, value.source(), "screen type");
-            return node.add(scalar(value));
+    private SourceRef sourceOf(JsonNode node) {
+        Mark mark = marks.get(node);
+        return mark == null ? new SourceRef(origin, 1, 1) : mark.source();
+    }
+
+    /** A scalar's text for a diagnostic. */
+    private static String text(Doc value) {
+        return value instanceof Doc.Scalar s && s.value() != null ? String.valueOf(s.value()) : "...";
+    }
+
+    /** A body's {@code path}, which is the option of the screen the same body shows. */
+    private void path(Doc.Entry at, @Nullable JsonNode screen) {
+        if (!(screen instanceof ArrayNode node)) {
+            error(at.key(), "'path' needs a 'screen' in the same body");
+            return;
         }
-        Doc.Entry type = m.entries().get("type");
-        if (type == null) {
-            error(value.source(), "screen needs a 'type'");
-            return node.add("invalid");
-        }
-        node.add(scalar(type.value()));
-        markChild(node, 1, type.value().source(), "screen type");
-        ObjectNode opts = JSON.objectNode();
-        m.entries().forEach((k, v) -> {
-            if (!k.equals("type")) opts.set(k, scalar(v.value()));
-        });
-        if (!opts.isEmpty()) {
-            mark(opts, value.source(), "screen options");
+        if (node.size() < 3) {
+            ObjectNode opts = JSON.objectNode();
+            mark(opts, at.value().source(), "screen options");
             node.add(opts);
         }
-        return node;
+        ObjectNode opts = (ObjectNode) node.get(2);
+        if (opts.has("path")) {
+            error(at.key(), "the screen already sets a 'path'");
+            return;
+        }
+        opts.set("path", scalar(at.value()));
+        // What is wrong with a screen's path is reported where the flow wrote it
+        mark(node, at.value().source(), "screen");
     }
 
     /**

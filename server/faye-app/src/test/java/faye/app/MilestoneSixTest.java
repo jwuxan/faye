@@ -19,18 +19,23 @@ import faye.engine.InMemoryHookStore;
 import faye.host.hydra.HydraFlowHost;
 import faye.host.mock.MockFlowHost;
 import faye.identity.Base32;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.io.BufferedReader;
+import java.io.EOFException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.UnixDomainSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
@@ -38,7 +43,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
@@ -55,6 +59,7 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
             "faye.admin-token=test-token",
+            "faye.admin-socket=build/admin-${random.uuid}.sock",
             "faye.preview-enabled=true",
             "faye.tenants.preview.flow=classpath:flows/password-only.yaml",
             "faye.tenants.unsafe.flow=classpath:flows/password-only.yaml",
@@ -74,13 +79,11 @@ class MilestoneSixTest {
             version: 1
             login:
               steps:
-                identify: { screen: identifier, use: identity.resolve }
-                credential: { retry: 3, screen: password, use: password.verify }
+                identify: { block: identifier }
+                credential: { block: password }
                 second-factor:
                   if: { eq: [request.ip, "203.0.113.7"] }
-                  retry: 3
-                  screen: otp
-                  use: totp.verify
+                  block: totp
             """;
 
     @TestConfiguration
@@ -122,8 +125,8 @@ class MilestoneSixTest {
     @Autowired
     MockFlowHost host;
 
-    @LocalServerPort
-    int port;
+    @Autowired
+    FayeProperties props;
 
     int challenges;
 
@@ -157,7 +160,7 @@ class MilestoneSixTest {
                         version: 1
                         login:
                           steps:
-                            identify: { screen: identifier, use: identity.resolve }
+                            identify: { block: identifier }
                         """), status().isOk());
         String location = start("unsafe", true);
         assertThat(location).contains("result=access_denied");
@@ -271,15 +274,23 @@ class MilestoneSixTest {
 
     @Test
     void theFeedStreamsPreviewEventsAsTheyHappen() throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder(
-                        URI.create("http://localhost:" + port + "/admin/tenants/live/preview/events"))
-                .header("Authorization", "Bearer test-token")
-                .build();
-        HttpResponse<Stream<String>> response = client.send(request, HttpResponse.BodyHandlers.ofLines());
-        assertThat(response.headers().firstValue("content-type").orElse("")).startsWith("text/event-stream");
+        // Over the admin socket, the only place the admin API is served (ADR 0028)
+        SocketChannel channel = SocketChannel.open(UnixDomainSocketAddress.of(props.adminSocket()));
+        channel.write(ByteBuffer.wrap(("GET /admin/tenants/live/preview/events HTTP/1.1\r\nHost: localhost\r\n"
+                        + "Authorization: Bearer test-token\r\n\r\n")
+                .getBytes(StandardCharsets.US_ASCII)));
+        InputStream in = Channels.newInputStream(channel);
+        assertThat(Chunked.line(in)).startsWith("HTTP/1.1 200 ");
+        List<String> head = new ArrayList<>();
+        for (String line = Chunked.line(in); !line.isEmpty(); line = Chunked.line(in)) {
+            head.add(line.toLowerCase(Locale.ROOT));
+        }
+        assertThat(head)
+                .anyMatch(line -> line.startsWith("content-type: text/event-stream"))
+                .contains("transfer-encoding: chunked");
+        BufferedReader response = new BufferedReader(new InputStreamReader(new Chunked(in), StandardCharsets.UTF_8));
         List<String> data = new ArrayList<>();
-        CompletableFuture<Void> read = CompletableFuture.runAsync(() -> response.body()
+        CompletableFuture<Void> read = CompletableFuture.runAsync(() -> response.lines()
                 .filter(line -> line.startsWith("data:"))
                 .takeWhile(line -> {
                     data.add(line.substring(5));
@@ -290,7 +301,7 @@ class MilestoneSixTest {
         JsonNode s = login("live", true);
         submit(s, Map.of("identifier", "alice@example.com"));
         read.get(10, TimeUnit.SECONDS);
-        response.body().close();
+        channel.close();
 
         JsonNode first = JSON.readTree(data.get(0));
         assertThat(first.get("flowId").asText()).isEqualTo(s.get("flowId").asText());
@@ -298,6 +309,46 @@ class MilestoneSixTest {
         assertThat(first.at("/event/event").asText()).isEqualTo("start");
         assertThat(JSON.readTree(data.get(1)).at("/event/id").asText()).isEqualTo("identify");
         assertThat(JSON.readTree(data.get(2)).at("/event/id").asText()).isEqualTo("identifier");
+    }
+
+    /** The body of a chunked HTTP/1.1 response, as its chunks arrive. */
+    static final class Chunked extends InputStream {
+        private final InputStream in;
+        private int left;
+
+        Chunked(InputStream in) {
+            this.in = in;
+        }
+
+        /** One line of the head or a chunk size, without its CRLF. */
+        static String line(InputStream in) throws IOException {
+            StringBuilder line = new StringBuilder();
+            for (int c = in.read(); c != '\n'; c = in.read()) {
+                if (c < 0) throw new EOFException();
+                if (c != '\r') line.append((char) c);
+            }
+            return line.toString();
+        }
+
+        @Override
+        public int read() throws IOException {
+            byte[] one = new byte[1];
+            return read(one, 0, 1) < 0 ? -1 : one[0] & 0xff;
+        }
+
+        @Override
+        public int read(byte[] buffer, int off, int len) throws IOException {
+            if (left == 0) {
+                String size = line(in);
+                // the CRLF that ends the chunk before
+                if (size.isEmpty()) size = line(in);
+                left = Integer.parseInt(size, 16);
+                if (left == 0) return -1;
+            }
+            int n = in.read(buffer, off, Math.min(len, left));
+            if (n > 0) left -= n;
+            return n;
+        }
     }
 
     // ---- helpers ----

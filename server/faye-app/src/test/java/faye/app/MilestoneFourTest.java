@@ -193,9 +193,8 @@ class MilestoneFourTest {
                     capabilities: { http: [internal-admin] }
                 login:
                   steps:
-                    identify: { screen: identifier, use: identity.resolve }
-                    peek: { hook: peek }
-                    credential: { screen: password, use: password.verify }
+                    identify: { block: identifier, after: peek }
+                    credential: { block: password }
                 """;
         JsonNode refused = admin(MilestoneThreeTest.publish("hostile", yaml), status().isUnprocessableEntity());
         assertThat(refused.at("/errors/0/message").asText())
@@ -215,10 +214,9 @@ class MilestoneFourTest {
                 %s
                 login:
                   steps:
-                    identify: { screen: identifier, use: identity.resolve }
-                    run-hook: { hook: %s }
+                    identify: { block: identifier, after: %s }
                 %s
-                    credential: { screen: password, use: password.verify }
+                    credential: { block: password }
                 """.formatted(id, id, source.strip().indent(6).stripTrailing(), id, String.join("", extraSteps));
         admin(MilestoneThreeTest.publish("hostile", yaml), status().isCreated());
     }

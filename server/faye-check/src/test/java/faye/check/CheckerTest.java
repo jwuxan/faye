@@ -58,21 +58,19 @@ class CheckerTest {
                 login:
                   steps:
                     identify:
-                      screen: identifier
-                      use: identity.resolve
+                      block: identifier
                     credential:
+                      if: { not: { eq: [request.ip, "10.0.0.1"] } }
                       alternative:
                         password:
-                          screen: password
-                          use: password.verify
-                        trusted:
-                          if: { eq: [request.ip, "10.0.0.1"] }
-                          set: { trusted: true }
+                          block: password
+                        passkey:
+                          block: passkey
                 """);
         Report report = check(flow);
         assertThat(errors(report))
-                .containsExactly("tenant.yaml:14:15: a path succeeds without verifying a credential:"
-                        + " identify > credential/trusted > succeed with no credential");
+                .containsExactly("tenant.yaml:8:11: a path succeeds without verifying a credential:"
+                        + " identify > credential > (condition at 8 false) > succeed with no credential");
     }
 
     @Test
@@ -83,37 +81,28 @@ class CheckerTest {
                 login:
                   steps:
                     identify:
-                      screen: identifier
-                      use: identity.resolve
+                      block: identifier
                     credential:
                       if: { not: { eq: [client.client_id, internal] } }
-                      screen: password
-                      use: password.verify
+                      block: password
                 """);
         assertThat(errors(check(flow)))
                 .singleElement()
                 .asString()
-                .startsWith("tenant.yaml:9:11: a path succeeds without verifying a credential: identify > credential");
+                .startsWith("tenant.yaml:8:11: a path succeeds without verifying a credential: identify > credential");
     }
 
+    /** The YAML surface puts the Identifier first (ADR 0030); the checker holds IR to the same rule. */
     @Test
     void credentialBeforeIdentityIsAnError() {
-        Flow flow = Fixtures.yaml("tenant.yaml", """
-                flow: backwards
-                version: 1
-                login:
-                  steps:
-                    credential:
-                      screen: password
-                      use: password.verify
-                    identify:
-                      screen: identifier
-                      use: identity.resolve
-                """);
+        Flow flow = IrCodec.readFlow("[\"flow\",1,\"backwards\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"step\",\"credential\",[\"seq\",[\"screen\",\"password\"],[\"call\",\"password.verify\"]]],"
+                + "[\"step\",\"identify\",[\"seq\",[\"screen\",\"identifier\"],[\"call\",\"identity.resolve\"]]],"
+                + "[\"succeed\"]]]]");
         assertThat(errors(check(flow)))
                 .singleElement()
                 .asString()
-                .startsWith("tenant.yaml:7:12: password.verify runs before any handler identifies the person");
+                .startsWith(": password.verify runs before any handler identifies the person");
     }
 
     @Test
@@ -137,11 +126,10 @@ class CheckerTest {
                 login:
                   steps:
                     identify:
-                      screen: { type: identifier, passkey: true }
-                      use: identity.resolve
+                      with: { passkey: true }
+                      block: identifier
                     credential:
-                      screen: passkey
-                      use: webauthn.assert
+                      block: passkey
                 """);
         Report report = check(flow, MFA);
         assertThat(errors(report)).singleElement().asString().contains("succeeds with faye:1fa");
@@ -160,9 +148,11 @@ class CheckerTest {
                         Set.of("identifier", "password", "passkey", "otp")));
         assertThat(errors(report))
                 .containsExactly(
-                        "passkey-totp.yaml:48:19: screen 'otp_enroll' is not enabled for this tenant",
-                        "passkey-totp.yaml:49:16: handler 'totp.enroll' is not enabled for this tenant",
-                        "passkey-totp.yaml:53:12: handler 'webauthn.register' is not enabled for this tenant");
+                        "passkey-totp.yaml:42:18: screen 'otp_enroll' is not enabled for this tenant",
+                        "passkey-totp.yaml:42:18: handler 'totp.enroll' is not enabled for this tenant",
+                        "passkey-totp.yaml:45:14: handler 'webauthn.register' is not enabled for this tenant",
+                        "passkey-totp.yaml:49:14: screen 'consent' is not enabled for this tenant",
+                        "passkey-totp.yaml:49:14: handler 'consent.record' is not enabled for this tenant");
     }
 
     @Test
@@ -173,21 +163,25 @@ class CheckerTest {
                 login:
                   steps:
                     identify:
-                      screen: identifyer
-                      use: identity.resolve
-                    credential:
-                      screen: password
-                      use: password.verfy
+                      block: identifier
+                    group:
                       steps:
                         identify:
-                          screen: password
-                          use: password.verify
+                          block: password
                 """);
         assertThat(errors(check(flow)))
-                .contains(
-                        "tenant.yaml:6:15: unknown screen type 'identifyer'",
-                        "tenant.yaml:10:12: unknown handler 'password.verfy'",
-                        "tenant.yaml:12:9: step id 'identify' is already used at tenant.yaml:5:5");
+                .contains("tenant.yaml:9:9: step id 'identify' is already used at tenant.yaml:5:5");
+        // Blocks fix their screen and handler (ADR 0030); IR may still name ones the catalogs lack
+        String identify =
+                "[\"step\",\"identify\",[\"seq\",[\"screen\",\"identifyer\"],[\"call\",\"identity.resolve\"]]],";
+        String credential =
+                "[\"step\",\"credential\",[\"seq\",[\"screen\",\"password\"],[\"call\",\"password.verfy\"]]],";
+        String flow0 = "[\"flow\",1,\"typos\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\",";
+        assertThat(errors(check(IrCodec.readFlow(flow0 + identify + "[\"succeed\"]]]]"))))
+                .contains(": unknown screen type 'identifyer'");
+        assertThat(errors(check(IrCodec.readFlow(
+                        flow0 + identify.replace("identifyer", "identifier") + credential + "[\"succeed\"]]]]"))))
+                .contains(": unknown handler 'password.verfy'");
     }
 
     @Test
@@ -203,25 +197,26 @@ class CheckerTest {
                 login:
                   steps:
                     identify:
-                      screen: identifier
-                      use: identity.resolve
+                      block: identifier
                     credential:
-                      alternative:
-                        password:
-                          screen: password
-                          use: password.verify
-                    again:
-                      retry: 2
-                      use: password.verify
+                      block: password
                     later:
                       if: { has: [auth.amr, otp] }
-                      use: totp.verify
+                      block: totp
                 """);
         assertThat(check(flow).warnings().stream().map(Finding::toString))
+                .contains("tenant.yaml:10:11: never runs: its condition is false on every path that reaches it");
+        // The YAML surface refuses these shapes (ADR 0030); IR may still have them
+        Flow ir = IrCodec.readFlow("[\"flow\",1,\"odd\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"step\",\"identify\",[\"seq\",[\"screen\",\"identifier\"],[\"call\",\"identity.resolve\"]]],"
+                + "[\"step\",\"credential\",[\"choose\",[[\"opt\",\"password\","
+                + "[\"seq\",[\"screen\",\"password\"],[\"call\",\"password.verify\"]]]]]],"
+                + "[\"step\",\"again\",[\"retry\",2,[\"call\",\"password.verify\"]]],"
+                + "[\"succeed\"]]]]");
+        assertThat(check(ir).warnings().stream().map(Finding::message))
                 .contains(
-                        "tenant.yaml:10:9: a choose has a single option; use its body directly",
-                        "tenant.yaml:14:14: retry without a screen asks nothing new on each attempt",
-                        "tenant.yaml:17:11: never runs: its condition is false on every path that reaches it");
+                        "a choose has a single option; use its body directly",
+                        "retry without a screen asks nothing new on each attempt");
     }
 
     @Test
@@ -242,27 +237,14 @@ class CheckerTest {
     /** A later attempt runs with what an earlier one verified, so a condition false at first may hold. */
     @Test
     void retryCarriesStateIntoTheNextAttempt() {
-        Flow flow = Fixtures.yaml("tenant.yaml", """
-                flow: shortcut
-                version: 1
-                login:
-                  steps:
-                    identify:
-                      screen: identifier
-                      use: identity.resolve
-                    credentials:
-                      retry: 3
-                      steps:
-                        done:
-                          if: { has: [auth.amr, pwd] }
-                          fail: unreachable
-                        password:
-                          screen: password
-                          use: password.verify
-                        totp:
-                          screen: otp
-                          use: totp.verify
-                """);
+        // A group does not retry in the YAML surface (ADR 0030); IR may
+        Flow flow = IrCodec.readFlow("[\"flow\",1,\"shortcut\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"step\",\"identify\",[\"seq\",[\"screen\",\"identifier\"],[\"call\",\"identity.resolve\"]]],"
+                + "[\"step\",\"credentials\",[\"retry\",3,[\"seq\","
+                + "[\"step\",\"done\",[\"when\",{\"has\":[\"auth.amr\",\"pwd\"]},[\"fail\",\"unreachable\"]]],"
+                + "[\"step\",\"password\",[\"seq\",[\"screen\",\"password\"],[\"call\",\"password.verify\"]]],"
+                + "[\"step\",\"totp\",[\"seq\",[\"screen\",\"otp\"],[\"call\",\"totp.verify\"]]]]]],"
+                + "[\"succeed\"]]]]");
         // Attempt 1: password verifies, TOTP fails; attempt 2 sees pwd and ends the section
         assertThat(check(flow).warnings().stream().map(Finding::message))
                 .doesNotContain("never runs: its condition is false on every path that reaches it");
@@ -274,29 +256,15 @@ class CheckerTest {
 
     @Test
     void retriedCredentialBeforeIdentityIsAnError() {
-        Flow flow = Fixtures.yaml("tenant.yaml", """
-                flow: sneaky
-                version: 1
-                login:
-                  steps:
-                    first:
-                      retry: 2
-                      steps:
-                        early:
-                          if: vars.again
-                          screen: password
-                          use: password.verify
-                        mark:
-                          set: { again: true }
-                          screen: identifier
-                          use: webauthn.register
-                    identify:
-                      screen: identifier
-                      use: identity.resolve
-                    credential:
-                      screen: password
-                      use: password.verify
-                """);
+        Flow flow = IrCodec.readFlow("[\"flow\",1,\"sneaky\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"step\",\"first\",[\"retry\",2,[\"seq\","
+                + "[\"step\",\"early\",[\"when\",\"vars.again\","
+                + "[\"seq\",[\"screen\",\"password\"],[\"call\",\"password.verify\"]]]],"
+                + "[\"step\",\"mark\",[\"seq\",[\"set\",\"again\",true],[\"screen\",\"identifier\"],"
+                + "[\"call\",\"webauthn.register\"]]]]]],"
+                + "[\"step\",\"identify\",[\"seq\",[\"screen\",\"identifier\"],[\"call\",\"identity.resolve\"]]],"
+                + "[\"step\",\"credential\",[\"seq\",[\"screen\",\"password\"],[\"call\",\"password.verify\"]]],"
+                + "[\"succeed\"]]]]");
         assertThat(errors(check(flow)))
                 .anySatisfy(
                         e -> assertThat(e).contains("password.verify runs before any handler identifies the person"));
@@ -334,13 +302,13 @@ class CheckerTest {
                 version: 1
                 login:
                   steps:
-                    identify: { screen: identifier, use: identity.resolve }
-                    credential: { screen: password, use: password.verify }
-                    consent: { screen: consent, use: consent.record }
-                    again: { screen: password, use: password.verify }
+                    identify: { block: identifier }
+                    credential: { block: password }
+                    consent: { block: consent }
+                    again: { block: password }
                 """);
         assertThat(errors(check(flow)))
-                .containsExactly("tenant.yaml:8:37: password.verify verifies a credential; a consent entry only grants"
+                .containsExactly("tenant.yaml:8:21: password.verify verifies a credential; a consent entry only grants"
                         + " access to a subject its authenticate entry proved");
     }
 
@@ -377,32 +345,48 @@ class CheckerTest {
     /** Found by EngineFuzzTest: the method picker shown by a step has no options and no answer. */
     @Test
     void aStepCannotShowTheMethodPicker() {
+        Flow flow = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"step\",\"identify\",[\"seq\",[\"screen\",\"identifier\"],[\"call\",\"identity.resolve\"]]],"
+                + "[\"step\",\"pick\",[\"seq\",[\"screen\",\"method_picker\"],[\"call\",\"password.verify\"]]],"
+                + "[\"succeed\"]]]]");
+        assertThat(errors(check(flow)))
+                .contains(": 'method_picker' is shown by an 'alternative' for its options; a step cannot show it");
+    }
+
+    /** ADR 0029: a screen's path keeps the first segment of its default, so every flow reads alike. */
+    @Test
+    void screenPathsKeepTheirFirstSegment() {
         Flow flow = Fixtures.yaml("tenant.yaml", """
                 flow: f
                 version: 1
                 login:
                   steps:
-                    identify: { screen: identifier, use: identity.resolve }
-                    pick: { screen: method_picker, use: password.verify }
+                    identify: { path: /challenge/who, block: identifier }
+                    credential: { path: /login, block: password }
+                    second: { path: /challenge/mfa/totp, block: totp }
+                    third: { path: /challenge/Bad, block: totp }
                 """);
         assertThat(errors(check(flow)))
-                .contains("tenant.yaml:6:21: 'method_picker' is shown by an 'alternative' for its options; a step"
-                        + " cannot show it");
+                .contains(
+                        "tenant.yaml:5:23: screen 'identifier' takes a path of '/login' and up to three lowercase"
+                                + " segments, such as '/login/name'",
+                        "tenant.yaml:6:25: screen 'password' takes a path of '/challenge' and up to three"
+                                + " lowercase segments, such as '/challenge/name'",
+                        "tenant.yaml:8:20: screen 'otp' takes a path of '/challenge' and up to three lowercase"
+                                + " segments, such as '/challenge/name'")
+                .noneMatch(e -> e.startsWith("tenant.yaml:7:"));
     }
 
     /** Found by EngineFuzzTest: the registration screen is a credential write too. */
     @Test
     void aPasskeyRegistrationScreenNeedsAVerifiedSubjectFirst() {
-        Flow flow = Fixtures.yaml("tenant.yaml", """
-                flow: f
-                version: 1
-                login:
-                  steps:
-                    identify: { screen: identifier, use: identity.resolve }
-                    add: { screen: { type: passkey, register: true }, use: webauthn.assert }
-                """);
+        Flow flow = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"step\",\"identify\",[\"seq\",[\"screen\",\"identifier\"],[\"call\",\"identity.resolve\"]]],"
+                + "[\"step\",\"add\",[\"seq\",[\"screen\",\"passkey\",{\"register\":true}],"
+                + "[\"call\",\"webauthn.assert\"]]],"
+                + "[\"succeed\"]]]]");
         assertThat(errors(check(flow)))
-                .contains("tenant.yaml:6:20: screen 'passkey' acts for the signed in subject, which needs a subject a"
+                .contains(": screen 'passkey' acts for the signed in subject, which needs a subject a"
                         + " credential verified earlier in the flow, but shows first on a path");
     }
 
@@ -413,18 +397,15 @@ class CheckerTest {
                 version: 1
                 login:
                   steps:
-                    identify: { screen: identifier, use: identity.resolve }
-                    enroll: { screen: { type: passkey, register: true }, use: webauthn.register }
-                    credential: { screen: password, use: password.verify }
+                    identify: { block: identifier }
+                    enroll: { block: add-passkey }
+                    credential: { block: password }
                 """);
-        // Both the registration screen and the handler are refused
+        // The block is refused once, at the block: its screen and its handler are the same place (ADR 0030)
         assertThat(errors(check(flow)))
-                .hasSize(2)
-                .anySatisfy(e ->
-                        assertThat(e).startsWith("tenant.yaml:6:23: screen 'passkey' acts for the signed in subject"))
-                .anySatisfy(e -> assertThat(e)
-                        .startsWith("tenant.yaml:6:63: webauthn.register needs a subject a credential verified"
-                                + " earlier in the flow, but runs first on the path"));
+                .singleElement()
+                .asString()
+                .startsWith("tenant.yaml:6:22: screen 'passkey' acts for the signed in subject");
     }
 
     @Test
@@ -441,16 +422,14 @@ class CheckerTest {
 
     @Test
     void theVerifierRefusesUnknownScreenOptionsAndBadArgs() {
-        Flow flow = Fixtures.yaml("tenant.yaml", """
-                flow: f
-                version: 1
-                login:
-                  steps:
-                    identify: { screen: { type: identifier, pasky: true }, use: identity.resolve }
-                    credential: { screen: password, use: password.verify }
-                """);
+        Flow flow = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
+                + "[\"step\",\"identify\",[\"seq\",[\"screen\",\"identifier\",{\"pasky\":true}],"
+                + "[\"call\",\"identity.resolve\"],[\"call\",\"password.verify\"]]],"
+                + "[\"succeed\"]]]]");
         assertThat(errors(check(flow)))
-                .containsExactly("tenant.yaml:5:25: screen 'identifier' has no option 'pasky'; it takes [passkey]");
+                .singleElement()
+                .asString()
+                .startsWith(": screen 'identifier' has no option 'pasky'; it takes ");
         Flow args = IrCodec.readFlow("[\"flow\",1,\"f\",1,[\"entry\",\"login\",\"authenticate\",[\"seq\","
                 + "[\"call\",\"identity.resolve\",{\"lowercase\":true}],"
                 + "[\"call\",\"password.verify\"],[\"succeed\"]]]]");
@@ -466,16 +445,15 @@ class CheckerTest {
                 version: 1
                 login:
                   steps:
-                    identify:
+                    identify: { block: identifier }
+                    credential:
                       if: { or: [host.prompt, { has: [host.acr_values, "faye:2fa"] }, host.context.origin] }
-                      screen: identifier
-                      use: identity.resolve
-                    credential: { screen: password, use: password.verify }
+                      block: password
                 """);
         assertThat(errors(check(flow)).stream().filter(e -> e.contains("host contract")))
                 .singleElement()
                 .satisfies(e ->
-                        assertThat(e).startsWith("tenant.yaml:6:11: 'host.prompt' is not part of the host contract"));
+                        assertThat(e).startsWith("tenant.yaml:7:11: 'host.prompt' is not part of the host contract"));
     }
 
     @Test
@@ -485,11 +463,10 @@ class CheckerTest {
                 version: 1
                 login:
                   steps:
-                    identify:
+                    identify: { block: identifier }
+                    credential:
                       if: { or: [client.tier, client.first_party, client.metadata.risk] }
-                      screen: identifier
-                      use: identity.resolve
-                    credential: { screen: password, use: password.verify }
+                      block: password
                 """);
         assertThat(errors(check(flow)).stream().filter(e -> e.contains("client contract")))
                 .singleElement()

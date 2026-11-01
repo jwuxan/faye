@@ -8,10 +8,12 @@ import { Input } from "@faye/ui/components/input";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@faye/ui/components/input-group";
 import { Slider } from "@faye/ui/components/slider";
 import { Switch } from "@faye/ui/components/switch";
+import { brandStyle, DEFAULT_PRIMARY } from "@faye/ui/lib/brand-style";
 import { cn } from "@faye/ui/lib/utils";
-import { CircleX, Lock, RotateCcw } from "lucide-react";
+import { CircleX, Eye, Lock, LockKeyhole, Mail, RotateCcw } from "lucide-react";
 import { type ReactNode, useState } from "react";
-import { api, type Branding, type Settings as TenantSettings, type SettingsView, type Validation } from "../../../lib/api";
+import { api, type BlockDefaults as BlockDefaultsValue, type Branding, type Settings as TenantSettings, type SettingsView, type Validation } from "../../../lib/api";
+import { PALETTE } from "../../../lib/flow";
 import { PageHeader } from "../../shell";
 import { useDraft } from "./draft";
 
@@ -56,10 +58,10 @@ function SettingsFrame({ title, description, form, children }: { title: string; 
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader tenant={form.d.tenant} title={title} />
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="mx-auto grid max-w-4xl gap-8 px-6 py-8 pb-24">
+        <div className="mx-auto grid max-w-5xl gap-8 px-4 py-5 pb-24 sm:px-6 sm:py-6">
           <div className="grid gap-1">
             <div className="flex items-center gap-2">
-              <h1 className="text-[20px] leading-7 font-semibold tracking-tight">{title}</h1>
+              <h1 className="text-lg leading-7 font-semibold tracking-tight">{title}</h1>
               {form.view && (
                 <Badge variant="outline" className="gap-1.5 font-normal text-muted-foreground">
                   <span className={cn("size-1.5 rounded-full", form.view.saved ? "bg-accent-ui" : "bg-border")} />
@@ -89,7 +91,7 @@ function SettingsFrame({ title, description, form, children }: { title: string; 
         )}
         aria-hidden={!form.dirty}
       >
-        <span className="text-[13px] text-muted-foreground">Unsaved changes</span>
+        <span className="text-sm text-muted-foreground">Unsaved changes</span>
         <Button variant="outline" size="sm" className="ml-auto" onClick={form.discard} tabIndex={form.dirty ? 0 : -1}>
           Discard
         </Button>
@@ -119,6 +121,16 @@ export function GeneralSettings() {
               <Switch id="mfa" checked={s.mfaRequired} onCheckedChange={(mfaRequired) => set({ ...s, mfaRequired })} />
             </Field>
           </FieldSet>
+          <FieldSeparator />
+          <BlockDefaults
+            value={s.blocks ?? {}}
+            onChange={(blocks) => {
+              // Empty is no defaults, as the server sends it
+              const { blocks: _, ...rest } = s;
+              void _;
+              set(Object.keys(blocks).length === 0 ? rest : { ...s, blocks });
+            }}
+          />
           <FieldSeparator />
           <Allowlist
             title="Handlers"
@@ -162,6 +174,65 @@ export function GeneralSettings() {
   );
 }
 
+/**
+ * Defaults for the blocks' settings (ADR 0030): what a step gets unless its flow says otherwise
+ * under `with`. Empty keeps the block's own. Applied when a flow is next validated or published.
+ */
+function BlockDefaults({ value, onChange }: { value: BlockDefaultsValue; onChange: (v: BlockDefaultsValue) => void }) {
+  const put = (id: string, name: string, v: string | number | boolean | undefined) => {
+    const block = { ...(value[id] ?? {}) };
+    if (v === undefined) delete block[name];
+    else block[name] = v;
+    const next = { ...value };
+    if (Object.keys(block).length === 0) delete next[id];
+    else next[id] = block;
+    onChange(next);
+  };
+  const blocks = PALETTE.filter((b) => b.id !== undefined && b.settings?.attempts !== undefined);
+  const identifier = PALETTE.find((b) => b.role === "identifier");
+  return (
+    <FieldSet>
+      <FieldLegend>Block defaults</FieldLegend>
+      <FieldDescription className="text-xs">
+        What each block does unless a flow says otherwise. Applies the next time a flow is validated or published; published versions keep theirs.
+      </FieldDescription>
+      <div className="grid gap-2">
+        {blocks.map((b) => (
+          <Field key={b.id} orientation="horizontal">
+            <FieldLabel htmlFor={`attempts-${b.id}`} className="w-40 font-normal">
+              {b.name} attempts{b.role === "identifier" ? " (with password)" : ""}
+            </FieldLabel>
+            <Input
+              id={`attempts-${b.id}`}
+              type="number"
+              min={1}
+              className="h-8 w-20 font-mono text-xs"
+              placeholder={String(b.settings!.attempts)}
+              value={value[b.id!]?.attempts === undefined ? "" : String(value[b.id!]!.attempts)}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                put(b.id!, "attempts", e.target.value === "" || !Number.isInteger(n) || n < 1 ? undefined : n);
+              }}
+            />
+          </Field>
+        ))}
+        {identifier?.id && (
+          <Field orientation="horizontal">
+            <FieldLabel htmlFor="passkey-autofill" className="w-40 font-normal">
+              Passkey autofill
+            </FieldLabel>
+            <Switch
+              id="passkey-autofill"
+              checked={value[identifier.id]?.passkey === true}
+              onCheckedChange={(on) => put(identifier.id!, "passkey", on ? true : undefined)}
+            />
+          </Field>
+        )}
+      </div>
+    </FieldSet>
+  );
+}
+
 function Allowlist({
   title,
   description,
@@ -198,7 +269,7 @@ function Allowlist({
             <Field
               key={item.name}
               orientation="horizontal"
-              className={cn("gap-3 px-3 py-2.5 hover:bg-accent/50", i % 2 === 0 && "sm:border-r", i < items.length - (items.length % 2 === 0 ? 2 : 1) && "border-b")}
+              className={cn("gap-3 px-3 py-2.5 transition-colors hover:bg-accent/50", i % 2 === 0 && "sm:border-r", i < items.length - (items.length % 2 === 0 ? 2 : 1) && "border-b")}
             >
               <Checkbox
                 id={id}
@@ -212,7 +283,7 @@ function Allowlist({
                 <FieldLabel htmlFor={id} className={cn("font-mono text-xs font-normal", !on && "text-muted-foreground line-through")}>
                   {item.name}
                 </FieldLabel>
-                {item.note && <span className="truncate font-mono text-[11px] text-muted-foreground">{item.note}</span>}
+                {item.note && <span className="truncate font-mono text-xs text-muted-foreground">{item.note}</span>}
               </FieldContent>
             </Field>
           );
@@ -222,10 +293,10 @@ function Allowlist({
   );
 }
 
-const DEFAULT_RADIUS = 10;
+const DEFAULT_RADIUS = 6;
 
-/** How the tenant's login screens look: name, logo, color and corners, with a live preview. */
-export function BrandingSettings() {
+/** The tenant's login screens: its brand, and the options they offer, with a live preview (ADR 0033). */
+export function LoginPageSettings() {
   const form = useSettingsForm();
   const { s, set } = form;
   const branding: Branding = s?.branding ?? {};
@@ -236,78 +307,111 @@ export function BrandingSettings() {
     set({ ...s, branding: next });
   };
   const logoProblem = branding.logoUrl && !branding.logoUrl.startsWith("https://") ? "Logos load over https only" : null;
+  const rememberMe = s?.rememberMe === true;
   return (
-    <SettingsFrame title="Branding" description="The login screens of this tenant: its name, logo, primary color and corner radius. Screens stay typed templates; only these change." form={form}>
+    <SettingsFrame title="Login page" description="What people see when they sign in to this tenant's applications: its brand, and the options the screens offer. Screens stay typed templates; only these change." form={form}>
       {s && (
-        <div className="grid items-start gap-8 lg:grid-cols-[1fr_340px]">
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="brand-name">Name</FieldLabel>
-              <Input id="brand-name" value={branding.name ?? ""} maxLength={64} placeholder="Acme" onChange={(e) => patch({ name: e.target.value })} />
-              <FieldDescription className="text-xs">Shown at the top of every screen. Empty shows the screen’s own title.</FieldDescription>
-            </Field>
-            <Field data-invalid={logoProblem !== null}>
-              <FieldLabel htmlFor="brand-logo">Logo URL</FieldLabel>
-              <Input
-                id="brand-logo"
-                className="font-mono text-xs md:text-xs"
-                value={branding.logoUrl ?? ""}
-                placeholder="https://"
-                aria-invalid={logoProblem !== null}
-                onChange={(e) => patch({ logoUrl: e.target.value })}
-              />
-              <FieldDescription className={cn("text-xs", logoProblem && "text-danger")}>{logoProblem ?? "A square image, shown at 32 px."}</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="brand-color">Primary color</FieldLabel>
-              <InputGroup className="w-48">
-                <InputGroupAddon>
-                  <input
-                    type="color"
-                    aria-label="Pick primary color"
-                    className="size-5 cursor-pointer rounded-[4px] border-0 bg-transparent p-0 [&::-webkit-color-swatch]:rounded-[4px] [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
-                    value={branding.primaryColor ?? "#171717"}
-                    onChange={(e) => patch({ primaryColor: e.target.value })}
+        <div className="grid items-start gap-8 lg:grid-cols-[1fr_--spacing(85)]">
+          <FieldGroup className="gap-8">
+            <FieldSet>
+              <FieldLegend>Brand</FieldLegend>
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="brand-name">Name</FieldLabel>
+                  <Input id="brand-name" value={branding.name ?? ""} maxLength={64} placeholder="Acme" onChange={(e) => patch({ name: e.target.value })} />
+                  <FieldDescription className="text-xs">Shown at the top of every screen and in its footer: “© Acme. All rights reserved.” Empty shows neither.</FieldDescription>
+                </Field>
+                <Field data-invalid={logoProblem !== null}>
+                  <FieldLabel htmlFor="brand-logo">Logo URL</FieldLabel>
+                  <Input
+                    id="brand-logo"
+                    className="font-mono text-xs md:text-xs"
+                    value={branding.logoUrl ?? ""}
+                    placeholder="https://"
+                    aria-invalid={logoProblem !== null}
+                    onChange={(e) => patch({ logoUrl: e.target.value })}
                   />
-                </InputGroupAddon>
-                <InputGroupInput
-                  id="brand-color"
-                  className="font-mono text-xs md:text-xs"
-                  value={branding.primaryColor ?? ""}
-                  placeholder="default"
-                  maxLength={7}
-                  onChange={(e) => patch({ primaryColor: e.target.value.toLowerCase() })}
+                  <FieldDescription className={cn("text-xs", logoProblem && "text-danger")}>{logoProblem ?? "Shown 36 px tall above every screen, at its own width."}</FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="brand-color">Primary color</FieldLabel>
+                  <InputGroup className="w-48">
+                    <InputGroupAddon>
+                      <input
+                        type="color"
+                        aria-label="Pick primary color"
+                        className="size-5 cursor-pointer rounded-xs border-0 bg-transparent p-0 ring-1 ring-foreground/15 [&::-webkit-color-swatch]:rounded-xs [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0 [&::-moz-color-swatch]:rounded-xs [&::-moz-color-swatch]:border-0"
+                        value={branding.primaryColor ?? DEFAULT_PRIMARY}
+                        onChange={(e) => patch({ primaryColor: e.target.value })}
+                      />
+                    </InputGroupAddon>
+                    <InputGroupInput
+                      id="brand-color"
+                      className="font-mono text-xs md:text-xs"
+                      value={branding.primaryColor ?? ""}
+                      placeholder="default"
+                      maxLength={7}
+                      onChange={(e) => patch({ primaryColor: e.target.value.toLowerCase() })}
+                    />
+                    {branding.primaryColor && (
+                      <InputGroupAddon align="inline-end">
+                        <InputGroupButton size="icon-xs" aria-label="Reset color" onClick={() => patch({ primaryColor: undefined })}>
+                          <RotateCcw />
+                        </InputGroupButton>
+                      </InputGroupAddon>
+                    )}
+                  </InputGroup>
+                  <FieldDescription className="text-xs">Buttons and focus rings. #rrggbb.</FieldDescription>
+                </Field>
+                <Field>
+                  <div className="flex items-center">
+                    <FieldLabel htmlFor="brand-radius">Corner radius</FieldLabel>
+                    <span className="ml-auto font-mono text-xs text-muted-foreground">{branding.radius ?? DEFAULT_RADIUS} px</span>
+                  </div>
+                  <Slider
+                    id="brand-radius"
+                    min={0}
+                    max={24}
+                    step={1}
+                    value={[branding.radius ?? DEFAULT_RADIUS]}
+                    onValueChange={([radius]) => patch({ radius: radius === DEFAULT_RADIUS ? undefined : radius })}
+                    className="py-1.5"
+                  />
+                  <FieldDescription className="text-xs">Cards, fields and buttons; 0 is square.</FieldDescription>
+                </Field>
+              </FieldGroup>
+            </FieldSet>
+            <FieldSeparator />
+            <FieldSet>
+              <FieldLegend>Sign in options</FieldLegend>
+              <div className="divide-y rounded-xl border">
+                <Option
+                  id="opt-show-password"
+                  label="Show password button"
+                  description="Password fields get an eye button that shows what was typed."
+                  checked={branding.showPassword === true}
+                  onChange={(on) => patch({ showPassword: on ? true : undefined })}
                 />
-                {branding.primaryColor && (
-                  <InputGroupAddon align="inline-end">
-                    <InputGroupButton size="icon-xs" aria-label="Reset color" onClick={() => patch({ primaryColor: undefined })}>
-                      <RotateCcw />
-                    </InputGroupButton>
-                  </InputGroupAddon>
-                )}
-              </InputGroup>
-              <FieldDescription className="text-xs">Buttons and focus rings. #rrggbb.</FieldDescription>
-            </Field>
-            <Field>
-              <div className="flex items-center">
-                <FieldLabel htmlFor="brand-radius">Corner radius</FieldLabel>
-                <span className="ml-auto font-mono text-xs text-muted-foreground">{branding.radius ?? DEFAULT_RADIUS} px</span>
+                <Option
+                  id="opt-remember"
+                  label="Keep me signed in"
+                  description="A checkbox on the first screen. When ticked, the authorization server remembers the sign in for 30 days, and skips it next time if one factor is enough for the application. Applies to sign ins that start after you save."
+                  checked={rememberMe}
+                  onChange={(on) => set({ ...s, rememberMe: on })}
+                />
+                <Option
+                  id="opt-sign-up"
+                  label="Sign up button"
+                  description="A Sign up button under the first screen. Sign up is not supported yet: the button tells people so."
+                  checked={branding.signUp === true}
+                  onChange={(on) => patch({ signUp: on ? true : undefined })}
+                />
               </div>
-              <Slider
-                id="brand-radius"
-                min={0}
-                max={24}
-                step={1}
-                value={[branding.radius ?? DEFAULT_RADIUS]}
-                onValueChange={([radius]) => patch({ radius: radius === DEFAULT_RADIUS ? undefined : radius })}
-                className="py-1.5"
-              />
-              <FieldDescription className="text-xs">Cards, fields and buttons; 0 is square.</FieldDescription>
-            </Field>
+            </FieldSet>
           </FieldGroup>
           <div className="grid gap-2 lg:sticky lg:top-0">
             <span className="text-xs font-medium text-muted-foreground">Preview</span>
-            <LoginPreview branding={branding} />
+            <LoginPreview branding={branding} rememberMe={rememberMe} />
           </div>
         </div>
       )}
@@ -315,37 +419,67 @@ export function BrandingSettings() {
   );
 }
 
-/** The identifier screen as the Login UI draws it, with this branding. */
-function LoginPreview({ branding }: { branding: Branding }) {
-  const radius = branding.radius ?? DEFAULT_RADIUS;
-  const style = {
-    "--primary": branding.primaryColor ?? undefined,
-    "--primary-foreground": branding.primaryColor ? "#ffffff" : undefined,
-    "--radius": `${radius}px`,
-  } as React.CSSProperties;
-  const logo = branding.logoUrl?.startsWith("https://") ? branding.logoUrl : null;
+/** One switch of the login screens, as a row of a bordered list. */
+function Option({ id, label, description, checked, onChange }: { id: string; label: string; description: string; checked: boolean; onChange: (on: boolean) => void }) {
   return (
-    <div className="grid place-items-center rounded-lg border bg-surface-2 bg-[radial-gradient(var(--border)_1px,transparent_1px)] [background-size:16px_16px] px-6 py-10">
-      <div style={style} className="grid w-full max-w-[280px] gap-4 rounded-[var(--radius)] border bg-card p-5 shadow-sm">
-        <div className="grid gap-3">
-          {logo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={logo} alt="" className="size-8 rounded-[calc(var(--radius)/2)] object-contain" />
-          ) : (
-            <span className="grid size-8 place-items-center rounded-[calc(var(--radius)/2)] bg-primary text-[13px] font-semibold text-primary-foreground">
-              {(branding.name ?? "S").slice(0, 1).toUpperCase()}
-            </span>
-          )}
-          <div className="grid gap-0.5">
-            <span className="text-[15px] font-semibold">{branding.name ? `Sign in to ${branding.name}` : "Sign in"}</span>
-            <span className="text-xs text-muted-foreground">Enter your email to continue</span>
+    <Field orientation="horizontal" className="gap-4 px-4 py-3">
+      <FieldContent>
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        <FieldDescription className="text-xs">{description}</FieldDescription>
+      </FieldContent>
+      <Switch id={id} checked={checked} onCheckedChange={onChange} />
+    </Field>
+  );
+}
+
+function LoginPreview({ branding, rememberMe }: { branding: Branding; rememberMe: boolean }) {
+  const logo = branding.logoUrl?.startsWith("https://") ? branding.logoUrl : null;
+  const field = "flex h-9 items-center overflow-hidden rounded-lg border border-input text-xs text-muted-foreground";
+  const cell = "grid h-full w-9 shrink-0 place-items-center border-r bg-muted";
+  // Mirrors the login screens on their own theme (login-theme.css): light only, a white page, one centered column, icon cell fields
+  return (
+    <div className="overflow-hidden rounded-xl border" aria-label="Preview of the first login screen">
+      <div className="login-theme grid min-h-105 grid-rows-[1fr_auto] justify-items-center px-6 pt-9 pb-4">
+      <div style={brandStyle({ ...branding, radius: branding.radius ?? DEFAULT_RADIUS })} className="grid w-full max-w-65 content-start gap-4">
+        {(logo || branding.name) && (
+          <div className="flex items-center justify-center gap-2 pb-1">
+            {logo && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={logo} alt="" className="h-6 w-auto object-contain" />
+            )}
+            {branding.name && <span className="text-base font-extrabold tracking-tight">{branding.name}</span>}
           </div>
-        </div>
+        )}
         <div className="grid gap-1.5">
-          <span className="text-xs font-medium">Email</span>
-          <span className="flex h-8 items-center rounded-[calc(var(--radius)-2px)] border bg-background px-2.5 text-xs text-muted-foreground">alice@example.com</span>
+          <span className={field}>
+            <span className={cell}>
+              <Mail className="size-3.5" strokeWidth={1.75} />
+            </span>
+            <span className="px-2.5">Email</span>
+          </span>
+          <span className={field}>
+            <span className={cell}>
+              <LockKeyhole className="size-3.5" strokeWidth={1.75} />
+            </span>
+            <span className="flex-1 px-2.5">Password</span>
+            {branding.showPassword && <Eye className="mr-2.5 size-3.5" strokeWidth={1.75} />}
+          </span>
         </div>
-        <span className="grid h-8 place-items-center rounded-[calc(var(--radius)-2px)] bg-primary text-xs font-medium text-primary-foreground">Continue</span>
+        {rememberMe && (
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="size-3 rounded-xs border border-input" />
+            Keep me signed in
+          </span>
+        )}
+        <span className="grid h-9 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground shadow-press">Sign in</span>
+        {branding.signUp && (
+          <>
+            <span className="h-px bg-border" />
+            <span className="grid h-9 place-items-center rounded-lg border border-input text-xs font-semibold text-primary">Sign up</span>
+          </>
+        )}
+      </div>
+      {branding.name && <span className="pt-6 text-xs text-muted-foreground">© {branding.name}. All rights reserved.</span>}
       </div>
     </div>
   );

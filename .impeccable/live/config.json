@@ -1,0 +1,12 @@
+{
+  "files": [
+    "web/apps/login/app/layout.tsx",
+    "web/apps/admin/app/layout.tsx",
+    "web/apps/admin/app/tenants/[tenant]/layout.tsx",
+    "web/apps/demo-client/app/layout.tsx"
+  ],
+  "exclude": ["web/apps/*/.next/**"],
+  "insertBefore": "</body>",
+  "commentSyntax": "jsx",
+  "cspChecked": true
+}

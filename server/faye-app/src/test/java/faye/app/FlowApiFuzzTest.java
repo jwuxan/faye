@@ -115,8 +115,8 @@ class FlowApiFuzzTest {
         Cookie cookie = new Cookie("x", "y");
         String nonce = "n_none";
         String location = started.getRedirectedUrl();
-        if (started.getStatus() == 302 && location != null && location.contains("/flow/")) {
-            flowId = location.substring(location.indexOf("/flow/") + 6);
+        if (started.getStatus() == 302 && location != null && location.contains("?flow=")) {
+            flowId = FlowApiTest.flowId(location);
             String set = Objects.requireNonNull(started.getHeader("Set-Cookie"));
             var parsed = java.net.HttpCookie.parse(set).get(0);
             cookie = new Cookie(parsed.getName(), parsed.getValue());
@@ -214,7 +214,7 @@ class FlowApiFuzzTest {
     @Test
     void repeatedKeysAndHugeBodiesAreRefused() throws Exception {
         MockHttpServletResponse started = perform(get("/login").param("login_challenge", "c-dup"));
-        String flowId = Objects.requireNonNull(started.getRedirectedUrl()).replaceAll(".*/flow/", "");
+        String flowId = FlowApiTest.flowId(started.getRedirectedUrl());
         var parsed = java.net.HttpCookie.parse(Objects.requireNonNull(started.getHeader("Set-Cookie")))
                 .get(0);
         Cookie cookie = new Cookie(parsed.getName(), parsed.getValue());
@@ -267,7 +267,7 @@ class FlowApiFuzzTest {
     @Test
     void nullInAPayloadIsRefused() throws Exception {
         MockHttpServletResponse started = perform(get("/login").param("login_challenge", "c-null"));
-        String flowId = Objects.requireNonNull(started.getRedirectedUrl()).replaceAll(".*/flow/", "");
+        String flowId = FlowApiTest.flowId(started.getRedirectedUrl());
         var parsed = java.net.HttpCookie.parse(Objects.requireNonNull(started.getHeader("Set-Cookie")))
                 .get(0);
         Cookie cookie = new Cookie(parsed.getName(), parsed.getValue());

@@ -443,7 +443,8 @@ class EngineTest {
                         unused("password.verify"),
                         unused("totp.verify"),
                         unused("totp.enroll"),
-                        unused("webauthn.register"))))
+                        unused("webauthn.register"),
+                        unused("consent.record"))))
                 .store(store)
                 .host(host)
                 .screens(FixedIssuers.registry())

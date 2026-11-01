@@ -58,6 +58,14 @@ putenv HYDRA_PUBLIC_URL "http://$host:4444"
 # Internal URLs stay on the container's loopback
 putenv FAYE_SERVER_URL "http://127.0.0.1:8080"
 putenv FAYE_DATABASE "$data/faye.db"
+# The admin API listens only on this Unix domain socket (ADR 0028). faye (uid 100) creates it;
+# only the Admin UI's group (104; the Login UI runs as 102) may enter its directory, and setgid
+# gives the socket that group.
+putenv FAYE_ADMIN_SOCKET /run/faye/admin.sock
+sockdir=$(dirname "${FAYE_ADMIN_SOCKET:-$(cat "$envdir/FAYE_ADMIN_SOCKET")}")
+mkdir -p "$sockdir"
+chown 100:104 "$sockdir"
+chmod 2750 "$sockdir"
 putenv DSN "sqlite://$data/faye.db?_fk=true&_journal_mode=WAL&_busy_timeout=10000"
 if enabled hydra; then
   putenv FAYE_HYDRA_ADMIN_URL "http://127.0.0.1:4445"
@@ -71,6 +79,8 @@ if [ "$demo" = true ]; then
   putenv SECRETS_DIR "$data/demo"
   putenv DATABASE "$data/faye.db"
   putenv CLIENT_REGISTRATIONS "$data/demo/clients.jsonl"
+  # The Login UI opened with no flow (http://$host:3000/) starts a sign in through the demo client
+  putenv DEMO_SIGN_IN_URL "http://$host:3001/login"
 fi
 
 # Hydra's --dev allows a plain http issuer; pass it only for loopback issuers. Only

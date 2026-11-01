@@ -25,6 +25,7 @@ faye:
   hydra-admin-url: ""
   flow-ttl: 30m
   admin-token: ""
+  admin-socket: ""
   preview-enabled: false
   tenants:
     default:

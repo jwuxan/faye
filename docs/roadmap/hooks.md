@@ -41,7 +41,7 @@ hooks:
     timeout_ms: 200             # default 200, at most 2000
 login:
   steps:
-    risk: { hook: risk }                    # a hook in a step: set, fail or {}
+    identify: { block: identifier, after: risk }   # a hook before or after a block: set, fail or {}
     credential:
       pick: route                           # the hook of a choose: pick, fail or {}
       alternative: { … }

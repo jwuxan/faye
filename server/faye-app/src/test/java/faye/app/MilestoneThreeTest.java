@@ -51,6 +51,13 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 @AutoConfigureMockMvc
 class MilestoneThreeTest {
 
+    /** What the app hands the compiler: consent's screen and handler, and its blocks (ADR 0030). */
+    static final FlowCompiler.Options DSL = new FlowCompiler.Options(
+            java.util.Map.of(),
+            java.util.Set.of("consent"),
+            java.util.Set.of("consent.record"),
+            EngineConfiguration.blocks());
+
     static final ObjectMapper JSON = new ObjectMapper();
     static final String PASSWORD = "correct horse battery staple";
 
@@ -59,9 +66,9 @@ class MilestoneThreeTest {
             version: 2
             login:
               steps:
-                identify: { screen: identifier, use: identity.resolve }
-                credential: { retry: 3, screen: password, use: password.verify }
-                second-factor: { retry: 3, screen: otp, use: totp.verify }
+                identify: { block: identifier }
+                credential: { block: password }
+                second-factor: { block: totp }
             """;
 
     @TestConfiguration
@@ -142,6 +149,12 @@ class MilestoneThreeTest {
         JsonNode versions = admin(get("/admin/tenants/pinning/versions"), status().isOk());
         assertThat(versions.get("current").asText()).isEqualTo(original);
         assertThat(JSON.convertValue(versions.get("versions"), String[].class)).containsExactly(original, next);
+        // Each publish is timed, for the Admin UI's history
+        assertThat(versions.get("published").has(original)).isTrue();
+        assertThat(java.time.Instant.parse(
+                        versions.at("/published/" + next.replace("/", "~1")).asText()))
+                .isAfterOrEqualTo(java.time.Instant.parse(
+                        versions.get("published").get(original).asText()));
     }
 
     /** M3 exit: a flow missing a credential on one branch is rejected with a pointer to the YAML line. */
@@ -156,25 +169,23 @@ class MilestoneThreeTest {
                 login:
                   steps:
                     identify:
-                      screen: identifier
-                      use: identity.resolve
+                      block: identifier
                     credential:
+                      if: { ne: [request.ip, "10.0.0.1"] }
                       alternative:
                         password:
-                          screen: password
-                          use: password.verify
-                        remembered-device:
-                          if: { eq: [request.ip, "10.0.0.1"] }
-                          set: { trusted: true }
+                          block: password
+                        passkey:
+                          block: passkey
                 """;
         JsonNode refused = admin(publish("checks", lax), status().isUnprocessableEntity());
         assertThat(refused.get("ok").asBoolean()).isFalse();
         JsonNode error = refused.get("errors").get(0);
-        assertThat(error.get("source").asText()).isEqualTo("checks.yaml:14:15");
-        assertThat(error.get("line").asInt()).isEqualTo(14);
+        assertThat(error.get("source").asText()).isEqualTo("checks.yaml:8:11");
+        assertThat(error.get("line").asInt()).isEqualTo(8);
         assertThat(error.get("message").asText())
                 .isEqualTo("a path succeeds without verifying a credential:"
-                        + " identify > credential/remembered-device > succeed with no credential");
+                        + " identify > credential > (condition at 8 false) > succeed with no credential");
         assertThat(admin(get("/admin/tenants/checks/versions"), status().isOk())
                         .get("current")
                         .asText())
@@ -182,7 +193,7 @@ class MilestoneThreeTest {
 
         JsonNode validation = admin(validate("checks", lax), status().isOk());
         assertThat(validation.get("ok").asBoolean()).isFalse();
-        assertThat(validation.get("summary").asText()).startsWith("login: 2 success paths");
+        assertThat(validation.get("summary").asText()).startsWith("login: 7 success paths");
 
         JsonNode syntax = admin(validate("checks", "flow: [\n"), status().isUnprocessableEntity());
         assertThat(syntax.get("errors").get(0).get("line").asInt()).isEqualTo(2);
@@ -215,7 +226,7 @@ class MilestoneThreeTest {
 
     @Test
     void mfaPolicyFlowIsTheConformanceFlow() throws Exception {
-        var compiled = FlowCompiler.compile("mfa-policy.yaml", read("flows/mfa-policy.yaml"));
+        var compiled = FlowCompiler.compile("mfa-policy.yaml", read("flows/mfa-policy.yaml"), DSL);
         var expected = IrCodec.readFlow(
                 Files.readString(Path.of(System.getProperty("faye.repoRoot"), "conformance/flows/mfa-policy.json")));
         assertThat(IrCodec.hash(compiled)).isEqualTo(IrCodec.hash(expected));
