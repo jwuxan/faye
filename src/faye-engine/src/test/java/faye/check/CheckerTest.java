@@ -486,7 +486,7 @@ class CheckerTest {
         assertThat(errors(check(flow)))
                 .singleElement()
                 .asString()
-                .contains("screen 'qr' needs the flow to have a approve entry");
+                .contains("screen 'qr' needs the flow to have an approve entry");
         assertThat(faye.ir.IrCodec.toJson(flow).get(1).asInt()).isEqualTo(1);
     }
 

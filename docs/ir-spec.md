@@ -1,4 +1,8 @@
-# Core IR specification, format 1
+---
+description: "The normative meaning of Faye's Core IR, formats 1 and 2: every form, the host contract, evaluation, failures, predicates, catalogs, checks and versioning."
+---
+
+# Core IR specification
 
 This is the normative meaning of the Core IR ([ADR 0024](adr/0024-core-ir-as-a-narrow-waist.md)). Each fact has one source:
 
@@ -11,7 +15,7 @@ This is the normative meaning of the Core IR ([ADR 0024](adr/0024-core-ir-as-a-n
 | Screen protocol | [`src/schema/screen.schema.json`](../src/schema/screen.schema.json) |
 | The YAML surface and how it lowers | `FlowCompiler` in `src/faye-core`, pinned by the golden files in `src/faye-core/src/test/resources/golden/` |
 
-Each rule below names the vectors that pin it. A rule without a vector is a gap. An engine conforms when it passes every vector; `src/faye-engine` is the reference engine.
+Each rule in this specification names the vectors that pin it. A rule without a vector is a gap. An engine conforms when it passes every vector; `src/faye-engine` is the reference engine.
 
 ## Notation
 
@@ -42,7 +46,7 @@ Every node is `[head, required positional arguments..., options?]`. A form's pos
 
 | Kind | Started by | Sees at start | `succeed` means |
 |---|---|---|---|
-| `authenticate` | a login challenge | `auth` empty, or the host's subject bound for a step up | see below |
+| `authenticate` | a login challenge | `auth` empty, or the host's subject bound for a step up | see *Succeeding an authenticate entry* |
 | `consent` | a consent challenge | the `user` and `auth` of the authenticate entry that ran for this subject, if the host links one | the access the host asked for is granted |
 | `approve` | a QR code scanned on a second device (format 2) | `auth` empty; `client` is the waiting device's client | the waiting sign in is approved for this subject with this entry's `amr` |
 
@@ -52,7 +56,7 @@ The engine runs the flow's only entry of the kind a challenge maps to (`EntrySel
 
 **Starting a consent entry.** If the host relays the flow id of a finished login for the same subject (`host.context.flowId`), the consent runs on that login's version and sees its `user` and `auth`; otherwise it runs on the tenant's current version with only the subject. A consent request that names no subject is rejected (`no_subject`). A remembered consent (`host.skip`), or a version with no consent entry, is granted without running anything; a version whose consent entry cannot be selected, or a linked login's version that can no longer be read, is not run (`flow_unavailable`). Pinned by `consent-third-party`, `consent-first-party`, `consent-denied`, `preview-consent-flow-id`.
 
-**The approve entry** ([ADR 0032](adr/0032-delivered-one-time-codes-and-qr-sign-in.md)) runs on the phone that scanned a QR code another device shows; the host (Faye's own, in front of the authorization server's) loads it from the QR code's grant, for the waiting device's tenant, client and preview flag, and completes it with a handoff, never a session. The checker holds it to the authenticate rules (an identifier first, a credential that binds the subject on every success path, the tenant's MFA policy) and requires every success path to end with exactly one call of a handler that belongs only in approve entries, after everything else. A screen may need an entry of another kind in the same flow (`ScreenSpec.needsEntry`: the `qr` screen needs an approve entry). Reaching `succeed` requires a subject and a proved amr, and the tenant's policy. Pinned by `qr-approve`, `qr-wrong-number`, `CheckerTest.anApproveEntryEndsWithItsApproval`, `CheckerTest.aQrCodeNeedsAnApproveEntry`.
+**The approve entry** ([ADR 0032](adr/0032-delivered-one-time-codes-and-qr-sign-in.md)) runs on the phone that scanned a QR code another device shows; the host (Faye's own, in front of the authorization server's) loads it from the QR code's grant, for the waiting device's tenant, client and preview flag, and completes it with a handoff, never a session. The checker holds it to the authenticate rules (an identifier first, a credential that binds the subject on every success path, the tenant's MFA policy) and requires every success path to end with exactly one call of a handler that belongs only in approve entries, after everything else. A screen may need an entry of another kind in the same flow (`ScreenSpec.needsEntry`: the `qr` screen needs an approve entry). Reaching `succeed` requires a subject and a proved amr, and the tenant's policy. Its host's `acr_values` do not apply: the waiting device's login enforces its own. Pinned by `qr-approve`, `qr-approve-ignores-acr-values`, `qr-wrong-number`, `CheckerTest.anApproveEntryEndsWithItsApproval`, `CheckerTest.aQrCodeNeedsAnApproveEntry`.
 
 **Succeeding an authenticate entry.** Reaching `succeed` ends the entry successfully only if, in this order:
 
@@ -70,7 +74,7 @@ A flow reads its environment through predicate paths `namespace.key...`. A missi
 |---|---|---|
 | `request` | IP, user agent, locale of the request that started the flow | the engine, at start (a preview scenario may override it) |
 | `client` | display data of the client: `client_id`, `client_name`, `first_party`, `metadata`; the engine decides nothing from it (the host decides the tenant and the preview flag) | the host, at start |
-| `host` | the request as the host relays it, exactly the fields of the host contract below | the host, at start |
+| `host` | the request as the host relays it, exactly the fields of the [host contract](#host-contract) | the host, at start |
 | `tenant` | the tenant's settings when the flow started: `mfa_required`, `name`, its display name, when it has one, and `remember_me` (true) when its identifier screen offers "keep me signed in" ([ADR 0033](adr/0033-login-page-customization-and-keep-me-signed-in.md)) | the engine, at start |
 | `user` | what handlers learned about the person | handlers, by merging fields on success |
 | `vars` | the flow's own values | `set`, and hooks in steps |
@@ -247,7 +251,7 @@ Checks run in three layers. Every finding points at the source the frontend reco
 |---|---|---|
 | L0, the schema | shape, arity, patterns, the format; a document nested deeper than 128 levels is refused before validation (`IrCodec.MAX_DEPTH`), as is JSON with a repeated key | every read of IR |
 | L1, the verifier | unique entry and option ids (at every read); every handler and screen is in the catalogs, screen options are ones the screen takes, a screen's `path` keeps the first segment of its default (`CheckerTest.screenPathsKeepTheirFirstSegment`), no step shows `method_picker` (only a `choose` does; `catalog-method-picker-step`), call args match the handler's `args`; the limits of `FlowLimits` (node, step, hook attachment, distinct hook, option, retry product, set name, literal and name lengths) | the checker, and the engine whenever it runs a version: a new flow on one that fails is rejected (`flow_unavailable`, `catalog-unknown-handler`, `limits-too-many-steps`), and a flow pinned to one reads as absent |
-| L2, the checker | path enumeration, then the rules below | publish, rollback, preview, startup |
+| L2, the path checks | path enumeration, then the rules in the next table | publish, rollback, preview, startup |
 
 The checker enumerates every path through each entry once. The language has no loops but bounded `retry` and no recursion, so paths are finite; more than 10,000 paths in an entry is an error. A predicate is decided when it reads only what is known before the flow runs, else both ways are paths. A call succeeds proving any nonempty part of its amr, fails, or (subject binding handlers) proves another subject; a retry's attempts may fail before one succeeds; a hook fails or sets unknown `vars`; a pick hook fails or picks any option that may be enabled. The checker over-approximates: a rule that holds on every enumerated path holds on every run. The generated vectors check the engine against every enumerated path the generator can realize.
 

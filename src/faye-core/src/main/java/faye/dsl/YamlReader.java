@@ -34,6 +34,13 @@ final class YamlReader {
 
     private static final java.util.regex.Pattern DECIMAL = java.util.regex.Pattern.compile("[-+]?(0|[1-9][0-9]*)");
 
+    /**
+     * NEL, LS and PS: YAML 1.1, which SnakeYAML reads, breaks lines at them, while YAML 1.2 and every
+     * editor show them inside a line. A document holding one would compile to a structure its
+     * author cannot see (a key hidden after a value), with diagnostics on lines the editor lacks.
+     */
+    private static final String HIDDEN_BREAKS = "\u0085\u2028\u2029";
+
     private final String origin;
     private final List<Diagnostic> errors = new ArrayList<>();
 
@@ -62,6 +69,7 @@ final class YamlReader {
     }
 
     private Doc read(String yaml) {
+        refuseHiddenBreaks(yaml);
         LoaderOptions options = new LoaderOptions();
         options.setCodePointLimit(MAX_CODE_POINTS);
         options.setNestingDepthLimit(MAX_NESTING);
@@ -87,6 +95,32 @@ final class YamlReader {
             throw new DslException(List.of(new Diagnostic(new SourceRef(origin, 1, 1), "empty document")));
         }
         return doc(root);
+    }
+
+    /** Refuses a line break only YAML 1.1 sees, at the line and column an editor shows (fuzz finding). */
+    private void refuseHiddenBreaks(String yaml) {
+        int line = 1;
+        int column = 1;
+        int i = 0;
+        while (i < yaml.length()) {
+            int c = yaml.codePointAt(i);
+            i += Character.charCount(c);
+            if (HIDDEN_BREAKS.indexOf(c) >= 0) {
+                throw new DslException(List.of(new Diagnostic(
+                        new SourceRef(origin, line, column),
+                        String.format(
+                                java.util.Locale.ROOT,
+                                "U+%04X breaks a line in YAML 1.1 but not in an editor; write a newline, or"
+                                        + " \\N, \\L or \\P in a double quoted string",
+                                c))));
+            }
+            if (c == '\n' || (c == '\r' && (i == yaml.length() || yaml.charAt(i) != '\n'))) {
+                line++;
+                column = 1;
+            } else {
+                column++;
+            }
+        }
     }
 
     private Doc doc(Node node) {

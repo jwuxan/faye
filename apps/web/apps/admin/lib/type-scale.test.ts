@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 
-// The console's type scale is the four text-* tokens in app/globals.css. A size outside it (an
+// The console's type scale is the four text-* tokens in app/(console)/globals.css. A size outside it (an
 // arbitrary text-[13px], an inline fontSize, a CSS font-size other than a token) is refused here.
 const APP = join(import.meta.dirname, "..", "app");
 const OFF_SCALE = [

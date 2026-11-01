@@ -20,7 +20,7 @@ help: ## List the targets
 setup: ## Check the toolchain, install web deps, fetch server deps and compile
 	@test -x "$(JAVA_HOME)/bin/java" || { echo "JDK 21+ not found; install one or pass JAVA_HOME=..." >&2; exit 1; }
 	@"$(JAVA_HOME)/bin/java" -version 2>&1 | awk -F'"' '/version/ { split($$2, v, "."); if (v[1] < 21) { print "JDK at $(JAVA_HOME) is " $$2 ", need 21+" > "/dev/stderr"; exit 1 } }'
-	@for t in node pnpm redis-server redis-cli curl python3; do \
+	@for t in node pnpm curl python3; do \
 	  command -v $$t >/dev/null || { echo "missing $$t (needed by setup, dev or smoke)" >&2; exit 1; }; \
 	done
 	@command -v docker >/dev/null || echo "note: docker not found; only needed for make up/down"
@@ -58,10 +58,10 @@ format: ## Apply the Java and Gradle formatting
 	$(GRADLE_SRC) spotlessApply
 	$(GRADLE_APP) spotlessApply
 
-generate: ## Regenerate the TS contract types from schema/screen.schema.json
+generate: ## Regenerate the TS contract types from src/schema/screen.schema.json
 	$(PNPM) generate
 
-dev: ## Run the stack locally without Docker (Redis, Hydra, Faye, Login UI, demo client, Admin UI)
+dev: ## Run the stack locally without Docker (Hydra, Faye, Login UI, demo client, Admin UI)
 	deploy/dev.sh
 
 up: ## Run the stack in Docker (deploy/compose.yaml)

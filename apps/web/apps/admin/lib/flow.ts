@@ -729,7 +729,7 @@ export const PALETTE: Block[] = [
   {
     name: "Code by",
     group: "Logic",
-    description: "A one time code: the app if enrolled, a text if phone codes are on, else email; the person picks",
+    description: "A one time code: the app if enrolled, a text if phone codes are on, an email if verified; the person picks",
     role: "choose",
     stepId: "second-factor",
     optionId: "second-factor",

@@ -1,6 +1,10 @@
 # Faye
 
-Faye is the login box that sits in front of an authorization server. The server (Ory Hydra) speaks OAuth2/OIDC to applications; Faye owns every screen the user sees and decides how they prove who they are: password, TOTP, passkey, consent screen, risk check. Flows are written in YAML, so you can reshape a sign in without touching server code.
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/jwuxan/faye)
+
+Faye is an embeddable, configurable flow runtime built only for sign in and sign up. In practice it is the login box that sits in front of an authorization server. The server (Ory Hydra) speaks OAuth2/OIDC to applications; Faye owns every screen the user sees and decides how they prove who they are: password, TOTP, passkey, consent screen, risk check. Flows are written in YAML, so you can reshape a sign in without touching server code.
+
+**Documentation:** start at [docs/index.md](docs/index.md), or open the Admin UI's **Docs** (http://localhost:3002/docs) once the stack runs. It covers the architecture, the engine, the flow language and its IR, the Admin UI, and building from source. Every page is also Markdown for agents (`/llms.txt`), and [DeepWiki](https://deepwiki.com/jwuxan/faye) answers questions about the code.
 
 The repo ships with a full sandbox: two tenants (`acme` and `bank`) with their own user pools, seeded accounts, ten registered applications, and a demo OIDC client that shows you the token at the end.
 
@@ -22,7 +26,7 @@ Wait for the container to be healthy (`docker compose -f deploy/compose.yaml ps`
    docker exec faye cat /var/lib/faye/demo/users.csv
    ```
 
-4. You land back on the demo client, which shows the decoded ID token, its `amr`/`acr`, and the trace of the steps the flow ran.
+4. You land back on the demo client, which shows the decoded ID token and its `amr`/`acr`. A preview sign in from the Admin UI also shows the trace of the steps the flow ran.
 
 That is the whole loop: Hydra (`:4444`) sends the browser to Faye (`:8080`), Faye runs the flow in the login UI (`:3000`), and the demo client (`:3001`) shows the result.
 
@@ -77,4 +81,4 @@ FAYE_SERVER_URL=http://localhost:8080 pnpm --filter @faye/login dev   # http://l
 
 Repo map: `src/schema/` holds the IR grammar and screen protocol (JSON Schema), `src/conformance/` the engine test vectors, `apps/web/` the pnpm workspace (`apps/login` renders the typed screens, `apps/demo-client` is the OIDC relying party, `apps/admin` the Admin UI), `apps/server/faye-app/src/main/resources/flows/` the tenant flows.
 
-With `FAYE_HYDRA_ADMIN_URL` set (compose does), the server talks to Hydra through `faye-host-hydra`; without it, challenges come from the in-memory `faye-host-mock`, so any `login_challenge` works at http://localhost:8080/login?login_challenge=anything.
+With `FAYE_HYDRA_ADMIN_URL` set (compose does), the server talks to Hydra through `faye-host-hydra`; without it, challenges come from the in-memory `MockFlowHost` (a test fixture of `faye-engine`), so any `login_challenge` works at http://localhost:8080/login?login_challenge=anything.

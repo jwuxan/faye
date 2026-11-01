@@ -1,4 +1,10 @@
+---
+description: The architecture decision records (ADRs) that explain why Faye is built the way it is, one decision per record, with each record's status.
+---
+
 # Architecture decision records
+
+An architecture decision record (ADR) is a short document that records one decision: the problem, the options that were considered, and why one option won. Read the records when you change a boundary of Faye, such as the intermediate representation (IR), the screen protocol, the host interface or the stored data. A record tells you what the current design protects. To change a decision, add a new record that supersedes it. If you only build flows, you do not need these records. Start with [Core concepts](../start/concepts.md) instead.
 
 Format: [MADR 4](https://adr.github.io/madr/). One file per decision, `NNNN-title.md`, numbered in order and never renumbered. Change a decision by adding a new record that supersedes the old one. Status is `Proposed` (planned, not implemented), `In progress` (started, or gaps remain), `Accepted` (implemented, every gap closed, confirmation passes; set by a human), or `Superseded by NNNN`; see [AGENTS.md](../../AGENTS.md#decisions). The founding decision log D1 to D13 is in [ADR 0036](0036-retire-the-roadmap.md).
 

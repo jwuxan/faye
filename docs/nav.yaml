@@ -1,8 +1,20 @@
-# The Admin UI's docs sidebar, in order. Paths are relative to docs/. A section with `dir` lists every .md in it (README.md first, then by name).
+# The docs sidebar, in order: the Admin UI's /docs site reads it, and so do /llms.txt and the docs
+# tests. Paths are relative to docs/. A section with `dir` is a folder of every .md in it, its
+# README.md as the folder's own page.
 sections:
-  - title: Guide
-    pages: [index.md, guide/getting-started.md, guide/admin-console.md, guide/flow-syntax.md, guide/hooks.md, guide/login-page.md]
+  - title: Get started
+    pages: [index.md, start/quickstart.md, start/concepts.md]
+  - title: Build flows
+    pages: [flows/first-flow.md, flows/flow-syntax.md, flows/recipes.md, flows/hooks.md, flows/codes.md]
+  - title: Use the Admin UI
+    pages: [console/overview.md, console/flow-editor.md, console/blocks.md, console/preview.md, console/login-page.md, console/tenant-settings.md]
+  - title: Understand Faye
+    pages: [understand/vision.md, understand/design-goals.md, understand/compare.md, understand/architecture.md, understand/ir-design.md, understand/ir-examples.md, understand/engine.md, understand/security.md]
+  - title: Integrate
+    pages: [understand/host-spi.md, reference/http-api.md]
   - title: Reference
-    pages: [ir-spec.md]
+    pages: [reference/dsl.md, ir-spec.md, reference/screens.md, reference/configuration.md, reference/troubleshooting.md, reference/glossary.md]
+  - title: Develop Faye
+    pages: [develop/build-from-source.md, develop/codebase.md, develop/write-docs.md]
   - title: Decisions
     dir: adr

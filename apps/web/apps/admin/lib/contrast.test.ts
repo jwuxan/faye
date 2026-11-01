@@ -10,7 +10,7 @@ import { test } from "node:test";
 // boundaries, so 1.4.11 does not apply to them.
 
 const UI = join(import.meta.dirname, "..", "..", "..", "packages", "ui", "src", "globals.css");
-const ADMIN = join(import.meta.dirname, "..", "app", "globals.css");
+const ADMIN = join(import.meta.dirname, "..", "app", "(console)", "globals.css");
 
 type Tokens = Record<string, string>;
 

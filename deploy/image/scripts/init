@@ -70,7 +70,7 @@ mkdir -p "$sockdir"
 chown 100:104 "$sockdir"
 chmod 2750 "$sockdir"
 # The shipped tenants' emailed and texted codes are written here instead of sent, until a tenant
-# configures a webhook: docker exec faye cat /var/lib/faye/outbox/* (ADR 0032)
+# configures a webhook: docker exec faye sh -c 'cat /var/lib/faye/outbox/*' (ADR 0032)
 putenv FAYE_DEMO_OUTBOX "$data/outbox"
 putenv DSN "sqlite://$data/faye.db?_fk=true&_journal_mode=WAL&_busy_timeout=10000"
 if enabled hydra; then
