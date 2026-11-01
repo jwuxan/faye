@@ -261,7 +261,7 @@ Run `make help` to list them.
 | `web` | `pnpm install --frozen-lockfile`, then `pnpm generate` with a diff check, `typecheck`, `lint`, `test`, `build` and the Login UI browser tests in Chromium. |
 | `e2e` | Builds and starts the compose stack, waits for the seed and the client registrations, runs `deploy/smoke.sh`, and checks that Hydra's admin API is not published. |
 
-[`fuzz.yml`](../../.github/workflows/fuzz.yml) fuzzes each harness for 2 minutes on pull requests that touch `src/`, `apps/server/` or the fuzz script. It fuzzes each harness for 30 minutes every night.
+[`fuzz.yml`](../../.github/workflows/fuzz.yml) fuzzes each harness for 2 minutes on pull requests that touch `src/`, `apps/server/`, the fuzz script or the workflow itself. It fuzzes each harness for 30 minutes every night.
 
 ## Next steps
 

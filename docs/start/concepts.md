@@ -27,7 +27,7 @@ flowchart TD
 
 A **tenant** is one customer or one product line that shares a sign in. Each tenant has its own flow, its own applications, its own user pool, its own branding and its own policy, such as "every sign in needs two factors".
 
-The demo stack has two tenants: `acme` and `bank`. The authorization server decides which tenant a sign in belongs to, from the application's registration (`metadata.tenant`).
+The demo stack has two tenants: `acme` and `bank`. Faye finds the tenant of a sign in from the application's registration in the authorization server (`metadata.tenant`).
 
 ## Flow
 
@@ -96,7 +96,7 @@ The checker refuses a flow if any path can succeed without a credential. It also
 
 ## Draft, version and publish
 
-You edit a **draft** of a tenant's flow. When you **publish** the draft, the checker runs and the draft becomes a new **version**. The newest published version is **live**: new sign ins use it.
+You edit a **draft** of a tenant's flow. When you **publish** the draft, the checker runs and the draft becomes a new **version**. A new version is **live** as soon as you publish it: new sign ins use it.
 
 A sign in that already started keeps its version to the end, so publishing never breaks a person in the middle of signing in. You can **roll back** to an earlier version at any time.
 

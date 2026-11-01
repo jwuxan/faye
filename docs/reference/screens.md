@@ -6,7 +6,7 @@ description: The typed screens of screen protocol v1 that people see when they s
 
 This page lists every screen that a person can see during a sign in, a consent or a QR code approval. For each screen it gives the block that shows it, what the person sees, the answers and actions it takes, and the URL path it appears at. It is for flow authors who want to know what their flow looks like, and for engineers who build against the screen protocol.
 
-The source of truth is [`src/schema/screen.schema.json`](../../src/schema/screen.schema.json), screen protocol v1. The Login UI renders each screen in [`flow-screen.tsx`](../../apps/web/apps/login/app/flow-screen.tsx). The texts on this page are the texts in that file.
+The source of truth is [`src/schema/screen.schema.json`](../../src/schema/screen.schema.json), screen protocol v1. The Login UI renders each screen in [`flow-screen.tsx`](../../apps/web/apps/login/app/flow-screen.tsx). The texts on this page are the texts in that file and in [`messages.ts`](../../apps/web/apps/login/lib/messages.ts).
 
 ## Why screens are typed
 
@@ -131,7 +131,7 @@ Shown by the `email-code` block (channel `email`) and the `sms-code` block (chan
 - **Answer:** `{code}`.
 - **Action:** `resend`, with an empty payload. It sends another code, spends no attempt and keeps the same screen.
 
-Faye registers this screen only when the tenant has a delivery channel: a webhook or the outbox folder. Without one, the checker refuses a flow that uses these blocks. See [Configuration](configuration.md#keys-of-a-tenant).
+A tenant may use these blocks only when it has a delivery channel for them: a webhook or the outbox folder. Without one, Faye refuses to publish a flow that uses them. See [Configuration](configuration.md#keys-of-a-tenant).
 
 ### phone_enroll
 

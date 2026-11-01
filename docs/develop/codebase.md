@@ -66,7 +66,7 @@ In words:
 - `faye-app` wires everything together. It also uses `MockFlowHost` from the test fixtures of `faye-engine` when no Hydra is configured.
 - `@faye/contract` holds TypeScript types generated from the schemas. The Login UI and the Admin UI use them.
 
-At run time, the apps talk over HTTP. The Login UI calls the server's screen API. The Admin UI calls the server's admin API over a Unix socket ([ADR 0028](../adr/0028-admin-api-on-a-unix-domain-socket.md)). The demo client talks only to Hydra.
+At run time, the apps talk over HTTP. The Login UI calls the server's screen API. The Admin UI calls the server's admin API over a Unix socket ([ADR 0028](../adr/0028-admin-api-on-a-unix-domain-socket.md)). The demo client talks to Hydra, and to the server's preview API for the trace of a preview client.
 
 ## The folders and what to read first
 

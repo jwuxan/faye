@@ -46,7 +46,7 @@ The **Blocks** tab shows the draft as a tree of blocks. A block is one part of a
 
 ### Read the tree
 
-The tree has up to two sections, each with a step count:
+The tree has two sections, each with a step count:
 
 - **Sign in** holds the steps of the sign in, from the **Identifier** on. If the flow asks for consent, the **Consent** block and every step after it appear under a **Consent** heading. The heading says "runs after sign in, on the consent challenge". These steps run only after the sign in succeeded, when the authorization server asks for consent.
 - **Approve** holds the steps that a phone runs to approve a QR code sign in ([ADR 0032](../adr/0032-delivered-one-time-codes-and-qr-sign-in.md)). The YAML gets an `approve` section only once this section has steps.
@@ -87,7 +87,7 @@ The line at the bottom of **Add block** says where the block goes:
 - If you selected a block, the new block goes after it.
 - Otherwise, the block goes to the end of **Sign in**, before **Consent**.
 
-The **Identifier** always goes first, and **Approve QR code** always goes to the end of **Approve**.
+The **Identifier** always goes first in **Sign in**, and **Approve QR code** always goes to the end of **Approve**.
 
 ### Why a block is disabled
 
@@ -95,7 +95,7 @@ The **Identifier** always goes first, and **Approve QR code** always goes to the
 
 | Reason | What to do |
 |---|---|
-| The Identifier is always the first step | Add other blocks after the Identifier. |
+| Start with the Identifier | The section has no Identifier yet. Add the **Identifier** first. |
 | The flow already starts with the Identifier | The section has its Identifier. A section has only one. |
 | An option is one credential block, or Fail | A **Choose** option cannot be a **Group**, **Set** or another **Choose**. |
 | Consent is a step of its own | Add **Consent** as a step, not inside a **Choose** or **Group**. |
@@ -281,7 +281,7 @@ The **Settings** tab holds what the flow says about itself. Its toolbar reads **
 - **Time limit**: how long after its start a person can still answer.
 - **Idle timeout**: how long after the last answer a person can still answer.
 
-Leave a field empty to use the deployment's limit, `faye.flow-ttl`, which is 30 minutes in the shipped configuration. A limit is at least 1 minute and at most that deployment limit. The idle timeout cannot be longer than the time limit.
+Leave **Time limit** empty to use the deployment's limit, `faye.flow-ttl`, which is 30 minutes in the shipped configuration. Leave **Idle timeout** empty for no idle timeout. A limit is at least 1 minute and at most that deployment limit. The idle timeout cannot be longer than the time limit.
 
 Time limits are tenant settings, not part of the draft. Select **Save limits** to save them, or **Discard** to drop your changes. They apply to sign ins that start after you save, with no publish. A sign in that has started keeps the limits it started with. When a sign in passes its limit, the Login UI says "This sign in timed out. Go back to the app and start again."
 

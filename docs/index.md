@@ -52,7 +52,7 @@ Three ideas carry the design:
 
 ## A flow in one look
 
-This is the `bank` tenant's flow, from [`passkey-totp.yaml`](../apps/server/faye-app/src/main/resources/flows/passkey-totp.yaml), shortened. A person signs in with a passkey, or with a password plus a code from an authenticator app.
+This is the `bank` tenant's flow, from [`passkey-totp.yaml`](../apps/server/faye-app/src/main/resources/flows/passkey-totp.yaml), shortened. A person signs in with a passkey, or with a password. After a password, an account that has an authenticator app also enters a code from it.
 
 ```yaml
 flow: passkey-totp

@@ -141,6 +141,6 @@ The docs site gives agents the same text people read:
 - Every page has a Markdown version at its URL plus `.md`, for example `/docs/flows/hooks.md`.
 - `/llms.txt` lists every page with a one line summary, following [llmstxt.org](https://llmstxt.org).
 - `/llms-full.txt` holds every page in one file.
-- Each page has **Copy Markdown**, an **Open** menu (ChatGPT, Claude, Cursor, GitHub), and **Ask Devin**, which opens [DeepWiki](https://deepwiki.com/jwuxan/faye) for this repository.
+- Each page has **Copy Markdown**, an **Open** menu (GitHub, Markdown, Scira AI, ChatGPT, Claude, Cursor), and **Ask Devin**, which opens [DeepWiki](https://deepwiki.com/jwuxan/faye) for this repository.
 
 Because the Admin UI runs on your own machine, the **Open** menu hands AI assistants the page's public GitHub copy, not the local URL.

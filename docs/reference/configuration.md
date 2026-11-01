@@ -97,7 +97,7 @@ The [Dockerfile](../../Dockerfile) also sets `SERVE_ADMIN_HOST=127.0.0.1`, so Hy
 | Variable | Default | Meaning |
 |---|---|---|
 | `FAYE_SERVER_URL` | `http://localhost:8080` | The Faye server. The Login UI calls the screen API there from its own server, never from the browser. |
-| `DEMO_SIGN_IN_URL` | unset | Where `/login` goes when no flow is named. If unset, `/login` without a flow shows `/error`. With it set, `/error` also offers to start again after 5 seconds ([ADR 0031](../adr/0031-failed-sign-in-stays-on-faye.md)). |
+| `DEMO_SIGN_IN_URL` | unset | Where `/login` goes when no flow is named. If unset, `/login` without a flow shows `/error`. With it set, `/error` also shows **Start now** and starts a new sign in after 5 seconds ([ADR 0031](../adr/0031-failed-sign-in-stays-on-faye.md)). |
 | `FAYE_EMBED_ORIGIN` | unset | The one origin that may receive a host's handoff result, when an embedding page opened the Login UI in a popup ([ADR 0025](../adr/0025-host-neutral-boundaries-for-embedding.md)). A value that is not exactly one origin, `*` included, is ignored and logged. |
 
 ## Admin UI
@@ -142,7 +142,7 @@ The [Dockerfile](../../Dockerfile) also sets `SERVE_ADMIN_HOST=127.0.0.1`, so Hy
 
 ## Tenants
 
-The `faye` section of `application.yaml` declares the tenants and a few limits. This is the shipped configuration:
+The `faye` section of `application.yaml` declares the tenants and a few limits. This is that part of the shipped configuration:
 
 ```yaml
 faye:
@@ -185,7 +185,7 @@ A webhook takes three keys:
 | Key | Default | Meaning |
 |---|---|---|
 | `url` | required | Where Faye posts each code as JSON. It must be `https`, or `http` to a loopback address. |
-| `secret` | required | The key that signs each post. Faye sends an HMAC SHA-256 signature of the body in the `Faye-Signature` header. |
+| `secret` | required | The key that signs each post. Faye signs a timestamp and the body with HMAC SHA-256, and sends both in the `Faye-Signature` header. |
 | `per-hour` | `100` | The most codes that this tenant may send on this channel in one hour. |
 
 A channel without a webhook uses the outbox folder, `FAYE_DEMO_OUTBOX`. If that is also empty, the channel is off.

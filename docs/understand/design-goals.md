@@ -68,7 +68,7 @@ The first thirteen decisions shaped everything after them. They are recorded as 
 | D6 | Typed screens | Any form the server describes |
 | D7 | Ask who you are first, by default | One combined form only |
 | D8 | Hooks with a closed result | Hooks with full control |
-| D9 | Java 21 on the server, TypeScript on the web | One language everywhere |
+| D9 | Java 21 on the server, TypeScript on the web | TypeScript everywhere |
 | D10 | Safety checks only in Java; the web apps call the server | A second checker in TypeScript |
 | D11 | A tree editor for blocks; the graph is read only | A free canvas, which allows shapes the language does not |
 | D12 | Owned shadcn/ui components | A component library dependency |

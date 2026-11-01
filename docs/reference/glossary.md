@@ -45,8 +45,8 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 
 ## F
 
-- **factor**: A kind of proof. Faye counts a password as knowledge; app codes, text message codes and hardware keys as possession; and user verification, such as a fingerprint, as inherence. Two factors of different kinds give `faye:2fa`.
-- **first party**: An application that belongs to the same owner as the tenant. A first party application is registered with `metadata.first_party = true` and is not asked for consent.
+- **factor**: A kind of proof. Faye counts a password as knowledge; app codes, text message codes and hardware keys as possession; and user verification, such as a fingerprint, as inherence. Two factors of different kinds give `faye:2fa`. An emailed code counts as one factor alone, never as a second.
+- **first party**: An application that belongs to the same owner as the tenant. A first party application is registered with `metadata.first_party = true`. The shipped flows do not ask it for consent.
 - **flow**: The recipe for a sign in: the steps, their order and their conditions.
 - **flow file**: The YAML file that describes a flow.
 
@@ -104,8 +104,8 @@ This page defines the words that the Faye docs use. Each word means one thing ev
 ## T
 
 - **tenant**: One customer or product line with its own flow, applications, users, branding and policy.
-- **third party**: An application that does not belong to the tenant's owner. A third party application asks the person for consent.
-- **trace**: The list of events that a preview run records: steps, screens, calls, hooks and the end.
+- **third party**: An application that does not belong to the tenant's owner. In the shipped flows, a third party application asks the person for consent.
+- **trace**: The list of events that a preview run records: the start, steps, options, screens, calls, hooks, retries, commits and the end.
 
 ## U
 
